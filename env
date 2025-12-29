@@ -1,0 +1,4 @@
+
+PORT=3000
+DB_FILE=./backend/streamer.db
+ALLOWED_ORIGINS=http://localhost:3000

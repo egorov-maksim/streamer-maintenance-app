@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Streamer Maintenance Tracker</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Left Sidebar Navigation -->
+  <nav class="sidebar-nav">
+    <div class="nav-item active" data-target="streamers-section">
+      <div class="nav-icon">📊</div>
+      <div class="nav-label">Streamers</div>
+    </div>
+    <div class="nav-item" data-target="log-section">
+      <div class="nav-icon">📜</div>
+      <div class="nav-label">Log</div>
+    </div>
+    <div class="nav-item" data-target="stats-section">
+      <div class="nav-icon">📈</div>
+      <div class="nav-label">Stats</div>
+    </div>
+  </nav>
+
+  <div class="main-wrapper">
+    <header>
+      <h1>🔧 Streamer Maintenance Tracker</h1>
+      <div class="subheader">Track cleaning events across all streamers</div>
+    </header>
+
+    <main>
+      <!-- Configuration -->
+      <section class="card">
+        <h2 class="card-title">⚙️ Configuration</h2>
+        <div class="grid grid-3">
+          <label>
+            Number of Streamers
+            <input type="number" id="cfg-numCables" min="1" value="12">
+          </label>
+          <label>
+            Active Sections per Streamer
+            <input type="number" id="cfg-sectionsPerCable" min="1" value="107">
+          </label>
+          <label>
+            Section Length (m)
+            <input type="number" id="cfg-sectionLength" min="1" value="75">
+          </label>
+          <label>
+            eBird Frequency (every N sections)
+            <input type="number" id="cfg-moduleFrequency" min="1" value="4">
+          </label>
+          <label>
+            Channels per Section
+            <input type="number" id="cfg-channelsPerSection" min="1" value="6">
+          </label>
+          <label>
+            Tail Configuration
+            <select id="cfg-useRopeForTail">
+              <option value="true">Use Rope (no extra sections)</option>
+              <option value="false">Add 5 Tail Sections</option>
+            </select>
+          </label>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" id="btn-save-config">💾 Save Configuration</button>
+          <span id="config-status" class="status"></span>
+        </div>
+        <p style="font-size: 13px; color: #6b7280; margin-top: 8px;">
+          Note: EB modules appear after 1st section, then every 4 sections. If "Add 5 Tail Sections" is selected, 5 additional sections will be appended.
+        </p>
+      </section>
+
+      <!-- Alerts -->
+      <div id="alerts-container"></div>
+
+      <!-- Method Selection -->
+      <section class="card">
+        <h2 class="card-title">🧹 Cleaning Method Selection</h2>
+        <p style="font-size: 14px; margin-bottom: 12px;">Select a cleaning method to use</p>
+        <div class="method-tiles">
+          <div class="method-tile active" data-method="rope">
+            <div style="font-size: 32px;">🪢</div>
+            <div class="method-name">Rope</div>
+          </div>
+          <div class="method-tile" data-method="scraper">
+            <div style="font-size: 32px;">🛠️</div>
+            <div class="method-name">Scraper</div>
+          </div>
+          <div class="method-tile" data-method="scraper-rope">
+            <div style="font-size: 32px;">🪢🛠️</div>
+            <div class="method-name">Scraper&Rope</div>
+          </div>
+          <div class="method-tile" data-method="scue">
+            <div style="font-size: 32px;">⚙️</div>
+            <div class="method-name">SCUE</div>
+          </div>
+          <div class="method-tile" data-method="knife">
+            <div style="font-size: 32px;">🔪</div>
+            <div class="method-name">Knife</div>
+          </div>
+        </div>
+        <p style="margin-top: 12px; font-size: 13px;"><strong>How to mark sections:</strong> Click and drag across active section cells to mark them as cleaned.</p>
+      </section>
+
+    
+
+      
+
+      <!-- Heat Map -->
+      <section class="card streamers-card">
+        <h2 class="card-title">🗺️ Streamers Detail View</h2>
+
+    <!-- Legend moved here -->
+    <div class="legend" style="margin-bottom: 16px;">
+      <div class="badge"><span class="legend-swatch" style="background: var(--heat-fresh);"></span> 0 day (fresh)</div>
+      <div class="badge"><span class="legend-swatch" style="background: var(--heat-4plus);"></span> 4+ days</div>
+      <div class="badge"><span class="legend-swatch" style="background: var(--heat-7plus);"></span> 7+ days</div>
+      <div class="badge"><span class="legend-swatch" style="background: var(--heat-10plus);"></span> 10–13 days</div>
+      <div class="badge"><span class="legend-swatch" style="background: var(--heat-14plus);"></span> 14+ days (needs cleaning)</div>
+      <div class="badge"><span class="legend-swatch" style="background: var(--heat-never);"></span> Never cleaned</div>
+      <div class="badge"><span class="legend-swatch" style="background: #fbbf24; border: 2px solid #f59e0b;"></span> EB Module</div>
+    </div>
+
+        <div id="heatmap-container" class="hm-grid-container"></div>
+      </section>
+
+      <!-- History Log -->
+      <section id="log-section" class="card">
+        <h2 class="card-title">📜 Cleaning History Log</h2>
+        <div class="actions" style="margin-bottom: 12px;">
+          <button class="btn btn-secondary" id="btn-export-csv">📥 Export CSV</button>
+          <button class="btn btn-secondary" id="btn-import-csv">📤 Import CSV</button>
+          <input type="file" id="csv-input" accept=".csv" style="display:none">
+          <button class="btn btn-danger" id="btn-clear-all">🗑️ Clear All Events</button>
+        </div>
+        <textarea id="csv-output" class="csv-output" readonly></textarea>
+        <div class="table-wrapper">
+          <table id="events-table">
+            <thead>
+              <tr>
+                <th class="sortable" data-sort="date">Date & Time <span class="sort-icon">⇅</span></th>
+                <th class="sortable" data-sort="streamer">Streamer <span class="sort-icon">⇅</span></th>
+                <th class="sortable" data-sort="section">Section Range <span class="sort-icon">⇅</span></th>
+                <th>EB Range</th>
+          <th>Channel Range</th>
+                <th class="sortable" data-sort="distance">Length (m) <span class="sort-icon">⇅</span></th>
+                <th class="sortable" data-sort="method">Method <span class="sort-icon">⇅</span></th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="log-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Manual Entry -->
+      <section class="card">
+        <h2 class="card-title">✍️ Manual Entry of Cleaning Event</h2>
+        <div class="grid grid-4">
+          <label>
+            Streamer Number
+            <input type="number" id="evt-streamer" min="1" max="12" value="1">
+          </label>
+          <label>
+            First Section
+            <input type="number" id="evt-start" min="1" max="107" value="1">
+          </label>
+          <label>
+            Last Section
+            <input type="number" id="evt-end" min="1" max="107" value="1">
+          </label>
+          <label>
+            Cleaning Method
+            <select id="evt-method">
+              <option value="rope">Rope</option>
+              <option value="scraper">Scraper</option>
+              <option value="scraper-rope">Scraper&Rope</option>
+              <option value="scue">SCUE</option>
+              <option value="knife">Knife</option>
+            </select>
+          </label>
+          <label>
+            Date
+            <input type="date" id="evt-date">
+          </label>
+          <label>
+            Time
+            <input type="time" id="evt-time">
+          </label>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" id="btn-add-event">➕ Add Event</button>
+          <span id="event-status" class="status"></span>
+        </div>
+      </section>
+
+      <!-- Per-Streamer Overview Cards -->
+      <section id="streamers-section" class="card">
+        <h2 class="card-title">📊 Streamer Maintenance Overview</h2>
+        <div id="streamer-cards-container" class="streamer-cards"></div>
+      </section>
+      <!-- Statistics -->
+      <section id="stats-section" class="card">
+        <h2 class="card-title">📈 Statistics & Data Filtering</h2>
+        <div class="grid grid-2" style="margin-bottom: 16px;">
+          <label>
+            Start Date
+            <input type="date" id="filter-start">
+          </label>
+          <label>
+            End Date
+            <input type="date" id="filter-end">
+          </label>
+        </div>
+        <button class="btn btn-primary" id="btn-apply-filter">🔍 Apply Filter</button>
+
+        <div class="kpis" style="margin-top: 16px;">
+          <div class="kpi">
+            <div class="kpi-title">Coverage</div>
+            <div class="kpi-value" id="kpi-coverage">0%</div>
+            <div class="kpi-sub" id="kpi-coverage-sub">0 / 0 sections</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-title">Total Distance</div>
+            <div class="kpi-value" id="kpi-distance">0.0 km</div>
+            <div class="kpi-sub" id="kpi-distance-sub">0 meters cleaned</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-title">Cleaning Events</div>
+            <div class="kpi-value" id="kpi-events">0</div>
+            <div class="kpi-sub" id="kpi-events-sub">0 log entries</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-title">Last Cleaning</div>
+            <div class="kpi-value" id="kpi-last" style="font-size: 14px;">—</div>
+            <div class="kpi-sub" id="kpi-last-sub">No events</div>
+          </div>
+        </div>
+
+        <div id="method-breakdown" style="margin-top: 16px;"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Confirmation Modal -->
+  <div id="confirmation-modal" class="modal">
+    <div id="modal-overlay" class="modal-overlay"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>🧹 Confirm Cleaning Event</h3>
+        <button class="modal-close" id="btn-modal-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="grid grid-2">
+          <label>
+            Streamer Number
+            <input type="number" id="modal-streamer" min="1" max="12" value="1">
+          </label>
+          <label>
+            Cleaning Method
+            <select id="modal-method">
+              <option value="rope">🪢 Rope</option>
+              <option value="scraper">🔪 Scraper</option>
+              <option value="scraper-rope">🪢🧱 Scraper&Rope</option>
+              <option value="scue">⚙️ SCUE</option>
+              <option value="knife">🗡️ Knife</option>
+            </select>
+          </label>
+          <label>
+            First Section
+            <input type="number" id="modal-start" min="1" value="1">
+          </label>
+          <label>
+            Last Section
+            <input type="number" id="modal-end" min="1" value="1">
+          </label>
+        </div>
+        
+        <div class="modal-summary">
+          <div class="summary-item">
+            <span class="summary-label">Range:</span>
+            <span class="summary-value" id="modal-summary-range">AS01 - AS01</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Channels:</span>
+            <span class="summary-value" id="modal-summary-channels">Ch 1-6</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Distance:</span>
+            <span class="summary-value" id="modal-summary-distance">25 m</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btn-modal-cancel">Cancel</button>
+        <button class="btn btn-primary" id="btn-modal-confirm">✓ Confirm & Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Event Modal -->
+  <div id="edit-modal" class="modal">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>✏️ Edit Cleaning Event</h3>
+        <button class="modal-close" id="btn-edit-close">×</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="edit-event-id">
+        <div class="grid grid-2">
+          <label>
+            Streamer Number
+            <input type="number" id="edit-streamer" min="1" max="12" value="1">
+          </label>
+          <label>
+            Cleaning Method
+            <select id="edit-method">
+              <option value="rope">Rope</option>
+              <option value="scraper">Scraper</option>
+              <option value="scraper-rope">Scraper&Rope</option>
+              <option value="scue">SCUE</option>
+              <option value="knife">Knife</option>
+            </select>
+          </label>
+          <label>
+            First Section
+            <input type="number" id="edit-start" min="1" value="1">
+          </label>
+          <label>
+            Last Section
+            <input type="number" id="edit-end" min="1" value="1">
+          </label>
+          <label>
+            Date
+            <input type="date" id="edit-date">
+          </label>
+          <label>
+            Time
+            <input type="time" id="edit-time">
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btn-edit-cancel">Cancel</button>
+        <button class="btn btn-primary" id="btn-edit-save">💾 Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
