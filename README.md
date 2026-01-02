@@ -19,7 +19,7 @@ A comprehensive web application for tracking seismic streamer scraping operation
 
 ## 🎯 Overview
 
-The **Streamer Maintenance Tracker** is a purpose-built solution for marine survey operations that need to track and manage the cleaning of seismic streamer cables. Streamers are long cables towed behind survey vessels, containing sensitive acoustic sensors that must be regularly cleaned to maintain signal quality.
+The **Streamer Maintenance Tracker** is a purpose-built solution for tracking scraping of seismic streamer cables. 
 
 ### Problem Solved
 - **Manual Tracking**: Eliminates paper logs and spreadsheets
