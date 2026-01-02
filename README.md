@@ -1,4 +1,3 @@
-# cleaningapp
 Track the progress on scraping
 # 🧹 Streamer Scraping Tracker
 
