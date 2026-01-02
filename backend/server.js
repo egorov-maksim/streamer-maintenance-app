@@ -11,7 +11,20 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 initDb();
 
-app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: [
+        "'self'", 
+        "https://cdnjs.cloudflare.com"  // Allow jsPDF CDN
+      ],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+}));
 
 const allowed = (process.env.ALLOWED_ORIGINS || "http://localhost:3000")
   .split(",")
@@ -228,7 +241,43 @@ app.get("/api/stats", async (_req, res) => {
     const sectionLength = cfg.sectionLength || 1;
     const totalSections = totals?.totalSections || 0;
     const totalDistance = totalSections * sectionLength;
-    res.json({ totalEvents: totalEvents.count, totalSections, totalDistance });
+
+    const N = cfg.sectionsPerCable;
+    const tailSections = cfg.useRopeForTail ? 0 : 5;
+    const totalAvailableSections = cfg.numCables * N;
+    const totalAvailableTail = cfg.numCables * tailSections;
+
+    // Calculate unique sections cleaned with active/tail breakdown
+    const allEvents = await allAsync("SELECT cable_id, section_index_start, section_index_end FROM cleaning_events");
+    const uniqueSections = new Set();
+    const uniqueActiveSections = new Set();
+    const uniqueTailSections = new Set();
+
+    for (const evt of allEvents) {
+      for (let s = evt.section_index_start; s <= evt.section_index_end; s++) {
+        uniqueSections.add(`${evt.cable_id}-${s}`);
+        if (s < N) {
+          uniqueActiveSections.add(`${evt.cable_id}-${s}`);
+        } else {
+          uniqueTailSections.add(`${evt.cable_id}-${s}`);
+        }
+      }
+    }
+
+    const uniqueCleanedSections = uniqueSections.size;
+    const activeCleanedSections = uniqueActiveSections.size;
+    const tailCleanedSections = uniqueTailSections.size;
+
+    res.json({
+      totalEvents: totalEvents.count,
+      totalSections,
+      totalDistance,
+      uniqueCleanedSections,
+      activeCleanedSections,
+      tailCleanedSections,
+      totalAvailableSections,
+      totalAvailableTail
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to get stats" });
@@ -275,6 +324,62 @@ app.get("/api/last-cleaned", async (_req, res) => {
   }
 });
 
+// filtered last-cleaned map - for PDF generation only
+app.get('/api/last-cleaned-filtered', async (req, res) => {
+  try {
+    const { start, end } = req.query;
+    const cfg = await loadConfig();
+    const N = cfg.sectionsPerCable;
+    const cableCount = cfg.numCables;
+    const tailSections = cfg.useRopeForTail ? 0 : 5;
+    const totalSections = N + tailSections;
+
+    // Build query with date filter
+    let sql = `
+      SELECT cable_id, section_index_start, section_index_end, cleaned_at 
+      FROM cleaning_events
+    `;
+    const params = [];
+    
+    if (start && end) {
+      sql += ' WHERE DATE(cleaned_at) BETWEEN DATE(?) AND DATE(?)';
+      params.push(start, end);
+    } else if (start) {
+      sql += ' WHERE DATE(cleaned_at) >= DATE(?)';
+      params.push(start);
+    } else if (end) {
+      sql += ' WHERE DATE(cleaned_at) <= DATE(?)';
+      params.push(end);
+    }
+    
+    sql += ' ORDER BY datetime(cleaned_at) DESC';
+
+    const rows = await allAsync(sql, params);
+
+    // Initialize map with nulls
+    const map = {};
+    for (let c = 0; c < cableCount; c++) {
+      map[`cable-${c}`] = Array(totalSections).fill(null);
+    }
+
+    // Fill with last cleaned date per section (within filter period only)
+    for (const r of rows) {
+      const arr = map[r.cable_id];
+      if (!arr) continue;
+      for (let s = r.section_index_start; s <= r.section_index_end && s < totalSections; s++) {
+        if (!arr[s]) {
+          arr[s] = r.cleaned_at; // keep latest per section in filtered period
+        }
+      }
+    }
+
+    res.json({ lastCleaned: map });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to compute filtered last-cleaned' });
+  }
+});
+
 
 // filtered stats
 app.get("/api/stats/filter", async (req, res) => {
@@ -282,31 +387,58 @@ app.get("/api/stats/filter", async (req, res) => {
     const { start, end } = req.query;
     const cfg = await loadConfig();
     const sectionLength = cfg.sectionLength || 1;
+    const N = cfg.sectionsPerCable;
+    const tailSections = cfg.useRopeForTail ? 0 : 5;
 
     let sql = "SELECT * FROM cleaning_events";
     const params = [];
     if (start && end) {
-      sql += " WHERE datetime(cleaned_at) BETWEEN datetime(?) AND datetime(?)";
+      sql += " WHERE DATE(cleaned_at) BETWEEN DATE(?) AND DATE(?)";
       params.push(start, end);
     } else if (start) {
-      sql += " WHERE datetime(cleaned_at) >= datetime(?)";
+      sql += " WHERE DATE(cleaned_at) >= DATE(?)";
       params.push(start);
     } else if (end) {
-      sql += " WHERE datetime(cleaned_at) <= datetime(?)";
+      sql += " WHERE DATE(cleaned_at) <= DATE(?)";
       params.push(end);
     }
-    sql += " ORDER BY datetime(cleaned_at) DESC";
 
+    sql += " ORDER BY datetime(cleaned_at) DESC";
     const rows = await allAsync(sql, params);
+
     const totalSectionsCleaned = rows.reduce((acc, r) => acc + (r.section_index_end - r.section_index_start + 1), 0);
     const totalDistance = totalSectionsCleaned * sectionLength;
     const lastCleaning = rows[0]?.cleaned_at || null;
+
+    // Calculate unique sections in filtered period with active/tail breakdown
+    const uniqueSections = new Set();
+    const uniqueActiveSections = new Set();
+    const uniqueTailSections = new Set();
+
     const byMethod = {};
     for (const r of rows) {
       const len = (r.section_index_end - r.section_index_start + 1) * sectionLength;
       byMethod[r.cleaning_method] = (byMethod[r.cleaning_method] || 0) + len;
+
+      for (let s = r.section_index_start; s <= r.section_index_end; s++) {
+        uniqueSections.add(`${r.cable_id}-${s}`);
+        if (s < N) {
+          uniqueActiveSections.add(`${r.cable_id}-${s}`);
+        } else {
+          uniqueTailSections.add(`${r.cable_id}-${s}`);
+        }
+      }
     }
-    res.json({ events: rows.length, totalDistance, lastCleaning, byMethod });
+
+    res.json({
+      events: rows.length,
+      totalDistance,
+      lastCleaning,
+      byMethod,
+      uniqueCleanedSections: uniqueSections.size,
+      activeCleanedSections: uniqueActiveSections.size,
+      tailCleanedSections: uniqueTailSections.size
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to get filtered stats" });
@@ -321,3 +453,5 @@ app.get("*", (_req, res) => {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
+
