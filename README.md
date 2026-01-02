@@ -1,4 +1,3 @@
-Track the progress on scraping
 # 🧹 Streamer Scraping Tracker
 
 A comprehensive web application for tracking seismic streamer scraping operations. Designed exlusively for TGS, this app provides real-time visualization, detailed logging, and comprehensive reporting of streamers upkeep.
