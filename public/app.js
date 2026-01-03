@@ -610,7 +610,7 @@ function updateUIForRole() {
   const btnClearProject = safeGet('btn-clear-project');
   if (btnClearProject && isAdminUser) {
     // Only show if there's an active project
-    const activeProject = projects.find(p => p.is_active === 1);
+    const activeProject = projects.find(p => p.is_active === true);
     btnClearProject.style.display = activeProject ? '' : 'none';
   } else if (btnClearProject) {
     btnClearProject.style.display = 'none';
@@ -917,6 +917,7 @@ async function activateProject(projectId) {
     }
     
     await loadProjects();
+    updateActiveProjectBanner();
     updateConfigProjectLabel();
     
     showSuccessToast('Project Activated', `Streamer configuration loaded for ${project.project_number}. All new events will be associated with this project.`);
@@ -964,6 +965,7 @@ async function clearActiveProject() {
     // Reset to global config
     await loadConfig();
     await loadProjects();
+    updateActiveProjectBanner();
     updateConfigProjectLabel();
     
     showSuccessToast('Project Cleared', 'Using global configuration. New events will not be associated with any project.');
@@ -1021,7 +1023,7 @@ function renderProjectList() {
   const isAdminUser = isAdmin();
   
   container.innerHTML = projects.map(p => {
-    const isActive = p.is_active === 1;
+    const isActive = p.is_active === true;
     const eventCount = projectEventCounts[p.project_number] || 0;
     const eventCountBadge = `<span class="project-event-count" title="Events in this project">${eventCount} events</span>`;
     const activeBadge = isActive ? '<span class="badge badge-active">Active</span>' : '';
@@ -1061,14 +1063,14 @@ function populateProjectSelector() {
     const option = document.createElement('option');
     option.value = p.project_number;
     option.textContent = p.project_name ? `${p.project_number} - ${p.project_name}` : p.project_number;
-    if (p.is_active === 1) {
+    if (p.is_active === true) {
       option.textContent += ' (Active)';
     }
     selector.appendChild(option);
   });
   
   // Set current selection to active project
-  const activeProject = projects.find(p => p.is_active === 1);
+  const activeProject = projects.find(p => p.is_active === true);
   if (activeProject) {
     selector.value = activeProject.project_number;
   }
@@ -1082,7 +1084,7 @@ function updateActiveProjectBanner() {
   
   if (!banner || !nameEl) return;
   
-  const activeProject = projects.find(p => p.is_active === 1);
+  const activeProject = projects.find(p => p.is_active === true);
   
   if (activeProject) {
     nameEl.textContent = activeProject.project_name 
@@ -2596,6 +2598,7 @@ function setupProjectCollapse() {
 async function initApp() {
   await loadConfig();
   await loadProjects();
+  updateActiveProjectBanner();
   await loadBackups();
   await refreshEverything();
   await renderHeatmap();
