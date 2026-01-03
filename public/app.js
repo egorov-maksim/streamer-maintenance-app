@@ -910,6 +910,7 @@ async function activateProject(projectId) {
       config.useRopeForTail = project.use_rope_for_tail !== false;
       config.vesselTag = project.vessel_tag || 'TTN';
       config.activeProjectNumber = project.project_number;
+      selectedProjectFilter = project.project_number;
       
       // Update CSS variable and form
       document.documentElement.style.setProperty('--sections', config.sectionsPerCable);
@@ -965,6 +966,7 @@ async function clearActiveProject() {
     // Reset to global config
     await loadConfig();
     await loadProjects();
+    selectedProjectFilter = null;
     updateActiveProjectBanner();
     updateConfigProjectLabel();
     
@@ -1809,7 +1811,12 @@ async function renderStreamerCards(startDate = null, endDate = null) {
   container.innerHTML = '';
 
   try {
-    const res = await fetch('api/last-cleaned');
+    // Add project filter to API call
+    let url = 'api/last-cleaned';
+    if (selectedProjectFilter) {
+      url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
+    }
+    const res = await fetch(url);
     const data = await res.json();
     const lastCleaned = data.lastCleaned;
 
@@ -2597,6 +2604,9 @@ function setupProjectCollapse() {
 
 async function initApp() {
   await loadConfig();
+  if (config.activeProjectNumber) {
+    selectedProjectFilter = config.activeProjectNumber;
+  }
   await loadProjects();
   updateActiveProjectBanner();
   await loadBackups();
