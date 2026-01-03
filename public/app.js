@@ -12,10 +12,88 @@ let config = {
   moduleFrequency: 4,
   useRopeForTail: true,
   channelsPerSection: 6,
+  activeProjectNumber: null,
+  vesselTag: 'TTN',
 };
 
 let events = [];
 let selectedMethod = "rope";
+let projects = [];
+let selectedProjectFilter = null; // For filtering events by project
+
+// Authentication state
+let authToken = null;
+let currentUser = null;
+
+/* ------------ Auth Helpers ------------ */
+
+function getAuthHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+  return headers;
+}
+
+function isAdmin() {
+  return currentUser?.role === 'admin';
+}
+
+function isLoggedIn() {
+  return authToken !== null && currentUser !== null;
+}
+
+// Save session to localStorage
+function saveSession(token, user) {
+  authToken = token;
+  currentUser = user;
+  localStorage.setItem('authToken', token);
+  localStorage.setItem('currentUser', JSON.stringify(user));
+}
+
+// Load session from localStorage
+function loadSession() {
+  const token = localStorage.getItem('authToken');
+  const userStr = localStorage.getItem('currentUser');
+  if (token && userStr) {
+    authToken = token;
+    currentUser = JSON.parse(userStr);
+    return true;
+  }
+  return false;
+}
+
+// Clear session
+function clearSession() {
+  authToken = null;
+  currentUser = null;
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('currentUser');
+}
+
+// Validate session with server
+async function validateSession() {
+  if (!authToken) return false;
+  
+  try {
+    const res = await fetch('api/session', {
+      headers: getAuthHeaders()
+    });
+    
+    if (res.ok) {
+      const data = await res.json();
+      currentUser = { username: data.username, role: data.role };
+      return true;
+    } else {
+      clearSession();
+      return false;
+    }
+  } catch (err) {
+    console.error('Session validation failed:', err);
+    clearSession();
+    return false;
+  }
+}
 
 /* Shared drag state */
 let dragState = {
@@ -41,6 +119,76 @@ function setStatus(el, msg, isError = false) {
   el.textContent = msg;
   el.style.color = isError ? "#ef4444" : "#2563eb";
   if (msg) setTimeout(() => { el.textContent = ""; }, 4000);
+}
+
+/* ------------ Toast Notifications ------------ */
+
+function showToast(type, title, message, duration = 5000) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  
+  const icons = {
+    error: '🚫',
+    warning: '⚠️',
+    success: '✅',
+    info: 'ℹ️'
+  };
+  
+  toast.innerHTML = `
+    <div class="toast-icon">${icons[type] || icons.info}</div>
+    <div class="toast-content">
+      <div class="toast-title">${title}</div>
+      <div class="toast-message">${message}</div>
+    </div>
+    <button class="toast-close" aria-label="Close">×</button>
+    <div class="toast-progress"></div>
+  `;
+  
+  // Close button handler
+  const closeBtn = toast.querySelector('.toast-close');
+  closeBtn.addEventListener('click', () => dismissToast(toast));
+  
+  container.appendChild(toast);
+  
+  // Auto dismiss after duration
+  if (duration > 0) {
+    setTimeout(() => dismissToast(toast), duration);
+  }
+  
+  return toast;
+}
+
+function dismissToast(toast) {
+  if (!toast || toast.classList.contains('toast-exit')) return;
+  
+  toast.classList.add('toast-exit');
+  setTimeout(() => {
+    if (toast.parentNode) {
+      toast.parentNode.removeChild(toast);
+    }
+  }, 300);
+}
+
+function showErrorToast(title, message) {
+  return showToast('error', title, message);
+}
+
+function showWarningToast(title, message) {
+  return showToast('warning', title, message);
+}
+
+function showSuccessToast(title, message) {
+  return showToast('success', title, message);
+}
+
+function showAccessDeniedToast(action = 'perform this action') {
+  return showErrorToast(
+    'Access Denied',
+    `Administrator access required to ${action}. Please login with an admin account.`
+  );
 }
 
 function formatDateTime(iso) {
@@ -89,73 +237,18 @@ function formatEB(moduleIndex) {
   return `EB${String(moduleIndex).padStart(2, '0')}`;
 }
 
-// Helper: eBird ranges nearest to cleaned section
-function getEBRange(startSection, endSection) {
-  const moduleFreq = config.moduleFrequency || 4;
-  const N = config.sectionsPerCable;
-
-  // Find all module positions
-  const modules = [];
-
-  // First module after AS1 (section 0)
-  if (0 >= startSection && 0 <= endSection) {
-    modules.push(1);
+// Helper: Fetch EB range from server API
+// Finds closest module AT OR BEFORE startSection and AT OR AFTER endSection
+async function getEBRange(startSection, endSection) {
+  try {
+    const res = await fetch(`api/eb-range?start=${startSection}&end=${endSection}`);
+    if (!res.ok) throw new Error('Failed to fetch EB range');
+    const data = await res.json();
+    return data.ebRange || '-';
+  } catch (err) {
+    console.error('getEBRange error:', err);
+    return '-';
   }
-
-  // Regular modules every moduleFreq sections
-  for (let s = 0; s <= N - 1; s++) {
-    if (s > 0 && s % moduleFreq === 0 && s >= startSection && s <= endSection) {
-      const moduleNum = Math.floor(s / moduleFreq) + 1;
-      modules.push(moduleNum);
-    }
-  }
-
-  // Last module always after last active section (N-1)
-  if ((N - 1) >= startSection && (N - 1) <= endSection) {
-    const lastModuleNum = Math.floor((N - 1) / moduleFreq) + 1;
-    if (!modules.includes(lastModuleNum)) {
-      modules.push(lastModuleNum);
-    }
-  }
-
-  // If no modules in range, find closest before and after
-  if (modules.length === 0) {
-    const allModules = [];
-    allModules.push(1); // First module after AS1
-    for (let s = moduleFreq; s <= N - 1; s += moduleFreq) {
-      allModules.push(Math.floor(s / moduleFreq) + 1);
-    }
-    allModules.push(Math.floor((N - 1) / moduleFreq) + 1); // Last module
-
-    const before = allModules.filter(m => {
-      const modSection = m === 1 ? 0 : (m - 1) * moduleFreq;
-      return modSection < startSection;
-    }).pop();
-
-    const after = allModules.find(m => {
-      const modSection = m === 1 ? 0 : (m - 1) * moduleFreq;
-      return modSection > endSection;
-    });
-
-    if (before && after) {
-      return `${formatEB(after)} - ${formatEB(before)}`;
-    } else if (before) {
-      return `Tail Adaptor - ${formatEB(before)}`;
-    } else if (after) {
-      return `${formatEB(after)}`;
-    }
-  }
-
-  // Return range of modules found
-  if (modules.length === 1) {
-    return `${formatEB(modules[0])}`;
-  } else if (modules.length > 1) {
-    const min = Math.min(...modules);
-    const max = Math.max(...modules);
-    return `${formatEB(max)} - ${formatEB(min)}`;
-  }
-
-  return '-';
 }
 
 // Helper: sections per cable including tail (active + tail)
@@ -360,6 +453,193 @@ function getModuleNumber(sectionIndex) {
   return Math.floor((sectionIndex - firstActive) / moduleFreq) + 1;
 }
 
+/* ------------ Login/Logout UI ------------ */
+
+async function handleLogin(event) {
+  event.preventDefault();
+  
+  const usernameInput = safeGet('login-username');
+  const passwordInput = safeGet('login-password');
+  const errorDiv = safeGet('login-error');
+  const submitBtn = safeGet('login-submit');
+  const btnText = submitBtn.querySelector('.btn-text');
+  const btnLoader = submitBtn.querySelector('.btn-loader');
+  
+  const username = usernameInput.value.trim();
+  const password = passwordInput.value;
+  
+  if (!username || !password) {
+    errorDiv.textContent = 'Please enter username and password';
+    errorDiv.style.display = 'block';
+    return;
+  }
+  
+  // Show loading state
+  btnText.style.display = 'none';
+  btnLoader.style.display = 'inline';
+  submitBtn.disabled = true;
+  errorDiv.style.display = 'none';
+  
+  try {
+    const res = await fetch('api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    
+    const data = await res.json();
+    
+    if (res.ok) {
+      saveSession(data.token, { username: data.username, role: data.role });
+      showApp();
+    } else {
+      errorDiv.textContent = data.error || 'Login failed';
+      errorDiv.style.display = 'block';
+    }
+  } catch (err) {
+    console.error('Login error:', err);
+    errorDiv.textContent = 'Connection error. Please try again.';
+    errorDiv.style.display = 'block';
+  } finally {
+    btnText.style.display = 'inline';
+    btnLoader.style.display = 'none';
+    submitBtn.disabled = false;
+  }
+}
+
+async function handleLogout() {
+  try {
+    await fetch('api/logout', {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+  } catch (err) {
+    console.error('Logout error:', err);
+  }
+  
+  clearSession();
+  showLogin();
+}
+
+function showLogin() {
+  safeGet('login-page').style.display = 'flex';
+  safeGet('app-container').style.display = 'none';
+  
+  // Clear form
+  const usernameInput = safeGet('login-username');
+  const passwordInput = safeGet('login-password');
+  const errorDiv = safeGet('login-error');
+  
+  if (usernameInput) usernameInput.value = '';
+  if (passwordInput) passwordInput.value = '';
+  if (errorDiv) errorDiv.style.display = 'none';
+}
+
+function showApp() {
+  safeGet('login-page').style.display = 'none';
+  safeGet('app-container').style.display = 'block';
+  
+  // Update user display
+  const userDisplayName = safeGet('user-display-name');
+  const userRoleBadge = safeGet('user-role-badge');
+  
+  if (userDisplayName && currentUser) {
+    userDisplayName.textContent = currentUser.username;
+  }
+  
+  if (userRoleBadge && currentUser) {
+    userRoleBadge.textContent = currentUser.role === 'admin' ? 'Administrator' : 'Viewer';
+    userRoleBadge.className = `user-role-badge ${currentUser.role === 'admin' ? 'admin' : 'viewer'}`;
+  }
+  
+  // Update UI based on role
+  updateUIForRole();
+  
+  // Initialize app
+  initApp();
+}
+
+function updateUIForRole() {
+  const isAdminUser = isAdmin();
+  
+  // Hide/show admin-only elements
+  const adminOnlyElements = document.querySelectorAll('.admin-only');
+  adminOnlyElements.forEach(el => {
+    el.style.display = isAdminUser ? '' : 'none';
+  });
+  
+  // Disable buttons for viewers
+  const editDeleteBtns = document.querySelectorAll('.btn-edit, .btn-delete');
+  editDeleteBtns.forEach(btn => {
+    btn.style.display = isAdminUser ? '' : 'none';
+  });
+  
+  // Hide action column header for viewers
+  const actionHeaders = document.querySelectorAll('th:last-child');
+  // We'll handle this in renderLog instead
+  
+  // Show/hide manual entry section, clear all button, etc.
+  const btnClearAll = safeGet('btn-clear-all');
+  if (btnClearAll) btnClearAll.style.display = isAdminUser ? '' : 'none';
+  
+  const btnSaveConfig = safeGet('btn-save-config');
+  if (btnSaveConfig) btnSaveConfig.style.display = isAdminUser ? '' : 'none';
+  
+  const btnAddEvent = safeGet('btn-add-event');
+  if (btnAddEvent) btnAddEvent.style.display = isAdminUser ? '' : 'none';
+  
+  // Disable config inputs for viewers
+  const configInputs = document.querySelectorAll('#cfg-numCables, #cfg-sectionsPerCable, #cfg-sectionLength, #cfg-moduleFrequency, #cfg-channelsPerSection, #cfg-useRopeForTail');
+  configInputs.forEach(input => {
+    input.disabled = !isAdminUser;
+  });
+  
+  // Disable manual entry inputs for viewers
+  const manualEntryInputs = document.querySelectorAll('#evt-streamer, #evt-start, #evt-end, #evt-method, #evt-date, #evt-time');
+  manualEntryInputs.forEach(input => {
+    input.disabled = !isAdminUser;
+  });
+  
+  // Project management buttons and inputs
+  const btnCreateProject = safeGet('btn-create-project');
+  if (btnCreateProject) btnCreateProject.style.display = isAdminUser ? '' : 'none';
+  
+  const btnActivateProject = safeGet('btn-activate-project');
+  if (btnActivateProject) btnActivateProject.style.display = isAdminUser ? '' : 'none';
+  
+  const btnClearProject = safeGet('btn-clear-project');
+  if (btnClearProject && isAdminUser) {
+    // Only show if there's an active project
+    const activeProject = projects.find(p => p.is_active === 1);
+    btnClearProject.style.display = activeProject ? '' : 'none';
+  } else if (btnClearProject) {
+    btnClearProject.style.display = 'none';
+  }
+  
+  // Disable project creation inputs for viewers
+  const projectInputs = document.querySelectorAll('#new-project-number, #new-project-name, #new-project-vessel');
+  projectInputs.forEach(input => {
+    input.disabled = !isAdminUser;
+  });
+}
+
+function setupPasswordToggle() {
+  const toggle = safeGet('password-toggle');
+  const passwordInput = safeGet('login-password');
+  
+  if (toggle && passwordInput) {
+    toggle.addEventListener('click', () => {
+      if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        toggle.textContent = '🙈';
+      } else {
+        passwordInput.type = 'password';
+        toggle.textContent = '👁️';
+      }
+    });
+  }
+}
+
 /* ------------ Config API ------------ */
 
 async function loadConfig() {
@@ -368,20 +648,123 @@ async function loadConfig() {
     const data = await res.json();
     config = data;
     document.documentElement.style.setProperty('--sections', config.sectionsPerCable);
-
-    safeGet('cfg-numCables').value = config.numCables;
-    safeGet('cfg-sectionsPerCable').value = config.sectionsPerCable;
-    safeGet('cfg-sectionLength').value = config.sectionLength;
-    safeGet('cfg-moduleFrequency').value = config.moduleFrequency;
-    safeGet('cfg-channelsPerSection').value = config.channelsPerSection || 6;
-    safeGet('cfg-useRopeForTail').value = String(config.useRopeForTail);
+    populateConfigForm(config);
+    updateConfigProjectLabel();
   } catch (err) {
     console.error(err);
   }
 }
 
+// Populate configuration form from config object
+function populateConfigForm(cfg) {
+  safeGet('cfg-numCables').value = cfg.numCables || 12;
+  safeGet('cfg-sectionsPerCable').value = cfg.sectionsPerCable || 107;
+  safeGet('cfg-sectionLength').value = cfg.sectionLength || 75;
+  safeGet('cfg-moduleFrequency').value = cfg.moduleFrequency || 4;
+  safeGet('cfg-channelsPerSection').value = cfg.channelsPerSection || 6;
+  safeGet('cfg-useRopeForTail').value = String(cfg.useRopeForTail !== false);
+}
+
+// Update the label showing which project the config belongs to
+function updateConfigProjectLabel() {
+  const label = safeGet('config-project-label');
+  if (!label) return;
+  
+  const activeProject = projects.find(p => p.is_active);
+  if (activeProject) {
+    label.textContent = `(for ${activeProject.project_number})`;
+  } else {
+    label.textContent = '(global defaults)';
+  }
+}
+
+// Get current config values from form
+function getConfigFromForm() {
+  return {
+    num_cables: parseInt(safeGet('cfg-numCables').value || 12, 10),
+    sections_per_cable: parseInt(safeGet('cfg-sectionsPerCable').value || 107, 10),
+    section_length: parseInt(safeGet('cfg-sectionLength').value || 75, 10),
+    module_frequency: parseInt(safeGet('cfg-moduleFrequency').value || 4, 10),
+    channels_per_section: parseInt(safeGet('cfg-channelsPerSection').value || 6, 10),
+    use_rope_for_tail: safeGet('cfg-useRopeForTail').value === 'true',
+  };
+}
+
 async function saveConfig() {
   const statusEl = safeGet('config-status');
+  
+  if (!isAdmin()) {
+    setStatus(statusEl, 'Admin access required', true);
+    return;
+  }
+  
+  // Find active project
+  const activeProject = projects.find(p => p.is_active);
+  
+  if (activeProject) {
+    // Save to active project
+    await saveProjectConfig(activeProject.id);
+  } else {
+    // Save to global config (legacy behavior)
+    await saveGlobalConfig();
+  }
+}
+
+// Save configuration to a specific project
+async function saveProjectConfig(projectId) {
+  const statusEl = safeGet('config-status');
+  
+  try {
+    const formConfig = getConfigFromForm();
+    const activeProject = projects.find(p => p.id === projectId);
+    
+    const body = {
+      project_name: activeProject?.project_name || null,
+      vessel_tag: activeProject?.vessel_tag || 'TTN',
+      ...formConfig
+    };
+
+    const res = await fetch(`api/projects/${projectId}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(body),
+    });
+
+    if (res.status === 401 || res.status === 403) {
+      setStatus(statusEl, 'Admin access required', true);
+      return;
+    }
+    
+    if (!res.ok) throw new Error('Failed to save config');
+
+    const updated = await res.json();
+    
+    // Update local config to reflect changes
+    config.numCables = updated.num_cables;
+    config.sectionsPerCable = updated.sections_per_cable;
+    config.sectionLength = updated.section_length;
+    config.moduleFrequency = updated.module_frequency;
+    config.channelsPerSection = updated.channels_per_section;
+    config.useRopeForTail = updated.use_rope_for_tail;
+    
+    document.documentElement.style.setProperty('--sections', config.sectionsPerCable);
+    setStatus(statusEl, `✅ Configuration saved for ${updated.project_number}`);
+    
+    // Refresh projects list to update stored config
+    await loadProjects();
+    await refreshEverything();
+    await renderHeatmap();
+    await refreshStatsFiltered();
+  } catch (err) {
+    console.error(err);
+    setStatus(statusEl, 'Failed to save config', true);
+  }
+}
+
+// Save to global config (when no project is active)
+async function saveGlobalConfig() {
+  const statusEl = safeGet('config-status');
+  
   try {
     const body = {
       numCables: parseInt(safeGet('cfg-numCables').value || 1, 10),
@@ -394,16 +777,21 @@ async function saveConfig() {
 
     const res = await fetch('api/config', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify(body),
     });
 
+    if (res.status === 401 || res.status === 403) {
+      setStatus(statusEl, 'Admin access required', true);
+      return;
+    }
+    
     if (!res.ok) throw new Error('Failed to save config');
 
     const data = await res.json();
     config = data;
     document.documentElement.style.setProperty('--sections', config.sectionsPerCable);
-    setStatus(statusEl, '✅ Configuration updated');
+    setStatus(statusEl, '✅ Global configuration updated');
 
     await refreshEverything();
     await renderHeatmap();
@@ -414,15 +802,472 @@ async function saveConfig() {
   }
 }
 
+/* ------------ Project API ------------ */
+
+let projectEventCounts = {};
+
+async function loadProjects() {
+  try {
+    // Load projects and event counts in parallel
+    const [projectsRes, statsRes] = await Promise.all([
+      fetch('api/projects'),
+      fetch('api/projects/stats')
+    ]);
+    
+    projects = await projectsRes.json();
+    projectEventCounts = await statsRes.json();
+    
+    renderProjectList();
+    populateProjectSelector();
+    updateActiveProjectBanner();
+    updateConfigProjectLabel();
+  } catch (err) {
+    console.error('Failed to load projects:', err);
+  }
+}
+
+async function createProject() {
+  const statusEl = safeGet('project-status');
+  
+  if (!isAdmin()) {
+    setStatus(statusEl, 'Admin access required', true);
+    return;
+  }
+  
+  const projectNumber = safeGet('new-project-number').value.trim();
+  const projectName = safeGet('new-project-name').value.trim();
+  const vesselTag = safeGet('new-project-vessel').value.trim() || 'TTN';
+  
+  if (!projectNumber) {
+    setStatus(statusEl, 'Project number is required', true);
+    return;
+  }
+  
+  // Get current config values to use as defaults for new project
+  const currentConfig = getConfigFromForm();
+  
+  try {
+    const res = await fetch('api/projects', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        project_number: projectNumber,
+        project_name: projectName,
+        vessel_tag: vesselTag,
+        // Include current streamer config as defaults for the new project
+        ...currentConfig
+      })
+    });
+    
+    if (res.status === 401 || res.status === 403) {
+      setStatus(statusEl, 'Admin access required', true);
+      return;
+    }
+    
+    const data = await res.json();
+    
+    if (!res.ok) {
+      setStatus(statusEl, data.error || 'Failed to create project', true);
+      return;
+    }
+    
+    // Clear inputs
+    safeGet('new-project-number').value = '';
+    safeGet('new-project-name').value = '';
+    safeGet('new-project-vessel').value = 'TTN';
+    
+    setStatus(statusEl, '✅ Project created with current configuration');
+    await loadProjects();
+  } catch (err) {
+    console.error(err);
+    setStatus(statusEl, 'Failed to create project', true);
+  }
+}
+
+async function activateProject(projectId) {
+  if (!isAdmin()) {
+    showAccessDeniedToast('activate project');
+    return;
+  }
+  
+  try {
+    const res = await fetch(`api/projects/${projectId}/activate`, {
+      method: 'PUT',
+      headers: getAuthHeaders()
+    });
+    
+    if (!res.ok) throw new Error('Failed');
+    
+    const project = await res.json();
+    
+    // Update config with the project's streamer configuration
+    if (project) {
+      config.numCables = project.num_cables || 12;
+      config.sectionsPerCable = project.sections_per_cable || 107;
+      config.sectionLength = project.section_length || 75;
+      config.moduleFrequency = project.module_frequency || 4;
+      config.channelsPerSection = project.channels_per_section || 6;
+      config.useRopeForTail = project.use_rope_for_tail !== false;
+      config.vesselTag = project.vessel_tag || 'TTN';
+      config.activeProjectNumber = project.project_number;
+      
+      // Update CSS variable and form
+      document.documentElement.style.setProperty('--sections', config.sectionsPerCable);
+      populateConfigForm(config);
+    }
+    
+    await loadProjects();
+    updateConfigProjectLabel();
+    
+    showSuccessToast('Project Activated', `Streamer configuration loaded for ${project.project_number}. All new events will be associated with this project.`);
+    
+    // Refresh UI with new config
+    await refreshEverything();
+    await renderHeatmap();
+    await refreshStatsFiltered();
+  } catch (err) {
+    console.error(err);
+    showErrorToast('Activation Failed', 'Failed to activate project.');
+  }
+}
+
+async function activateSelectedProject() {
+  const selector = safeGet('project-selector');
+  const projectNumber = selector.value;
+  
+  if (!projectNumber) {
+    // Clear active project
+    await clearActiveProject();
+    return;
+  }
+  
+  const project = projects.find(p => p.project_number === projectNumber);
+  if (project) {
+    await activateProject(project.id);
+  }
+}
+
+async function clearActiveProject() {
+  if (!isAdmin()) {
+    showAccessDeniedToast('clear active project');
+    return;
+  }
+  
+  try {
+    const res = await fetch('api/projects/deactivate', {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    
+    if (!res.ok) throw new Error('Failed');
+    
+    // Reset to global config
+    await loadConfig();
+    await loadProjects();
+    updateConfigProjectLabel();
+    
+    showSuccessToast('Project Cleared', 'Using global configuration. New events will not be associated with any project.');
+    
+    // Refresh UI
+    await refreshEverything();
+    await renderHeatmap();
+    await refreshStatsFiltered();
+  } catch (err) {
+    console.error(err);
+    showErrorToast('Failed', 'Failed to clear active project.');
+  }
+}
+
+async function deleteProject(projectId) {
+  if (!isAdmin()) {
+    showAccessDeniedToast('delete project');
+    return;
+  }
+  
+  if (!confirm('Are you sure you want to delete this project? This cannot be undone.')) {
+    return;
+  }
+  
+  try {
+    const res = await fetch(`api/projects/${projectId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+    
+    const data = await res.json();
+    
+    if (!res.ok) {
+      showErrorToast('Cannot Delete', data.error || 'Failed to delete project.');
+      return;
+    }
+    
+    showSuccessToast('Project Deleted', 'The project has been removed.');
+    await loadProjects();
+  } catch (err) {
+    console.error(err);
+    showErrorToast('Delete Failed', 'Failed to delete project.');
+  }
+}
+
+function renderProjectList() {
+  const container = safeGet('project-list');
+  if (!container) return;
+  
+  if (projects.length === 0) {
+    container.innerHTML = '<p style="color: #6b7280; font-size: 13px;">No projects created yet.</p>';
+    return;
+  }
+  
+  const isAdminUser = isAdmin();
+  
+  container.innerHTML = projects.map(p => {
+    const isActive = p.is_active === 1;
+    const eventCount = projectEventCounts[p.project_number] || 0;
+    const eventCountBadge = `<span class="project-event-count" title="Events in this project">${eventCount} events</span>`;
+    const activeBadge = isActive ? '<span class="badge badge-active">Active</span>' : '';
+    const deleteBtn = isAdminUser && !isActive && eventCount === 0 ? 
+      `<button class="btn btn-outline btn-sm btn-delete-project" data-id="${p.id}" title="Delete project">🗑️</button>` : '';
+    
+    return `
+      <div class="project-item ${isActive ? 'active' : ''}">
+        <div class="project-item-info">
+          <span class="project-number">${p.project_number}</span>
+          ${p.project_name ? `<span class="project-name">${p.project_name}</span>` : ''}
+          <span class="project-vessel">${p.vessel_tag || 'TTN'}</span>
+          ${eventCountBadge}
+          ${activeBadge}
+        </div>
+        <div class="project-item-actions">
+          ${deleteBtn}
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  // Attach delete listeners
+  container.querySelectorAll('.btn-delete-project').forEach(btn => {
+    btn.addEventListener('click', () => deleteProject(parseInt(btn.dataset.id)));
+  });
+}
+
+function populateProjectSelector() {
+  const selector = safeGet('project-selector');
+  if (!selector) return;
+  
+  // Keep the first option (All Projects)
+  selector.innerHTML = '<option value="">-- All Projects (No Filter) --</option>';
+  
+  projects.forEach(p => {
+    const option = document.createElement('option');
+    option.value = p.project_number;
+    option.textContent = p.project_name ? `${p.project_number} - ${p.project_name}` : p.project_number;
+    if (p.is_active === 1) {
+      option.textContent += ' (Active)';
+    }
+    selector.appendChild(option);
+  });
+  
+  // Set current selection to active project
+  const activeProject = projects.find(p => p.is_active === 1);
+  if (activeProject) {
+    selector.value = activeProject.project_number;
+  }
+}
+
+function updateActiveProjectBanner() {
+  const banner = safeGet('active-project-banner');
+  const nameEl = safeGet('active-project-name');
+  const vesselEl = safeGet('active-project-vessel');
+  const clearBtn = safeGet('btn-clear-project');
+  
+  if (!banner || !nameEl) return;
+  
+  const activeProject = projects.find(p => p.is_active === 1);
+  
+  if (activeProject) {
+    nameEl.textContent = activeProject.project_name 
+      ? `${activeProject.project_number} - ${activeProject.project_name}`
+      : activeProject.project_number;
+    vesselEl.textContent = `[${activeProject.vessel_tag || 'TTN'}]`;
+    banner.classList.add('has-project');
+    if (clearBtn && isAdmin()) clearBtn.style.display = '';
+  } else {
+    nameEl.textContent = 'No project selected';
+    vesselEl.textContent = '';
+    banner.classList.remove('has-project');
+    if (clearBtn) clearBtn.style.display = 'none';
+  }
+}
+
+function setProjectFilter(projectNumber) {
+  selectedProjectFilter = projectNumber || null;
+  refreshEverything();
+  renderHeatmap();
+  refreshStatsFiltered();
+}
+
+/* ------------ Backup Management API ------------ */
+
+async function loadBackups() {
+  const container = safeGet('backup-list');
+  if (!container) return;
+  
+  if (!isAdmin()) {
+    container.innerHTML = '';
+    return;
+  }
+  
+  try {
+    const res = await fetch('api/backups', {
+      headers: getAuthHeaders()
+    });
+    
+    if (!res.ok) {
+      container.innerHTML = '<div class="backup-empty">Unable to load backups</div>';
+      return;
+    }
+    
+    const data = await res.json();
+    const backups = data.backups || [];
+    
+    if (backups.length === 0) {
+      container.innerHTML = '<div class="backup-empty">No backups available yet. Backups are created automatically every 12 hours.</div>';
+      return;
+    }
+    
+    container.innerHTML = backups.map(backup => {
+      const date = new Date(backup.created_at);
+      const formattedDate = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+      const sizeKB = (backup.size / 1024).toFixed(1);
+      
+      return `
+        <div class="backup-item">
+          <div class="backup-item-info">
+            <span class="backup-filename">${backup.filename}</span>
+            <div class="backup-meta">
+              <span>📅 ${formattedDate}</span>
+              <span>📦 ${sizeKB} KB</span>
+            </div>
+          </div>
+          <div class="backup-item-actions">
+            <button class="btn btn-sm btn-restore" data-filename="${backup.filename}" title="Restore this backup">
+              🔄 Restore
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+    
+    // Attach restore listeners
+    container.querySelectorAll('.btn-restore').forEach(btn => {
+      btn.addEventListener('click', () => restoreBackup(btn.dataset.filename));
+    });
+    
+  } catch (err) {
+    console.error('Failed to load backups:', err);
+    container.innerHTML = '<div class="backup-empty">Error loading backups</div>';
+  }
+}
+
+async function createBackup() {
+  const statusEl = safeGet('backup-status');
+  
+  if (!isAdmin()) {
+    showAccessDeniedToast('create backups');
+    return;
+  }
+  
+  try {
+    setStatus(statusEl, 'Creating backup...', false);
+    
+    const res = await fetch('api/backups', {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    
+    if (!res.ok) throw new Error('Failed');
+    
+    setStatus(statusEl, '✅ Backup created successfully');
+    showSuccessToast('Backup Created', 'Database backup has been created successfully.');
+    await loadBackups();
+  } catch (err) {
+    console.error(err);
+    setStatus(statusEl, 'Failed to create backup', true);
+    showErrorToast('Backup Failed', 'Failed to create backup. Please try again.');
+  }
+}
+
+async function restoreBackup(filename) {
+  if (!isAdmin()) {
+    showAccessDeniedToast('restore backups');
+    return;
+  }
+  
+  const confirmed = confirm(
+    `⚠️ WARNING: Restoring from backup will replace ALL current data!\n\n` +
+    `This will:\n` +
+    `• Create a backup of the current database first\n` +
+    `• Replace the database with the selected backup\n` +
+    `• Require a server restart to take effect\n\n` +
+    `Are you sure you want to restore from:\n${filename}?`
+  );
+  
+  if (!confirmed) return;
+  
+  const statusEl = safeGet('backup-status');
+  
+  try {
+    setStatus(statusEl, 'Restoring backup...', false);
+    
+    const res = await fetch(`api/backups/${encodeURIComponent(filename)}/restore`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    
+    const data = await res.json();
+    
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to restore');
+    }
+    
+    setStatus(statusEl, '✅ Backup restored');
+    showSuccessToast(
+      'Restore Successful', 
+      'Database has been restored. Please restart the server for changes to take full effect.'
+    );
+    
+    // Reload backups and refresh data
+    await loadBackups();
+    await refreshEverything();
+    await renderHeatmap();
+    await refreshStatsFiltered();
+    
+  } catch (err) {
+    console.error(err);
+    setStatus(statusEl, 'Failed to restore backup', true);
+    showErrorToast('Restore Failed', err.message || 'Failed to restore backup. Please try again.');
+  }
+}
+
 /* ------------ Events API ------------ */
 
 async function loadEvents() {
-  const res = await fetch('api/events');
+  let url = 'api/events';
+  if (selectedProjectFilter) {
+    url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
+  }
+  const res = await fetch(url);
   events = await res.json();
 }
 
 async function addEvent() {
   const statusEl = safeGet('event-status');
+  
+  if (!isAdmin()) {
+    setStatus(statusEl, 'Admin access required', true);
+    return;
+  }
+  
   try {
     const streamerNum = parseInt(safeGet('evt-streamer').value || 1, 10);
     const startSection = parseInt(safeGet('evt-start').value || 1, 10);
@@ -466,10 +1311,15 @@ async function addEvent() {
 
     const res = await fetch('api/events', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify(body),
     });
 
+    if (res.status === 401 || res.status === 403) {
+      setStatus(statusEl, 'Admin access required', true);
+      return;
+    }
+    
     if (!res.ok) throw new Error('Failed');
 
     setStatus(statusEl, '✅ Event added');
@@ -493,7 +1343,7 @@ async function deleteEvent(id) {
   safeGet('delete-event-id').value = evt.id;
   safeGet('delete-streamer-display').textContent = streamerNum;
   safeGet('delete-range-display').textContent = `${formatAS(evt.section_index_start)} – ${formatAS(evt.section_index_end)}`;
-  safeGet('delete-eb-display').textContent = getEBRange(evt.section_index_start, evt.section_index_end);
+  safeGet('delete-eb-display').textContent = await getEBRange(evt.section_index_start, evt.section_index_end);
   safeGet('delete-method-display').textContent = evt.cleaning_method;
   safeGet('delete-date-display').textContent = formatDateTime(evt.cleaned_at);
   safeGet('delete-distance-display').textContent = `${eventDistance(evt)} m`;
@@ -506,10 +1356,24 @@ function closeDeleteModal() {
 }
 
 async function confirmDeleteEvent() {
+  if (!isAdmin()) {
+    showAccessDeniedToast('delete events');
+    return;
+  }
+  
   const id = parseInt(safeGet('delete-event-id').value);
   
   try {
-    const res = await fetch(`api/events/${id}`, { method: 'DELETE' });
+    const res = await fetch(`api/events/${id}`, { 
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+    
+    if (res.status === 401 || res.status === 403) {
+      showAccessDeniedToast('delete events');
+      return;
+    }
+    
     if (!res.ok) throw new Error('Failed');
 
     closeDeleteModal();
@@ -518,7 +1382,7 @@ async function confirmDeleteEvent() {
     await refreshStatsFiltered();
   } catch (err) {
     console.error(err);
-    alert('Failed to delete event. Please try again.');
+    showErrorToast('Delete Failed', 'Failed to delete event. Please try again.');
   }
 }
 
@@ -574,13 +1438,23 @@ async function saveEditedEvent() {
 }
 
 async function updateEvent(id, body) {
+  if (!isAdmin()) {
+    showAccessDeniedToast('edit events');
+    return;
+  }
+  
   try {
     const res = await fetch(`api/events/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify(body),
     });
 
+    if (res.status === 401 || res.status === 403) {
+      showAccessDeniedToast('edit events');
+      return;
+    }
+    
     if (!res.ok) throw new Error('Failed');
 
     await refreshEverything();
@@ -588,15 +1462,29 @@ async function updateEvent(id, body) {
     await refreshStatsFiltered();
   } catch (err) {
     console.error(err);
-    alert('Failed to update event');
+    showErrorToast('Update Failed', 'Failed to update event. Please try again.');
   }
 }
 
 async function clearAllEvents() {
+  if (!isAdmin()) {
+    showAccessDeniedToast('clear all events');
+    return;
+  }
+  
   if (!confirm('Are you sure you want to permanently delete ALL cleaning events?')) return;
 
   try {
-    const res = await fetch('api/events', { method: 'DELETE' });
+    const res = await fetch('api/events', { 
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+    
+    if (res.status === 401 || res.status === 403) {
+      showAccessDeniedToast('clear all events');
+      return;
+    }
+    
     if (!res.ok) throw new Error('Failed');
 
     await refreshEverything();
@@ -604,7 +1492,7 @@ async function clearAllEvents() {
     await refreshStatsFiltered();
   } catch (err) {
     console.error(err);
-    alert('Failed to clear events');
+    showErrorToast('Clear Failed', 'Failed to clear events. Please try again.');
   }
 }
 
@@ -612,11 +1500,11 @@ async function clearAllEvents() {
 
 function exportCsv() {
   if (!events.length) {
-    alert('No events to export.');
+    showWarningToast('No Data', 'No events available to export.');
     return;
   }
 
-  const header = 'Streamer Number,First Section,Last Section,Cleaning Method,Date & Time';
+  const header = 'Streamer Number,First Section,Last Section,Cleaning Method,Date & Time,Project Number,Vessel Tag';
   const rows = [header];
 
   events.forEach(evt => {
@@ -624,7 +1512,9 @@ function exportCsv() {
     const startSection = evt.section_index_start + 1;
     const endSection = evt.section_index_end + 1;
     const dateStr = new Date(evt.cleaned_at).toLocaleString();
-    rows.push(`${streamerNum},${startSection},${endSection},${evt.cleaning_method},"${dateStr}"`);
+    const projectNum = evt.project_number || '';
+    const vesselTag = evt.vessel_tag || 'TTN';
+    rows.push(`${streamerNum},${startSection},${endSection},${evt.cleaning_method},"${dateStr}","${projectNum}","${vesselTag}"`);
   });
 
   const csv = rows.join('\n');
@@ -636,10 +1526,11 @@ function exportCsv() {
   const link = document.createElement('a');
   const url = URL.createObjectURL(blob);
   
-  // Generate filename with current date
+  // Generate filename with current date and project if filtered
   const now = new Date();
   const dateStr = now.toISOString().split('T')[0];
-  const filename = `streamer-cleaning-events-${dateStr}.csv`;
+  const projectSuffix = selectedProjectFilter ? `-${selectedProjectFilter}` : '';
+  const filename = `streamer-cleaning-events${projectSuffix}-${dateStr}.csv`;
   
   link.setAttribute('href', url);
   link.setAttribute('download', filename);
@@ -666,6 +1557,11 @@ function parseCsvLine(line) {
 }
 
 async function handleCsvFile(file) {
+  if (!isAdmin()) {
+    showAccessDeniedToast('import CSV data');
+    return;
+  }
+  
   const reader = new FileReader();
 
   reader.onload = async (e) => {
@@ -673,7 +1569,7 @@ async function handleCsvFile(file) {
     const lines = content.split('\n').filter(l => l.trim());
 
     if (lines.length < 2) {
-      alert('CSV seems empty or invalid.');
+      showErrorToast('Invalid File', 'CSV file seems empty or invalid.');
       return;
     }
 
@@ -696,6 +1592,9 @@ async function handleCsvFile(file) {
       const endSection = parseInt(parts[2], 10);
       const method = parts[3];
       const dateTimeStr = parts[4].replace(/"/g, '').trim();
+      // Optional: project_number and vessel_tag from CSV (columns 5 and 6)
+      const projectNumber = parts[5] ? parts[5].replace(/"/g, '').trim() : null;
+      const vesselTag = parts[6] ? parts[6].replace(/"/g, '').trim() : 'TTN';
 
       if (
         isNaN(streamerNum) ||
@@ -725,12 +1624,14 @@ async function handleCsvFile(file) {
         cleaning_method: method,
         cleaned_at: dateObj.toISOString(),
         cleaning_count: 1,
+        project_number: projectNumber,
+        vessel_tag: vesselTag,
       };
 
       try {
         const res = await fetch('api/events', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify(body),
         });
 
@@ -745,7 +1646,11 @@ async function handleCsvFile(file) {
     await renderHeatmap();
     await refreshStatsFiltered();
 
-    alert(`CSV import completed.\n✅ ${successCount} events imported\n❌ ${errorCount} errors`);
+    if (errorCount === 0) {
+      showSuccessToast('Import Complete', `${successCount} events imported successfully.`);
+    } else {
+      showWarningToast('Import Complete', `${successCount} events imported, ${errorCount} errors occurred.`);
+    }
   };
 
   reader.readAsText(file);
@@ -753,42 +1658,58 @@ async function handleCsvFile(file) {
 
 /* ------------ Log rendering ------------ */
 
-function renderLog() {
+async function renderLog() {
   const tbody = safeGet('log-body');
   if (!tbody) return;
 
   tbody.innerHTML = '';
+  
+  const isAdminUser = isAdmin();
 
-  events.forEach(evt => {
+  // Fetch all EB ranges in parallel for performance
+  const ebRangePromises = events.map(evt => 
+    getEBRange(evt.section_index_start, evt.section_index_end)
+  );
+  const ebRanges = await Promise.all(ebRangePromises);
+
+  events.forEach((evt, idx) => {
     const tr = document.createElement('tr');
     const streamerNum = toStreamerNum(evt.cable_id);
     const rangeLabel = `${formatAS(evt.section_index_end)}–${formatAS(evt.section_index_start)}`;
-    const ebRange = getEBRange(evt.section_index_start, evt.section_index_end);
+    const ebRange = ebRanges[idx];
     const distance = eventDistance(evt);
+    const projectDisplay = evt.project_number || '<span style="color:#9ca3af">—</span>';
+    const vesselDisplay = evt.vessel_tag || 'TTN';
+
+    const actionButtons = isAdminUser 
+      ? `<button class="btn btn-outline btn-edit" data-id="${evt.id}">✏️</button>
+         <button class="btn btn-outline btn-delete" data-id="${evt.id}">🗑️</button>`
+      : '<span class="view-only-badge">View Only</span>';
 
     tr.innerHTML = `
       <td>${formatDateTime(evt.cleaned_at)}</td>
+      <td>${projectDisplay}</td>
+      <td>${vesselDisplay}</td>
       <td>Streamer ${streamerNum}</td>
       <td>${rangeLabel}</td>
       <td>${ebRange}</td>
       <td>${distance} m</td>
       <td>${evt.cleaning_method}</td>
-      <td>
-        <button class="btn btn-outline btn-edit" data-id="${evt.id}">✏️</button>
-        <button class="btn btn-outline btn-delete" data-id="${evt.id}">🗑️</button>
-      </td>
+      <td>${actionButtons}</td>
     `;
     tbody.appendChild(tr);
   });
 
-  // Add event listeners for edit/delete buttons
-  document.querySelectorAll('.btn-edit').forEach(btn => {
-    btn.addEventListener('click', () => editEventPrompt(parseInt(btn.dataset.id)));
-  });
+  // Add event listeners for edit/delete buttons (only if admin)
+  if (isAdminUser) {
+    document.querySelectorAll('.btn-edit').forEach(btn => {
+      btn.addEventListener('click', () => editEventPrompt(parseInt(btn.dataset.id)));
+    });
 
-  document.querySelectorAll('.btn-delete').forEach(btn => {
-    btn.addEventListener('click', () => deleteEvent(parseInt(btn.dataset.id)));
-  });
+    document.querySelectorAll('.btn-delete').forEach(btn => {
+      btn.addEventListener('click', () => deleteEvent(parseInt(btn.dataset.id)));
+    });
+  }
 }
 
 /* ------------ Method selection ------------ */
@@ -809,7 +1730,11 @@ async function renderAlerts() {
   container.innerHTML = '';
 
   try {
-    const res = await fetch('api/last-cleaned');
+    let url = 'api/last-cleaned';
+    if (selectedProjectFilter) {
+      url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
+    }
+    const res = await fetch(url);
     const data = await res.json();
     const lastCleaned = data.lastCleaned;
 
@@ -961,7 +1886,11 @@ async function renderHeatmap() {
   container.innerHTML = '';
 
   try {
-    const res = await fetch('api/last-cleaned');
+    let url = 'api/last-cleaned';
+    if (selectedProjectFilter) {
+      url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
+    }
+    const res = await fetch(url);
     const data = await res.json();
     const lastCleaned = data.lastCleaned;
 
@@ -1276,6 +2205,13 @@ function closeConfirmationModal() {
 
 async function confirmCleaning() {
   if (isFinalizing) return;
+  
+  if (!isAdmin()) {
+    showAccessDeniedToast('add cleaning events');
+    closeConfirmationModal();
+    return;
+  }
+  
   isFinalizing = true;
 
   const streamerNum = parseInt(safeGet('modal-streamer').value, 10);
@@ -1296,7 +2232,7 @@ async function confirmCleaning() {
     endSection < 1 ||
     endSection > maxSection
   ) {
-    alert('Invalid input values');
+    showErrorToast('Invalid Input', 'Please check the streamer number and section range.');
     isFinalizing = false;
     return;
   }
@@ -1319,10 +2255,17 @@ async function confirmCleaning() {
 
     const res = await fetch('api/events', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify(body),
     });
 
+    if (res.status === 401 || res.status === 403) {
+      showAccessDeniedToast('add cleaning events');
+      closeConfirmationModal();
+      isFinalizing = false;
+      return;
+    }
+    
     if (!res.ok) throw new Error('Failed to save');
 
     closeConfirmationModal();
@@ -1331,7 +2274,7 @@ async function confirmCleaning() {
     await refreshStatsFiltered();
   } catch (err) {
     console.error(err);
-    alert('Failed to save cleaning event');
+    showErrorToast('Save Failed', 'Failed to save cleaning event. Please try again.');
     isFinalizing = false;
   }
 }
@@ -1343,14 +2286,19 @@ async function refreshStatsFiltered() {
   const endDate = safeGet('filter-end')?.value;
 
   try {
+    // Prepare query params with project filter
+    let statsParams = new URLSearchParams();
+    if (selectedProjectFilter) statsParams.append('project', selectedProjectFilter);
+    
     // Get overall stats from backend
-    const statsRes = await fetch('/api/stats');
+    const statsRes = await fetch(`/api/stats?${statsParams}`);
     const overallStats = await statsRes.json();
     
     // Prepare filtered query params
     let params = new URLSearchParams();
     if (startDate) params.append('start', startDate);
     if (endDate) params.append('end', endDate);
+    if (selectedProjectFilter) params.append('project', selectedProjectFilter);
     
     // Get filtered stats (or overall if no filters)
     const filterRes = await fetch(`/api/stats/filter?${params}`);
@@ -1460,7 +2408,7 @@ async function resetFilter() {
 
 async function refreshEverything() {
   await loadEvents();
-  renderLog();
+  await renderLog();
   await renderAlerts();
   await renderStreamerCards(); // No filters = show all data
 }
@@ -1469,7 +2417,7 @@ async function refreshEverything() {
 
 let sortState = { column: 'date', ascending: false };
 
-function sortTable(column) {
+async function sortTable(column) {
   if (sortState.column === column) {
     sortState.ascending = !sortState.ascending;
   } else {
@@ -1484,6 +2432,10 @@ function sortTable(column) {
       case 'date':
         valA = new Date(a.cleaned_at).getTime();
         valB = new Date(b.cleaned_at).getTime();
+        break;
+      case 'project':
+        valA = a.project_number || '';
+        valB = b.project_number || '';
         break;
       case 'streamer':
         valA = toStreamerNum(a.cable_id);
@@ -1511,7 +2463,7 @@ function sortTable(column) {
   });
 
   events = sortedEvents;
-  renderLog();
+  await renderLog();
   updateSortIcons();
 }
 
@@ -1575,6 +2527,20 @@ function setupEventListeners() {
   safeGet('btn-apply-filter')?.addEventListener('click', refreshStatsFiltered);
   safeGet('btn-reset-filter')?.addEventListener('click', resetFilter);
 
+  // Project management
+  safeGet('btn-create-project')?.addEventListener('click', createProject);
+  safeGet('btn-activate-project')?.addEventListener('click', activateSelectedProject);
+  safeGet('btn-clear-project')?.addEventListener('click', clearActiveProject);
+  
+  // Project selector change event (for filtering)
+  safeGet('project-selector')?.addEventListener('change', (e) => {
+    setProjectFilter(e.target.value);
+  });
+  
+  // Backup management
+  safeGet('btn-create-backup')?.addEventListener('click', createBackup);
+  safeGet('btn-refresh-backups')?.addEventListener('click', loadBackups);
+
   // Modal - Confirmation
   safeGet('btn-modal-close')?.addEventListener('click', closeConfirmationModal);
   safeGet('btn-modal-cancel')?.addEventListener('click', closeConfirmationModal);
@@ -1599,35 +2565,38 @@ function setupEventListeners() {
   });
 }
 
-// ------------ Configuration Collapse Toggle ------------
-function setupConfigCollapse() {
-  const configHeader = document.querySelector('.config-header');
-  const configContent = document.getElementById('config-content');
-  const collapseIcon = document.getElementById('config-collapse-icon');
+
+// ------------ Project Collapse Toggle ------------
+function setupProjectCollapse() {
+  const projectHeader = document.querySelector('.project-header');
+  const projectContent = document.getElementById('project-content');
+  const collapseIcon = document.getElementById('project-collapse-icon');
   
-  if (configHeader && configContent && collapseIcon) {
+  if (projectHeader && projectContent && collapseIcon) {
     // Load saved state from localStorage
-    const isCollapsed = localStorage.getItem('configCollapsed') === 'true';
+    const isCollapsed = localStorage.getItem('projectCollapsed') === 'true';
     
     if (isCollapsed) {
-      configContent.classList.add('collapsed');
+      projectContent.classList.add('collapsed');
       collapseIcon.classList.add('collapsed');
     }
     
-    configHeader.addEventListener('click', () => {
-      const collapsed = configContent.classList.toggle('collapsed');
+    projectHeader.addEventListener('click', () => {
+      const collapsed = projectContent.classList.toggle('collapsed');
       collapseIcon.classList.toggle('collapsed');
       
       // Save state to localStorage
-      localStorage.setItem('configCollapsed', collapsed);
+      localStorage.setItem('projectCollapsed', collapsed);
     });
   }
 }
 
 /* ------------ Init ------------ */
 
-async function init() {
+async function initApp() {
   await loadConfig();
+  await loadProjects();
+  await loadBackups();
   await refreshEverything();
   await renderHeatmap();
   await refreshStatsFiltered();
@@ -1636,16 +2605,50 @@ async function init() {
   const now = new Date();
   const dateStr = now.toISOString().split('T')[0];
   const timeStr = now.toTimeString().slice(0, 5);
-  safeGet('evt-date').value = dateStr;
-  safeGet('evt-time').value = timeStr;
+  const evtDate = safeGet('evt-date');
+  const evtTime = safeGet('evt-time');
+  if (evtDate) evtDate.value = dateStr;
+  if (evtTime) evtTime.value = timeStr;
 
   setupEventListeners();
   setupSidebarNavigation();
-  setupConfigCollapse();
+  setupProjectCollapse();
+  
+  // Update UI based on role after everything is loaded
+  updateUIForRole();
   
   if (typeof initPDFGeneration === 'function') {
     initPDFGeneration();
   }  
+}
+
+async function init() {
+  // Setup login form handler
+  const loginForm = safeGet('login-form');
+  if (loginForm) {
+    loginForm.addEventListener('submit', handleLogin);
+  }
+  
+  // Setup logout button
+  const logoutBtn = safeGet('logout-btn');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', handleLogout);
+  }
+  
+  // Setup password toggle
+  setupPasswordToggle();
+  
+  // Check if user has a valid session
+  if (loadSession()) {
+    const isValid = await validateSession();
+    if (isValid) {
+      showApp();
+      return;
+    }
+  }
+  
+  // No valid session, show login
+  showLogin();
 }
 
 init();

@@ -8,6 +8,80 @@
 </head>
 <body>
 
+  <!-- Login Page -->
+  <div id="login-page" class="login-page">
+    <div class="login-container">
+      <div class="login-header">
+        <div class="login-logo">🌊</div>
+        <h1>Streamers Scraping Tracker</h1>
+        <p class="login-subtitle">Sign in to access the maintenance dashboard</p>
+      </div>
+      
+      <form id="login-form" class="login-form">
+        <div class="form-group">
+          <label for="login-username">Username</label>
+          <div class="input-wrapper">
+            <span class="input-icon">👤</span>
+            <input 
+              type="text" 
+              id="login-username" 
+              name="username" 
+              placeholder="Enter your username"
+              autocomplete="username"
+              required
+            >
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="login-password">Password</label>
+          <div class="input-wrapper">
+            <span class="input-icon">🔒</span>
+            <input 
+              type="password" 
+              id="login-password" 
+              name="password" 
+              placeholder="Enter your password"
+              autocomplete="current-password"
+              required
+            >
+            <button type="button" class="password-toggle" id="password-toggle">👁️</button>
+          </div>
+        </div>
+        
+        <div id="login-error" class="login-error"></div>
+        
+        <button type="submit" class="login-btn" id="login-submit">
+          <span class="btn-text">Sign In</span>
+          <span class="btn-loader" style="display: none;">⏳</span>
+        </button>
+      </form>
+      
+      <div class="login-footer">
+        <p>Access Levels:</p>
+        <div class="access-info">
+          <span class="access-badge admin">🔑 Administrator</span>
+          <span class="access-badge viewer">👁️ Viewer</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main App Container (hidden until logged in) -->
+  <div id="app-container" class="app-container" style="display: none;">
+    
+    <!-- User Header Bar -->
+    <div class="user-header">
+      <div class="user-info">
+        <span class="user-avatar">👤</span>
+        <span class="user-name" id="user-display-name">User</span>
+        <span class="user-role-badge" id="user-role-badge">Viewer</span>
+      </div>
+      <button class="logout-btn" id="logout-btn">
+        <span>🚪</span> Logout
+      </button>
+    </div>
+
   <!-- Left Sidebar Navigation -->
   <nav class="sidebar-nav">
     <div class="nav-item active" data-target="heatmap-section">
@@ -32,34 +106,99 @@
 
     <main>
 
-           <!-- Configuration -->
-           <section class="card">
-            <h2 class="card-title config-header" style="cursor: pointer; user-select: none;">
-              <span>⚙️ Configuration</span>
-              <span class="collapse-icon" id="config-collapse-icon">▼</span>
+           <!-- Unified Project & Streamer Configuration -->
+           <section class="card" id="project-config-section">
+            <h2 class="card-title project-header" style="cursor: pointer; user-select: none;">
+              <span>📋 Project & Streamer Configuration</span>
+              <span class="collapse-icon" id="project-collapse-icon">▼</span>
             </h2>
-            <div id="config-content" class="config-collapsible">
-              <div class="grid grid-3">
-                <label>Number of Streamers <input type="number" id="cfg-numCables" min="1" value="12"></label>
-                <label>Active Sections per Streamer <input type="number" id="cfg-sectionsPerCable" min="1" value="107"></label>
-                <label>Section Length (m) <input type="number" id="cfg-sectionLength" min="1" value="75"></label>
-                <label>eBird Frequency (every N sections) <input type="number" id="cfg-moduleFrequency" min="1" value="4"></label>
-                <label>Channels per Section <input type="number" id="cfg-channelsPerSection" min="1" value="6"></label>
-                <label>Tail Configuration
-                <select id="cfg-useRopeForTail">
-                  <option value="true">Use Rope (no extra sections)</option>
-                  <option value="false">Add 5 Tail Sections</option>
-                </select>
-              </label>
+            <div id="project-content" class="config-collapsible">
+              
+              <!-- Active Project Display -->
+              <div class="active-project-banner" id="active-project-banner">
+                <div class="active-project-info">
+                  <span class="active-project-label">Active Project:</span>
+                  <span class="active-project-name" id="active-project-name">No project selected</span>
+                  <span class="active-project-vessel" id="active-project-vessel"></span>
+                </div>
+                <button class="btn btn-outline btn-sm" id="btn-clear-project" style="display: none;">Clear</button>
+              </div>
+              
+              <!-- Project Selector -->
+              <div class="grid grid-2" style="margin-top: 16px;">
+                <label>Select Project
+                  <select id="project-selector">
+                    <option value="">-- All Projects (No Filter) --</option>
+                  </select>
+                </label>
+                <div class="actions" style="align-self: flex-end;">
+                  <button class="btn btn-primary" id="btn-activate-project">🎯 Set as Active</button>
+                </div>
+              </div>
+              
+              <!-- Streamer Configuration (tied to active project) -->
+              <div class="streamer-config-section" style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+                <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">⚙️ Streamer Configuration <span id="config-project-label" style="color: #6b7280; font-weight: 400;"></span></h3>
+                <div class="grid grid-3">
+                  <label>Number of Streamers <input type="number" id="cfg-numCables" min="1" value="12"></label>
+                  <label>Active Sections per Streamer <input type="number" id="cfg-sectionsPerCable" min="1" value="107"></label>
+                  <label>Section Length (m) <input type="number" id="cfg-sectionLength" min="1" value="75"></label>
+                  <label>eBird Frequency (every N sections) <input type="number" id="cfg-moduleFrequency" min="1" value="4"></label>
+                  <label>Channels per Section <input type="number" id="cfg-channelsPerSection" min="1" value="6"></label>
+                  <label>Tail Configuration
+                    <select id="cfg-useRopeForTail">
+                      <option value="true">Use Rope (no extra sections)</option>
+                      <option value="false">Add 5 Tail Sections</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="actions" style="margin-top: 12px;">
+                  <button class="btn btn-primary admin-only" id="btn-save-config">💾 Save Configuration</button>
+                  <span id="config-status" class="status"></span>
+                </div>
+                <p style="font-size: 13px; color: #6b7280; margin-top: 8px;">
+                  <strong>Note:</strong> Configuration is saved per project. eBird appear after 1st section, then every N sections.
+                </p>
+              </div>
+              
+              <!-- Create New Project -->
+              <div class="project-create-section admin-only" style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+                <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">➕ Create New Project</h3>
+                <div class="grid grid-3">
+                  <label>Project Number <input type="text" id="new-project-number" placeholder="e.g., PRJ-2026-001"></label>
+                  <label>Project Name <input type="text" id="new-project-name" placeholder="e.g., North Sea Survey"></label>
+                  <label>Vessel Tag <input type="text" id="new-project-vessel" value="TTN" placeholder="e.g., TTN"></label>
+                </div>
+                <p style="font-size: 12px; color: #6b7280; margin-top: 8px;">
+                  New projects inherit the current streamer configuration. You can modify it after creation.
+                </p>
+                <div class="actions" style="margin-top: 12px;">
+                  <button class="btn btn-secondary" id="btn-create-project">➕ Create Project</button>
+                  <span id="project-status" class="status"></span>
+                </div>
+              </div>
+              
+              <!-- Project List -->
+              <div class="project-list-section" style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+                <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">📁 All Projects</h3>
+                <div id="project-list" class="project-list"></div>
+              </div>
+              
+              <!-- Database Backup & Restore (Admin Only) -->
+              <div class="backup-section admin-only" style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+                <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">💾 Database Backup & Restore</h3>
+                <p style="font-size: 13px; color: #6b7280; margin-bottom: 12px;">
+                  Database is automatically backed up every 12 hours. You can create manual backups or restore from previous backups.
+                </p>
+                <div class="actions" style="margin-bottom: 12px;">
+                  <button class="btn btn-secondary" id="btn-create-backup">💾 Create Backup Now</button>
+                  <button class="btn btn-outline" id="btn-refresh-backups">🔄 Refresh List</button>
+                  <span id="backup-status" class="status"></span>
+                </div>
+                <div id="backup-list" class="backup-list"></div>
+              </div>
+              
             </div>
-            <div class="actions">
-              <button class="btn btn-primary" id="btn-save-config">💾 Save Configuration</button>
-              <span id="config-status" class="status"></span>
-            </div>
-            <p style="font-size: 13px; color: #6b7280; margin-top: 8px;">
-              <strong>Note:</strong> eBird appear after 1st section, then every 4 sections. If "Add 5 Tail Sections" is selected, 5 additional sections will be appended.
-            </p>
-            </div>  <!-- Closes config-collapsible -->
           </section>
 
       <!-- Alerts -->
@@ -127,6 +266,8 @@
             <thead>
               <tr>
                 <th class="sortable" data-sort="date">Date & Time <span class="sort-icon">↕</span></th>
+                <th class="sortable" data-sort="project">Project <span class="sort-icon">↕</span></th>
+                <th>Vessel</th>
                 <th class="sortable" data-sort="streamer">Streamer <span class="sort-icon">↕</span></th>
                 <th class="sortable" data-sort="section">Section Range <span class="sort-icon">↕</span></th>
                 <th>EB Range</th>
@@ -357,6 +498,11 @@
     </div>
   </div>
 
+
+  </div> <!-- Close app-container -->
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
 
   <script src="libs/jspdf.umd.min.js"></script>
   <script src="app.js"></script>

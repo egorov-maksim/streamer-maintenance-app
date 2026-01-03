@@ -165,7 +165,7 @@ async function generatePDFReport() {
 
     // All Events
     doc.addPage('landscape');
-    addAllEventsSection(doc);
+    await addAllEventsSection(doc);
 
     // Save
     const filename = `streamer-maintenance-report-${new Date().toISOString().split('T')[0]}.pdf`;
@@ -317,7 +317,7 @@ function addHeatmapPage(doc, lastCleaned, title = 'Cleaning Status Heatmap') {
 }
 
 // Helper: Add all events section with EB range column
-function addAllEventsSection(doc) {
+async function addAllEventsSection(doc) {
   let yPos = 20;
   doc.setFontSize(14);
   doc.text(`All Cleaning Events (${events.length} total)`, 20, yPos);
@@ -340,7 +340,13 @@ function addAllEventsSection(doc) {
     doc.line(15, yPos, 175, yPos);
     yPos += 5;
 
-    for (const evt of events) {
+    // Fetch all EB ranges in parallel for performance
+    const ebRanges = await Promise.all(
+      events.map(evt => getEBRange(evt.section_index_start, evt.section_index_end))
+    );
+
+    for (let i = 0; i < events.length; i++) {
+      const evt = events[i];
       if (yPos > 195) {
         doc.addPage('landscape');
         yPos = 20;
@@ -353,7 +359,7 @@ function addAllEventsSection(doc) {
       const date = new Date(evt.cleaned_at).toLocaleDateString();
       const streamer = `S${toStreamerNum(evt.cable_id)}`;
       const sections = `${formatAS(evt.section_index_start)} - ${formatAS(evt.section_index_end)}`;
-      const ebRange = getEBRange(evt.section_index_start, evt.section_index_end);
+      const ebRange = ebRanges[i];
       const distance = `${eventDistance(evt)}m`;
       const count = evt.cleaning_count || 1;
 
