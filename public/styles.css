@@ -1251,7 +1251,7 @@
 }
 
 .config-collapsible {
-  max-height: 1000px;
+  max-height: 2500px;
   overflow: hidden;
   transition: max-height 0.4s ease, opacity 0.3s ease, padding 0.3s ease;
   opacity: 1;
