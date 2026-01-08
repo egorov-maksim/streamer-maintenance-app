@@ -1402,6 +1402,8 @@ function editEventPrompt(id) {
   safeGet('edit-start').value = evt.section_index_start + 1;
   safeGet('edit-end').value = evt.section_index_end + 1;
   safeGet('edit-method').value = evt.cleaning_method;
+  safeGet("edit-project-number").value = evt.project_number || "";
+  safeGet("edit-vessel-tag").value = evt.vessel_tag || "TTN";
 
   const dateObj = new Date(evt.cleaned_at);
   safeGet('edit-date').value = dateObj.toISOString().split('T')[0];
@@ -1422,7 +1424,8 @@ async function saveEditedEvent() {
   const method = safeGet('edit-method').value;
   const dateVal = safeGet('edit-date').value;
   const timeVal = safeGet('edit-time').value;
-
+  const projectNumber = safeGet("edit-project-number").value || null;
+  const vesselTag = safeGet("edit-vessel-tag").value || "TTN";
   const actualStart = Math.min(startSection, endSection) - 1;
   const actualEnd = Math.max(startSection, endSection) - 1;
   const cableId = `cable-${streamerNum - 1}`;
@@ -1435,6 +1438,8 @@ async function saveEditedEvent() {
     cleaning_method: method,
     cleaned_at: datetimeIso,
     cleaning_count: 1,
+    project_number: projectNumber,
+    vessel_tag: vesselTag,
   };
 
   await updateEvent(id, body);

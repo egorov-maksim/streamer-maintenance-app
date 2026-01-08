@@ -736,15 +736,19 @@ app.put("/api/events/:id", authMiddleware, adminOnly, async (req, res) => {
       return res.status(400).json({ error: "Invalid payload" });
     }
 
+    const existing = await getAsync("SELECT * FROM cleaning_events WHERE id = ?", [id]);
+    const finalProjectNumber = project_number !== undefined ? project_number : (existing?.project_number || null);
+    const finalVesselTag = vessel_tag !== undefined ? vessel_tag : (existing?.vessel_tag || 'TTN');
+
     await runAsync(
       `UPDATE cleaning_events
        SET cable_id = ?, section_index_start = ?, section_index_end = ?, cleaning_method = ?, cleaned_at = ?, cleaning_count = ?, project_number = ?, vessel_tag = ?
        WHERE id = ?`,
-      [cable_id, section_index_start, section_index_end, cleaning_method, cleaned_at, Number.isFinite(cleaning_count) ? cleaning_count : 1, project_number || null, vessel_tag || 'TTN', id]
+      [cable_id, section_index_start, section_index_end, cleaning_method, cleaned_at, Number.isFinite(cleaning_count) ? cleaning_count : 1, finalProjectNumber, finalVesselTag, id]
     );
     const updated = await getAsync("SELECT * FROM cleaning_events WHERE id = ?", [id]);
-    res.json(updated);
-  } catch (err) {
+      res.json(updated);
+    } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update event" });
   }
