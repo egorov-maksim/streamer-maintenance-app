@@ -2,20 +2,6 @@
 
 A comprehensive web application for tracking seismic streamer scraping operations. Designed exlusively for TGS, this app provides real-time visualization, detailed logging, and comprehensive reporting of streamers upkeep.
 
----
-
-## 📋 Table of Contents
-
-- [Overview](#overview)
-- [Key Features](#key-features)
-- [Getting Started](#getting-started)
-- [Usage Guide](#usage-guide)
-- [Configuration](#configuration)
-- [PDF Report Generation](#pdf-report-generation)
-- [Troubleshooting](#troubleshooting)
-
----
-
 ## 🎯 Overview
 
 The **Streamer Maintenance Tracker** is a purpose-built solution for tracking scraping of seismic streamer cables. 
@@ -127,10 +113,11 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking sc
 - **Transaction Safety**: Proper data integrity with PRAGMA settings
 
 
-### Future plans
-Scheduled DB backup and PDF reports generation 18:00 vessel local time.
-2 user levels, admin to add and edit event, user to view.
-Edited logic to calculate EB Ranges in the log 
+### Latest updates
+- Automated DB backup every 12hrs
+- Login page and 2 levels of access
+- Rethinked logic of EB ranges calculation
+- Project creation and Vessel tag added.
 
 ## 🚀 Getting Started
 
@@ -298,13 +285,7 @@ This project is provided as-is for TGS crews.
 
 ---
 
-## 🙏 Acknowledgments
-
-Built for professional managing streamer scraping logging with precision and accountability.
-
----
-
-**Version**: 1.0.0  
+**Version**: 1.0.1  
 **Last Updated**: January 2026 
 **Node.js Required**: 14.0+
 **Author**: Maksim Egorov. Ramform Titan, Brazil.
