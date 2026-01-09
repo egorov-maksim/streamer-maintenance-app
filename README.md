@@ -1,123 +1,191 @@
-# 🧹 Streamer Scraping Tracker
+# 🧹 Streamer Maintenance Tracker
 
-A comprehensive web application for tracking seismic streamer scraping operations. Designed exlusively for TGS, this app provides real-time visualization, detailed logging, and comprehensive reporting of streamers upkeep.
+A comprehensive web application for tracking seismic streamer maintenance operations. This production-ready solution provides real-time visualization, detailed logging, and comprehensive reporting of streamer upkeep with robust multi-user access control and project management.
 
 ## 🎯 Overview
 
-The **Streamer Maintenance Tracker** is a purpose-built solution for tracking scraping of seismic streamer cables. 
+The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cleaning and maintenance of seismic streamer cables used in marine survey operations.
 
 ### Problem Solved
 - **Manual Tracking**: Eliminates paper logs and spreadsheets
 - **Visibility**: Real-time heatmap shows cable maintenance status at a glance
-- **Accountability**: Every cleaning event is logged with date, method, and location
-- **Compliance**: Comprehensive reporting for operational audits
+- **Accountability**: Every cleaning event is logged with date, method, location, and user
+- **Compliance**: Comprehensive reporting for operational audits and vessel documentation
 - **Analytics**: Identify cleaning patterns and optimize maintenance schedules
+- **Multi-Project Support**: Manage multiple projects with independent configurations
+- **Access Control**: Role-based access (Admin/Viewer) with secure authentication
 
 ---
 
 ## ✨ Key Features
 
+### 🔐 User Authentication & Access Control
+- **Multi-User Support**: Secure login system with role-based permissions
+- **Two Access Levels**:
+  - 👨‍💼 **Admin**: Full access (create projects, edit/delete events, manage configuration, view backups)
+  - 👁️ **Viewer**: Read-only access (view data, filter, export reports)
+- **Session Management**: Secure session tokens with localStorage persistence
+- **Configurable Users**: Define users and roles via environment variables
+
+### 📋 Project Management
+- **Multi-Project Tracking**: Create and manage multiple seismic survey projects
+- **Project-Specific Configuration**: Each project maintains its own streamer configuration
+- **Project Status**: Track active/inactive projects
+- **Project Analytics**: View event counts and cleaning history per project
+- **Vessel Tagging**: Associate projects with specific vessels (e.g., TTN, vessel names)
+- **Project Filtering**: View events and statistics filtered by selected project
+
 ### 🗺️ Interactive Heat-Map Visualization
-- **Visual Status Dashboard**: Color-coded grid showing all 12 streamers and their 107+ sections
+- **Visual Status Dashboard**: Color-coded grid showing all streamers and their sections
+- **Vertical Layout**: Centered, responsive grid with integrated module markers
 - **Age-Based Coloring System**:
   - 🟢 **Fresh** (0-3 days): Green - Just cleaned
-  - 🟡 **4+ days**: Yellow - Scheduled for cleaning soon
+  - 🟡 **4-6 days**: Yellow - Scheduled for cleaning soon
   - 🟠 **7-9 days**: Orange - Cleaning recommended
   - 🔴 **10-13 days**: Red - High priority cleaning
   - 🔴 **14+ days**: Dark Red - Critical - needs immediate cleaning
   - ⚪ **Never**: Gray - Never cleaned
+- **Module Integration**: eBird module positions displayed directly on heatmap
+- **Real-Time Updates**: Heatmap refreshes immediately after logging events
+- **Hover Tooltips**: Detailed information on section hover (age, method, distance, EB range)
 
 ### 🖱️ Drag-to-Select Cleaning Interface
 - **One-Click Logging**: Click and drag across sections to mark them as cleaned
+- **Visual Feedback**: Cells highlight during drag selection
 - **Multi-Method Support**: Select from 5 cleaning methods:
   - 🪢 Rope
   - 🛠️ Scraper
   - 🪢🛠️ Scraper & Rope (combined)
-  - ⚙️ SCUE 
+  - ⚙️ SCUE
   - 🔪 Knife
 - **Automatic Section Numbering**: AS01-ASxxx for active sections, tail sections when applicable
+- **Smart EB Range Calculation**: Automatically calculates affected EB modules
 
-### 🔧 Configuration Management
-- **Dynamic Setup**: Configure:
-  - Number of cables (typically 12)
+### 🔧 Dynamic Configuration Management
+- **Per-Project Settings**: Each project has independent configuration
+- **Configurable Parameters**:
+  - Number of cables/streamers (typically 12)
   - Sections per cable (typically 107)
   - Section length in meters (for distance calculations)
-  - Module frequency (eBird placement intervals)
+  - eBird module frequency (placement intervals)
   - Tail section options (5 tail sections or rope-only)
   - Channels per section
+  - Vessel tag identifier
 - **Real-Time Updates**: Configuration changes immediately update the heatmap
+- **Collapse/Expand UI**: Fold configuration section for cleaner interface
 
 ### 📊 Comprehensive Statistics Dashboard
 - **Coverage Metrics**:
   - Overall coverage percentage (active + tails)
-  - Active section coverage
-  - Tail section coverage
+  - Active section coverage percentage
+  - Tail section coverage percentage
+  - Individual cable/streamer statistics
 - **Key Performance Indicators**:
   - Total cleaning events logged
   - Total distance cleaned (in meters and kilometers)
-  - Last cleaning event details
-- **Method Breakdown**: Count and distance by cleaning method
+  - Last cleaning event details with timestamp
+  - Events count by project
+- **Method Breakdown**: 
+  - Count of events by cleaning method
+  - Distance cleaned by each method
+  - Visualization of method distribution
+- **Streamer Overview Cards**: Quick stats for each individual cable (distance, coverage %)
 
 ### 📝 Cleaning History Log
 - **Detailed Event Table** with sortable columns:
   - Date & Time of cleaning
+  - Project number
+  - Vessel tag
   - Cable/Streamer number
   - Section range (e.g., AS01-AS10)
   - eBird range affected
-  - Total distance cleaned
+  - Total distance cleaned (meters)
   - Cleaning method used
+  - Cleaning count
   - Edit/Delete actions
-- **Chronological Tracking**: All events listed newest first and could be sorted
-- **Quick Actions**: Edit or delete events inline
+- **Chronological Tracking**: Events listed newest first
+- **Sortable Columns**: Click headers to sort by any field
+- **Quick Actions**: Edit or delete events with inline confirmation
+- **Visual Indicators**: Status badges for critical/warning states
 
 ### 🖊️ Manual Entry Interface
 - **Quick Logging**: Manually enter cleaning events when needed
 - **Form Validation**: Ensures data integrity with proper error handling
 - **Flexible Inputs**: Support for ranges and individual sections
+- **Project Selection**: Assign events to specific projects
+- **Date/Time Picker**: Select exact cleaning date and time
+- **Method Selection**: Choose from available cleaning methods
 
 ### 📈 Advanced Analytics & Filtering
 - **Date Range Filtering**:
   - Filter events by start and end dates
   - View statistics for custom time periods
   - Analyze seasonal cleaning patterns
+  - Filter by single date or date range
+- **Project Filtering**: View data for specific projects
 - **Method-Specific Analytics**: Breakdown of cleaning distance by method
-- **Streamer Overview Cards**: Quick stats for each cable
+- **Real-Time Filter Application**: Statistics update instantly when filters change
+- **Persistent Filters**: Filters applied to reports and exports
 
-### 📄 PDF Report Generation
-- **Professional Reports** including:
+### 📄 Professional PDF Report Generation
+- **Comprehensive Reports** including:
+  - Header with generation date
   - Configuration summary
   - Overall statistics (all-time)
   - Filtered period statistics (if dates selected)
-  - Visual heatmap of cleaning status
-  - Complete event log with EB module details
+  - Visual heat-map of cleaning status
+  - Complete event log with all details including EB modules
   - Color legend for age buckets
-- **Export Ready**: Landscape format for printing/archiving
-- **Multiple Heatmaps**: All-history and filtered-period views
+  - Method breakdown
+- **Landscape Format**: Optimized for large heatmaps and tables
+- **Multiple Heatmaps**: 
+  - All-history view always included
+  - Filtered-period view (if date filter applied)
+- **Professional Styling**: Print-ready with clear layout
+- **Auto-Naming**: Reports named with generation date
 
 ### 📤 CSV Import/Export
-- **Export Events**: Download all cleaning events as CSV
+- **Export Events**: Download all cleaning events as CSV file
 - **Import Events**: Bulk upload previously saved events
-- **Backup**: Create data backups for offline storage
-- **Data Migration**: Transfer data between systems
+- **Backup Capability**: Create data backups for offline storage
+- **Data Migration**: Transfer data between systems or backup locations
+- **Format Preservation**: Maintains data integrity during import/export
+
+### 💾 Automated Database Backup
+- **Scheduled Backups**: Automatic backups every 12 hours
+- **Manual Backups**: Create on-demand backups anytime
+- **Backup Management**: 
+  - List available backups with dates and file sizes
+  - Restore from any previous backup
+  - Automatic cleanup (keeps last 14 backups)
+- **WAL Mode**: Write-Ahead Logging ensures data integrity
+- **Automatic Safety**: Creates backup before restore operation
+- **Transaction Safety**: Proper data integrity with PRAGMA settings
 
 ### 🔔 Smart Alerts & Indicators
 - **Critical Alerts**: Visual warnings for uncleaned sections (14+ days)
 - **Warning Alerts**: Highlight sections needing attention (10+ days)
 - **Status Indicators**: Real-time status badges on cards
+- **Uncleaned Sections**: List sections that have never been cleaned
+- **Toast Notifications**: Real-time feedback for actions (success/error/warning)
 
+### 📊 eBird Module Tracking
+- **Intelligent Calculation**: Automatically calculates EB module ranges affected by cleaning
+- **Visual Integration**: Module positions shown on heatmap as highlighted cells
+- **Event Logging**: EB range included in event history
+- **Report Inclusion**: EB module details in PDF reports
+- **Configurable Frequency**: Adjust module spacing based on project needs
 
-### 💾 Persistent Data Storage
+### 🔐 Data Security & Persistence
 - **SQLite Database**: Local database with WAL mode for reliability
 - **Automatic Persistence**: All events automatically saved
 - **Data Recovery**: Configuration backed up in database
 - **Transaction Safety**: Proper data integrity with PRAGMA settings
+- **Access Control**: API endpoints protected with authentication
+- **CORS Protection**: Configurable allowed origins
+- **CSP Headers**: Content Security Policy for XSS protection
 
-
-### Latest updates
-- Automated DB backup every 12hrs
-- Login page and 2 levels of access
-- Rethinked logic of EB ranges calculation
-- Project creation and Vessel tag added.
+---
 
 ## 🚀 Getting Started
 
@@ -125,6 +193,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking sc
 - **Node.js** 14.0 or higher
 - **npm** 6.0 or higher
 - **git** (for cloning the repository)
+- **jsPDF library** - Required for PDF report generation
 
 ### Quick Start
 
@@ -135,17 +204,39 @@ cd streamer-maintenance-app
 # 2. Install dependencies
 npm install
 
-# 3. Start the server
+# 3. Configure environment (optional - see below for defaults)
+cp file.env .env  # Review and edit if needed
+
+# 4. Start the server
 npm start
 
-# 4. Open in browser
+# 5. Open in browser
 # Visit http://localhost:3000
+# Login with default credentials or configured users
 ```
 
 The application will:
 - Initialize SQLite database automatically
 - Load default configuration
-- Start listening on port 3000
+- Create backup directory
+- Start listening on configured port (default 3000)
+- Begin automatic backup scheduler (every 12 hours)
+
+### Environment Configuration
+
+Create a `.env` file in the root directory:
+
+```env
+# Server
+PORT=3000
+DB_FILE=./backend/streamer.db
+
+# CORS
+ALLOWED_ORIGINS=http://localhost:3000
+
+# Authentication (format: USERNAME:PASSWORD:ROLE, separated by commas)
+AUTH_USERS=TTNOBS:Password:admin,TTNView:Password:viewer,TTNNav:Password:viewer
+```
 
 ---
 
@@ -153,38 +244,60 @@ The application will:
 
 ### Daily Workflow
 
-#### 1. **Review Current Status**
-- Open the app (http://localhost:3000)
+#### 1. **Login**
+- Navigate to http://localhost:3000
+- Enter username and password
+- Roles determine available actions
+
+#### 2. **Select or Create Project**
+- Choose active project from project list
+- Or create new project (Admin only)
+- New projects inherit current configuration
+
+#### 3. **Review Current Status**
 - Check the heatmap for sections needing cleaning
 - Review alerts for cables with 14+ day old sections
+- Check streamer overview cards for quick stats
 
-#### 2. **Log Cleaning Operations**
-- Select a cleaning method from the tile options
+#### 4. **Log Cleaning Operations**
+- Select a cleaning method from the tiles
 - Click and drag across the heatmap to mark sections as cleaned
 - Review the logged event in the history
-- The statistics automatically update
+- Statistics update automatically
+- Hover over sections for detailed information
 
-#### 3. **Manual Entry**
+#### 5. **Manual Entry**
 - For off-schedule cleanings, use the manual entry form
-- Select cable, date, method, and section range
+- Select project, cable, date, method, and section range
 - Submit to add to the log
 
-#### 4. **Review History**
+#### 6. **Review History**
 - Sort the cleaning history by any column
 - Edit or delete events if needed
 - Filter by date range for analysis
 
-#### 5. **Generate Reports**
-- Set optional date filter to analyze a period
+#### 7. **Generate Reports**
+- (Optional) Set date filter to analyze a period
 - Click "Generate PDF Report"
 - Share or archive the report
+
+#### 8. **Export Data**
+- Click "Export to CSV" to download events
+- Use for backup or analysis in spreadsheets
+
+#### 9. **Manage Backups** (Admin only)
+- View list of automatic backups
+- Create manual backups anytime
+- Restore from previous backups if needed
 
 ### Configuration
 
 #### Accessing Configuration
-1. Scroll to "Configuration" section
-2. Click the collapse icon to expand
-3. Modify any setting
+1. Admin login required
+2. Scroll to "Configuration" section
+3. Click to expand/collapse
+4. Modify any setting
+5. Changes apply immediately to active project
 
 #### Key Settings
 
@@ -192,10 +305,11 @@ The application will:
 |---------|---------|---------|
 | Number of Cables | 12 | Total streamers in array |
 | Sections per Cable | 107 | Active sensor sections |
-| Section Length (m) | 75 | Length of each section for distance calc |
+| Section Length (m) | 25 | Length of each section for distance calculation |
 | eBird Frequency | 4 | EB module spacing (every N sections) |
-| Use Rope for Tail | true | Use rope (true) or add 5 tails (false) |
+| Use Rope for Tail | true | Use rope (true) or add 5 tail sections (false) |
 | Channels per Section | 6 | Sensor channels per section |
+| Vessel Tag | TTN | Vessel identifier for events |
 
 ---
 
@@ -205,26 +319,71 @@ The application will:
 
 The PDF report includes:
 
-1. **Header**: Title, generation date
+1. **Header**: Title, generation date, vessel/project info
 2. **Configuration**: System configuration at report time
 3. **Overall Statistics**: All-time metrics
 4. **Filtered Statistics** (optional): Period-specific metrics
 5. **All-History Heatmap**: Visual grid of cleaning status
 6. **Filtered Heatmap** (optional): Period-specific heatmap
-7. **Event Log**: Complete table of all cleaning events
+7. **Method Breakdown**: Distance by cleaning method
+8. **Event Log**: Complete table with EB module details
+9. **Color Legend**: Age bucket interpretation
 
 ### Report Layout
 
 - **Orientation**: Landscape (A4)
-- **Scale**: Optimized for 12 cables × 107 sections
+- **Scale**: Optimized for 12 cables × 107+ sections
 - **Legend**: Color-coded age buckets
 - **EB Ranges**: Sensor module locations marked
 
 ### Generating Reports
 
-1. Click "Generate PDF Report" button
-2. (Optional) Set date filters first for period analysis
-3. Report downloads automatically as `streamer-maintenance-report-YYYY-MM-DD.pdf`
+1. (Optional) Set date filters for period analysis
+2. (Optional) Select project to filter data
+3. Click "Generate PDF Report" button
+4. Report downloads automatically as `streamer-maintenance-report-YYYY-MM-DD.pdf`
+
+---
+
+## 🔧 API Endpoints
+
+### Authentication
+- `POST /api/login` - Login with credentials
+- `POST /api/logout` - Logout current session
+- `GET /api/session` - Verify current session
+
+### Configuration
+- `GET /api/config` - Get current configuration
+- `PUT /api/config` - Update configuration (Admin only)
+
+### Projects
+- `GET /api/projects` - List all projects
+- `GET /api/projects/active` - Get active project
+- `POST /api/projects` - Create new project (Admin only)
+- `PUT /api/projects/:id` - Update project (Admin only)
+- `DELETE /api/projects/:id` - Delete project (Admin only)
+- `GET /api/projects/stats` - Get event counts by project
+
+### Cleaning Events
+- `GET /api/events` - Get all events
+- `POST /api/events` - Create new event
+- `PUT /api/events/:id` - Update event (Admin only)
+- `DELETE /api/events/:id` - Delete event (Admin only)
+- `GET /api/events/export` - Export events as CSV
+
+### Statistics
+- `GET /api/stats` - Get overall statistics
+- `GET /api/stats/filter` - Get filtered statistics
+- `GET /api/last-cleaned` - Get last cleaned data for heatmap
+- `GET /api/last-cleaned-filtered` - Get filtered heatmap data
+
+### Utilities
+- `GET /api/eb-range` - Calculate EB module range for sections
+
+### Backups (Admin only)
+- `GET /api/backups` - List available backups
+- `POST /api/backups` - Create manual backup
+- `POST /api/backups/:filename/restore` - Restore from backup
 
 ---
 
@@ -253,39 +412,135 @@ npm start
 
 **Ensure CSV Format**:
 ```
-cable_id,section_index_start,section_index_end,cleaning_method,cleaned_at
-cable-0,0,5,rope,2024-01-01T10:00:00Z
+cable_id,section_index_start,section_index_end,cleaning_method,cleaned_at,project_number,vessel_tag
+cable-0,0,5,rope,2024-01-01T10:00:00Z,PRJ-001,TTN
+cable-1,10,15,scraper,2024-01-01T11:00:00Z,PRJ-001,TTN
 ```
 
 ### Issue: Stats Not Updating
 
-**Solution**: Refresh the page or wait for automatic sync (typically < 1 second)
+**Solution**: Refresh the page (data syncs < 1 second typically)
 
 ### Issue: PDF Generation Fails
 
 **Check Console**: Look for jsPDF loading errors
-- Ensure internet connection (CDN loading)
+- Ensure internet connection (CDN loading jsPDF)
 - Browser console may show CSP policy violations
 - Try disabling browser extensions
+- Verify ALLOWED_ORIGINS includes your domain
+
+### Issue: Login Failed
+
+**Verify Credentials**: Check AUTH_USERS in `.env`
+- Format: `USERNAME:PASSWORD:ROLE`
+- Multiple users: comma-separated
+- No spaces around colons
+
+### Issue: Cannot See Other Users' Events
+
+**Check Project Filter**: Events may be filtered by project
+- Clear project filter to see all projects
+- Check user role (Viewer can see all events)
 
 ---
 
-### Performance Notes
+## 📊 Performance Notes
 
-- Database optimized for 12+ cables, 100+ sections
+- Database optimized for 12+ cables, 100+ sections, 10,000+ events
 - Heatmap renders in < 500ms on modern browsers
 - API responses < 100ms typical
-- Handles 10,000+ events efficiently
+- Handles concurrent users efficiently
+- Backup operations don't block application
+- Filter operations are instant with proper indexing
+
+---
+
+## 📚 Tech Stack
+
+### Backend
+- **Node.js** - JavaScript runtime
+- **Express.js** - Web framework
+- **SQLite3** - Database with WAL mode
+- **jsPDF** - PDF report generation
+- **Helmet** - Security headers
+- **CORS** - Cross-origin resource sharing
+
+### Frontend
+- **Vanilla JavaScript** - No frameworks
+- **HTML5** - Semantic markup
+- **CSS3** - Modern styling with variables
+- **Responsive Design** - Mobile-friendly UI
+
+### Security
+- Session-based authentication
+- Role-based access control (RBAC)
+- CSRF protection via CORS
+- Content Security Policy (CSP)
+- Input validation and sanitization
+
+---
+
+## 📄 File Structure
+
+```
+streamer-maintenance-app/
+├── backend/
+│   ├── server.js          # Express server & API endpoints
+│   ├── db.js              # SQLite database setup
+│   ├── schema.sql         # Database schema
+│   └── pdf-generator.js   # PDF report generation
+├── public/
+|   ├── libs/
+│   │   └── jspdf.umd.min.js  # jsPDF library 
+│   ├── index.html         # Main UI
+│   ├── app.js             # Frontend logic
+│   └── styles.css         # UI styling
+├── backup/                # Automated backup directory
+├── .env                   # Environment configuration
+├── package.json           # Dependencies
+└── README.md              # This file
+```
+
+---
+
+## 🔐 Security Considerations
+
+- **Authentication**: All API endpoints require valid session token
+- **Authorization**: Role checks for admin-only operations
+- **Database**: SQLite with WAL mode and foreign key constraints
+- **Input Validation**: All user inputs validated server-side
+- **CORS**: Configurable allowed origins
+- **Session Tokens**: Cryptographically secure random tokens
+- **No Passwords in DB**: Authentication handled in memory from env vars
+
+---
+
+## 📝 Latest Updates (January 2026)
+
+- ✅ Multi-project support with project creation and management
+- ✅ User authentication with role-based access control (Admin/Viewer)
+- ✅ Session management with localStorage persistence
+- ✅ Project-specific streamer configuration
+- ✅ Automated database backups (every 12 hours)
+- ✅ Manual backup creation and restore functionality
+- ✅ Vessel tag tracking per project
+- ✅ Enhanced EB module range calculation
+- ✅ Toast notifications for user feedback
+- ✅ Improved error handling and validation
+- ✅ API endpoint documentation
+- ✅ CSV import/export with project support
+- ✅ Professional PDF report generation
 
 ---
 
 ## 📜 License
 
-This project is provided as-is for TGS crews.
+This project is provided as-is for TGS marine survey operations.
 
 ---
 
-**Version**: 1.0.1  
-**Last Updated**: January 2026 
-**Node.js Required**: 14.0+
-**Author**: Maksim Egorov. Ramform Titan, Brazil.
+**Version**: 2.0.0  
+**Last Updated**: January 2026  
+**Node.js Required**: 14.0+  
+**Author**: Maksim Egorov  
+**Vessel**: Ramform Titan, Brazil
