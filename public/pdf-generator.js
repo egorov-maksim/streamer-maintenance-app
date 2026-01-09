@@ -20,10 +20,18 @@ async function generatePDFReport() {
     const doc = new jsPDF('landscape');
 
     // Fetch stats from backend
-    const statsRes = await fetch('/api/stats');
+    let statsUrl = '/api/stats';
+    if (config.activeProjectNumber) {
+      statsUrl += `?project=${encodeURIComponent(config.activeProjectNumber)}`;
+    }
+    const statsRes = await fetch(statsUrl);
     const stats = await statsRes.json();
 
-    const lastCleanedRes = await fetch('/api/last-cleaned');
+    let lastCleanedUrl = '/api/last-cleaned';
+    if (config.activeProjectNumber) {
+      lastCleanedUrl += `?project=${encodeURIComponent(config.activeProjectNumber)}`;
+    }
+    const lastCleanedRes = await fetch(lastCleanedUrl);
     const lastCleanedData = await lastCleanedRes.json();
     const lastCleaned = lastCleanedData.lastCleaned;
 
@@ -38,7 +46,9 @@ async function generatePDFReport() {
       const params = new URLSearchParams();
       if (startDate) params.append('start', startDate);
       if (endDate) params.append('end', endDate);
-
+      if (config.activeProjectNumber) {
+        params.append('project', config.activeProjectNumber);
+      }
       const filterRes = await fetch(`/api/stats/filter?${params}`);
       filteredStats = await filterRes.json();
 
@@ -66,6 +76,12 @@ async function generatePDFReport() {
     doc.setFontSize(10);
     const reportDate = new Date().toLocaleString();
     doc.text(`Generated: ${reportDate}`, 148, 22, { align: 'center' });
+    if (config.activeProjectNumber) {
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Project: ${config.activeProjectNumber}`, 148, 28, { align: 'center' });
+      doc.setTextColor(0, 0, 0); // Reset color
+    }
 
     // Configuration Section
     let yPos = 35;
@@ -319,12 +335,22 @@ function addHeatmapPage(doc, lastCleaned, title = 'Cleaning Status Heatmap') {
 // Helper: Add all events section with EB range column
 async function addAllEventsSection(doc) {
   let yPos = 20;
+  
+  // Fetch events from API with project filter
+  let eventsUrl = '/api/events';
+  if (config.activeProjectNumber) {
+    eventsUrl += `?project=${encodeURIComponent(config.activeProjectNumber)}`;
+  }
+  
+  const eventsRes = await fetch(eventsUrl);
+  const eventsToShow = await eventsRes.json();
+  
   doc.setFontSize(14);
-  doc.text(`All Cleaning Events (${events.length} total)`, 20, yPos);
+  doc.text(`All Cleaning Events (${eventsToShow.length} total)`, 20, yPos);
   yPos += 8;
   doc.setFontSize(8);
 
-  if (events.length > 0) {
+  if (eventsToShow.length > 0) {
     // Table headers with EB Range column
     const drawHeaders = (y) => {
       doc.text('Date', 15, y);
@@ -335,6 +361,7 @@ async function addAllEventsSection(doc) {
       doc.text('Length', 145, y);
       doc.text('Count', 165, y);
     };
+
     drawHeaders(yPos);
     yPos += 5;
     doc.line(15, yPos, 175, yPos);
@@ -342,11 +369,12 @@ async function addAllEventsSection(doc) {
 
     // Fetch all EB ranges in parallel for performance
     const ebRanges = await Promise.all(
-      events.map(evt => getEBRange(evt.section_index_start, evt.section_index_end))
+      eventsToShow.map(evt => getEBRange(evt.section_index_start, evt.section_index_end))
     );
 
-    for (let i = 0; i < events.length; i++) {
-      const evt = events[i];
+    for (let i = 0; i < eventsToShow.length; i++) {
+      const evt = eventsToShow[i];
+
       if (yPos > 195) {
         doc.addPage('landscape');
         yPos = 20;
@@ -377,6 +405,7 @@ async function addAllEventsSection(doc) {
     doc.text('No cleaning events recorded.', 25, yPos);
   }
 }
+
 
 // Initialize PDF button
 function initPDFGeneration() {
