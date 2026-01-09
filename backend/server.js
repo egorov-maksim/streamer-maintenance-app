@@ -130,7 +130,7 @@ function getAsync(sql, params = []) {
 const defaultConfig = {
   numCables: 12,
   sectionsPerCable: 107,
-  sectionLength: 25,
+  sectionLength: 75,
   moduleFrequency: 4,
   useRopeForTail: true,     // true = rope (no tails), false = add 5 tails
   channelsPerSection: 6,
@@ -1027,5 +1027,6 @@ app.get("*", (_req, res) => {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
 
 
