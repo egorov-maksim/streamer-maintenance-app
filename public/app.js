@@ -5,16 +5,7 @@
 
 /* ------------ Global State ------------ */
 
-let config = {
-  numCables: 12,
-  sectionsPerCable: 107,
-  sectionLength: 75,
-  moduleFrequency: 4,
-  useRopeForTail: true,
-  channelsPerSection: 6,
-  activeProjectNumber: null,
-  vesselTag: 'TTN',
-};
+let config = null;
 
 let events = [];
 let selectedMethod = "rope";
@@ -219,7 +210,7 @@ function fmtKm(meters) {
 }
 
 function getChannelRange(sectionIndex) {
-  const channelsPerSection = config.channelsPerSection || 6;
+  const channelsPerSection = config.channelsPerSection;
   const startChannel = sectionIndex * channelsPerSection + 1;
   const endChannel = startChannel + channelsPerSection - 1;
   return `Ch ${startChannel}–${endChannel}`;
@@ -628,12 +619,12 @@ async function loadConfig() {
 
 // Populate configuration form from config object
 function populateConfigForm(cfg) {
-  safeGet('cfg-numCables').value = cfg.numCables || 12;
-  safeGet('cfg-sectionsPerCable').value = cfg.sectionsPerCable || 107;
-  safeGet('cfg-sectionLength').value = cfg.sectionLength || 75;
-  safeGet('cfg-moduleFrequency').value = cfg.moduleFrequency || 4;
-  safeGet('cfg-channelsPerSection').value = cfg.channelsPerSection || 6;
-  safeGet('cfg-useRopeForTail').value = String(cfg.useRopeForTail !== false);
+  safeGet('cfg-numCables').value = cfg.numCables;
+  safeGet('cfg-sectionsPerCable').value = cfg.sectionsPerCable;
+  safeGet('cfg-sectionLength').value = cfg.sectionLength;
+  safeGet('cfg-moduleFrequency').value = cfg.moduleFrequency;
+  safeGet('cfg-channelsPerSection').value = cfg.channelsPerSection;
+  safeGet('cfg-useRopeForTail').value = cfg.useRopeForTail;
 }
 
 // Update the label showing which project the config belongs to
@@ -652,11 +643,11 @@ function updateConfigProjectLabel() {
 // Get current config values from form
 function getConfigFromForm() {
   return {
-    num_cables: parseInt(safeGet('cfg-numCables').value || 12, 10),
-    sections_per_cable: parseInt(safeGet('cfg-sectionsPerCable').value || 107, 10),
-    section_length: parseInt(safeGet('cfg-sectionLength').value || 75, 10),
-    module_frequency: parseInt(safeGet('cfg-moduleFrequency').value || 4, 10),
-    channels_per_section: parseInt(safeGet('cfg-channelsPerSection').value || 6, 10),
+    num_cables: parseInt(safeGet('cfg-numCables').value, 10),
+    sections_per_cable: parseInt(safeGet('cfg-sectionsPerCable').value, 10),
+    section_length: parseInt(safeGet('cfg-sectionLength').value, 10),
+    module_frequency: parseInt(safeGet('cfg-moduleFrequency').value, 10),
+    channels_per_section: parseInt(safeGet('cfg-channelsPerSection').value, 10),
     use_rope_for_tail: safeGet('cfg-useRopeForTail').value === 'true',
   };
 }
@@ -738,11 +729,11 @@ async function saveGlobalConfig() {
   
   try {
     const body = {
-      numCables: parseInt(safeGet('cfg-numCables').value || 1, 10),
-      sectionsPerCable: parseInt(safeGet('cfg-sectionsPerCable').value || 1, 10),
-      sectionLength: parseInt(safeGet('cfg-sectionLength').value || 1, 10),
-      moduleFrequency: parseInt(safeGet('cfg-moduleFrequency').value || 1, 10),
-      channelsPerSection: parseInt(safeGet('cfg-channelsPerSection').value || 6, 10),
+      numCables: parseInt(safeGet('cfg-numCables').value, 10),
+      sectionsPerCable: parseInt(safeGet('cfg-sectionsPerCable').value, 10),
+      sectionLength: parseInt(safeGet('cfg-sectionLength').value, 10),
+      moduleFrequency: parseInt(safeGet('cfg-moduleFrequency').value, 10),
+      channelsPerSection: parseInt(safeGet('cfg-channelsPerSection').value, 10),
       useRopeForTail: safeGet('cfg-useRopeForTail').value === 'true',
     };
 
@@ -873,13 +864,13 @@ async function activateProject(projectId) {
     
     // Update config with the project's streamer configuration
     if (project) {
-      config.numCables = project.num_cables || 12;
-      config.sectionsPerCable = project.sections_per_cable || 107;
-      config.sectionLength = project.section_length || 75;
-      config.moduleFrequency = project.module_frequency || 4;
-      config.channelsPerSection = project.channels_per_section || 6;
-      config.useRopeForTail = project.use_rope_for_tail !== false;
-      config.vesselTag = project.vessel_tag || 'TTN';
+      config.numCables = project.num_cables;
+      config.sectionsPerCable = project.sections_per_cable;
+      config.sectionLength = project.section_length;
+      config.moduleFrequency = project.module_frequency;
+      config.channelsPerSection = project.channels_per_section;
+      config.useRopeForTail = project.use_rope_for_tail;
+      config.vesselTag = project.vessel_tag;
       config.activeProjectNumber = project.project_number;
       selectedProjectFilter = project.project_number;
       
@@ -1881,8 +1872,8 @@ async function renderHeatmap() {
 
     const N = config.sectionsPerCable;
     const cableCount = config.numCables;
-    const moduleFreq = config.moduleFrequency || 4;
-    const channelsPerSection = config.channelsPerSection || 6;
+    const moduleFreq = config.moduleFrequency;
+    const channelsPerSection = config.channelsPerSection;
     const useTailSections = !config.useRopeForTail;
     const tailSections = useTailSections ? 5 : 0;
 

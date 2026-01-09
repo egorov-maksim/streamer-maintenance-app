@@ -493,13 +493,13 @@ app.post("/api/projects", authMiddleware, adminOnly, async (req, res) => {
       [
         project_number, 
         project_name || null, 
-        vessel_tag || 'TTN', 
+        vessel_tag || defaultConfig.vesselTag, 
         created_at,
-        toInt(num_cables, 12),
-        toInt(sections_per_cable, 107),
-        toInt(section_length, 75),
-        toInt(module_frequency, 4),
-        toInt(channels_per_section, 6),
+        toInt(num_cables, defaultConfig.numCables),
+        toInt(sections_per_cable, defaultConfig.sectionsPerCable),
+        toInt(section_length, defaultConfig.sectionLength),
+        toInt(module_frequency, defaultConfig.moduleFrequency),
+        toInt(channels_per_section, defaultConfig.channelsPerSection),
         use_rope_for_tail === false ? 0 : 1
       ]
     );
@@ -533,12 +533,12 @@ app.put("/api/projects/:id/activate", authMiddleware, adminOnly, async (req, res
     if (project) {
       await saveConfig({ 
         activeProjectNumber: project.project_number,
-        vesselTag: project.vessel_tag || 'TTN',
-        numCables: project.num_cables || 12,
-        sectionsPerCable: project.sections_per_cable || 107,
-        sectionLength: project.section_length || 75,
-        moduleFrequency: project.module_frequency || 4,
-        channelsPerSection: project.channels_per_section || 6,
+        vesselTag: project.vessel_tag || defaultConfig.vesselTag,
+        numCables: project.num_cables || defaultConfig.numCables,
+        sectionsPerCable: project.sections_per_cable || defaultConfig.sectionsPerCable,
+        sectionLength: project.section_length || defaultConfig.sectionLength,
+        moduleFrequency: project.module_frequency || defaultConfig.moduleFrequency,
+        channelsPerSection: project.channels_per_section || defaultConfig.channelsPerSection,
         useRopeForTail: project.use_rope_for_tail === 1
       });
     }
@@ -580,12 +580,12 @@ app.put("/api/projects/:id", authMiddleware, adminOnly, async (req, res) => {
       WHERE id = ?`,
       [
         project_name || null,
-        vessel_tag || 'TTN',
-        toInt(num_cables, 12),
-        toInt(sections_per_cable, 107),
-        toInt(section_length, 75),
-        toInt(module_frequency, 4),
-        toInt(channels_per_section, 6),
+        vessel_tag || defaultConfig.vesselTag,
+        toInt(num_cables, defaultConfig.numCables),
+        toInt(sections_per_cable, defaultConfig.sectionsPerCable),
+        toInt(section_length, defaultConfig.sectionLength),
+        toInt(module_frequency, defaultConfig.moduleFrequency),
+        toInt(channels_per_section, defaultConfig.channelsPerSection),
         use_rope_for_tail === false ? 0 : 1,
         id
       ]
@@ -596,12 +596,12 @@ app.put("/api/projects/:id", authMiddleware, adminOnly, async (req, res) => {
     // If this is the active project, also update global config
     if (updated && updated.is_active === 1) {
       await saveConfig({ 
-        vesselTag: updated.vessel_tag || 'TTN',
-        numCables: updated.num_cables || 12,
-        sectionsPerCable: updated.sections_per_cable || 107,
-        sectionLength: updated.section_length || 75,
-        moduleFrequency: updated.module_frequency || 4,
-        channelsPerSection: updated.channels_per_section || 6,
+        vesselTag: updated.vessel_tag || defaultConfig.vesselTag,
+        numCables: updated.num_cables || defaultConfig.numCables,
+        sectionsPerCable: updated.sections_per_cable || defaultConfig.sectionsPerCable,
+        sectionLength: updated.section_length || defaultConfig.sectionLength,
+        moduleFrequency: updated.module_frequency || defaultConfig.moduleFrequency,
+        channelsPerSection: updated.channels_per_section || defaultConfig.channelsPerSection,
         useRopeForTail: updated.use_rope_for_tail === 1
       });
     }
@@ -691,12 +691,12 @@ app.post("/api/events", authMiddleware, adminOnly, async (req, res) => {
     
     // Get active project if not specified
     let finalProjectNumber = project_number;
-    let finalVesselTag = vessel_tag || 'TTN';
+    let finalVesselTag = vessel_tag || defaultConfig.vesselTag;
     
     if (!finalProjectNumber) {
       const cfg = await loadConfig();
       finalProjectNumber = cfg.activeProjectNumber || null;
-      finalVesselTag = cfg.vesselTag || 'TTN';
+      finalVesselTag = cfg.vesselTag || defaultConfig.vesselTag;
     }
     
     const result = await runAsync(
@@ -730,7 +730,7 @@ app.put("/api/events/:id", authMiddleware, adminOnly, async (req, res) => {
 
     const existing = await getAsync("SELECT * FROM cleaning_events WHERE id = ?", [id]);
     const finalProjectNumber = project_number !== undefined ? project_number : (existing?.project_number || null);
-    const finalVesselTag = vessel_tag !== undefined ? vessel_tag : (existing?.vessel_tag || 'TTN');
+    const finalVesselTag = vessel_tag !== undefined ? vessel_tag : (existing?.vessel_tag || defaultConfig.vesselTag);
 
     await runAsync(
       `UPDATE cleaning_events
@@ -1027,6 +1027,5 @@ app.get("*", (_req, res) => {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
-
 
 
