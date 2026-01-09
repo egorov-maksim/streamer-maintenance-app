@@ -2,3 +2,7 @@
 PORT=3000
 DB_FILE=./backend/streamer.db
 ALLOWED_ORIGINS=http://localhost:3000
+
+# Authentication credentials
+# Format: USERNAME:PASSWORD:ROLE (comma-separated for multiple users)
+AUTH_USERS=USERNAME:PASSWORD:admin,USERNAME:PASSWORD:viewer, USERNAME:PASSWORD:viewer, USERNAME:PASSWORD:viewer
