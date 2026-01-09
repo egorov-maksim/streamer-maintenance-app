@@ -16,7 +16,7 @@ initDb();
 // Load user credentials from environment variable
 // Format: USERNAME:PASSWORD:ROLE,USERNAME:PASSWORD:ROLE
 function loadUsersFromEnv() {
-  const authUsersEnv = process.env.AUTH_USERS || "TTNOBS:TTNScraping:admin,TTNView:TTNView:viewer";
+  const authUsersEnv = process.env.AUTH_USERS;
   const users = {};
   
   authUsersEnv.split(",").forEach(userStr => {
@@ -230,14 +230,6 @@ function calculateEBRange(startSection, endSection, config) {
   
   return '-';
 }
-
-
-
-
-
-
-
-
 
 // ---- Backup Management Endpoints ----
 

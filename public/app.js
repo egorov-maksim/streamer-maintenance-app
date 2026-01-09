@@ -39,10 +39,6 @@ function isAdmin() {
   return currentUser?.role === 'admin';
 }
 
-function isLoggedIn() {
-  return authToken !== null && currentUser !== null;
-}
-
 // Save session to localStorage
 function saveSession(token, user) {
   authToken = token;
@@ -233,9 +229,6 @@ function formatAS(sectionIndex) {
   return `AS${String(sectionIndex + 1).padStart(2, '0')}`;
 }
 
-function formatEB(moduleIndex) {
-  return `EB${String(moduleIndex).padStart(2, '0')}`;
-}
 
 // Helper: Fetch EB range from server API
 // Finds closest module AT OR BEFORE startSection and AT OR AFTER endSection
@@ -429,28 +422,6 @@ function getMethodIcon(method) {
     knife: '🔪'
   };
   return icons[method] || '🔧';
-}
-
-function isModulePosition(sectionIndex) {
-  const N = config.sectionsPerCable;
-  const moduleFreq = config.moduleFrequency || 4;
-  const firstActive = 0;
-  const lastActive = N - 1;
-
-  return (
-    sectionIndex === firstActive ||
-    sectionIndex === lastActive ||
-    (sectionIndex > firstActive &&
-      sectionIndex < lastActive &&
-      (sectionIndex - firstActive) % moduleFreq === 0)
-  );
-}
-
-function getModuleNumber(sectionIndex) {
-  const moduleFreq = config.moduleFrequency || 4;
-  const firstActive = 0;
-  if (sectionIndex === firstActive) return 1;
-  return Math.floor((sectionIndex - firstActive) / moduleFreq) + 1;
 }
 
 /* ------------ Login/Logout UI ------------ */
