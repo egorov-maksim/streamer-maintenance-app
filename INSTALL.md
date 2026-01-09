@@ -29,7 +29,7 @@ If not installed, download from [nodejs.org](https://nodejs.org/)
 
 **Option A: Clone with Git**
 ```bash
-git clone https://github.com/egorov-maksim/cleaningapp
+git clone https://github.com/egorov-maksim/streamer-maintenance-app
 cd streamer-maintenance-app
 ```
 
@@ -251,3 +251,4 @@ Read the full [README.md](README.md) for complete feature documentation.
 **Version**: 2.0.0  
 **Last Updated**: January 2026  
 **Node.js Required**: 14.0+
+
