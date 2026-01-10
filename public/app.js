@@ -244,15 +244,17 @@ function formatEB(num) {
 function getConfigForProject(projectNumber) {
   const pn = (projectNumber || "").trim();
   if (pn && Array.isArray(projects)) {
-    const p = projects.find(x => x.projectnumber === pn);
+    const p = projects.find(x => x.project_number === pn);
     if (p) {
       return {
-        numCables: p.numcables || config.numCables,
-        sectionsPerCable: p.sectionspercable || config.sectionsPerCable,
-        useRopeForTail: (p.useropefortail === 1) || (p.useropefortail === true),
-        sectionLength: p.sectionlength || config.sectionLength,
-        moduleFrequency: p.modulefrequency || config.moduleFrequency,
-        channelsPerSection: p.channelspersection || config.channelsPerSection
+        numCables: p.num_cables || config.numCables,
+        sectionsPerCable: p.sections_per_cable || config.sectionsPerCable,
+        sectionLength: p.section_length || config.sectionLength,
+        moduleFrequency: p.module_frequency || config.moduleFrequency,
+        channelsPerSection: p.channels_per_section || config.channelsPerSection,
+        useRopeForTail: p.use_rope_for_tail !== null && p.use_rope_for_tail !== undefined
+          ? p.use_rope_for_tail === 1
+          : config.useRopeForTail
       };
     }
   }
