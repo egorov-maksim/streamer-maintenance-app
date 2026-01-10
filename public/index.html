@@ -500,6 +500,60 @@
     </div>
   </div>
 
+    <!-- Clear All Events Modal -->
+  <div id="clear-all-modal" class="modal">
+    <div class="modal-overlay"></div>
+    <div class="modal-content modal-delete">
+      <div class="modal-header modal-header-delete">
+        <h3>⚠️ Clear All Events</h3>
+        <button class="modal-close" id="btn-clear-all-close">×</button>
+      </div>
+      
+      <div class="modal-body">
+        <div class="delete-warning">
+          <div class="warning-icon">🚨</div>
+          <div class="warning-text">
+            <strong>Dangerous Action!</strong>
+            <span id="clear-all-warning-message">This action cannot be undone.</span>
+          </div>
+        </div>
+        
+        <div class="event-details">
+          <div class="detail-row">
+            <span class="detail-label">Action</span>
+            <span class="detail-value" style="color: #dc2626; font-weight: 700;">
+              DELETE ALL EVENTS
+            </span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Scope</span>
+            <span class="detail-value" id="clear-all-scope">All Projects</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Total Events</span>
+            <span class="detail-value" id="clear-all-count">0</span>
+          </div>
+        </div>
+        
+        <p style="margin-top: 16px; font-size: 13px; color: #7f1d1d; font-weight: 600;">
+          Type <strong style="background: #fef2f2; padding: 2px 8px; border-radius: 4px;">DELETE</strong> to confirm:
+        </p>
+        <input 
+          type="text" 
+          id="clear-all-confirm-input" 
+          placeholder="Type DELETE" 
+          style="width: 100%; margin-top: 8px;"
+        />
+      </div>
+      
+      <div class="modal-footer modal-footer-delete">
+        <button class="btn btn-secondary" id="btn-clear-all-cancel">Cancel</button>
+        <button class="btn btn-danger" id="btn-clear-all-confirm" disabled>
+          Delete All Events
+        </button>
+      </div>
+    </div>
+  </div>
 
   </div> <!-- Close app-container -->
 
