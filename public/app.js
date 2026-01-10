@@ -1600,7 +1600,7 @@ function exportCsv() {
     const streamerNum = toStreamerNum(evt.cable_id);
     const startSection = evt.section_index_start + 1;
     const endSection = evt.section_index_end + 1;
-    const dateStr = new Date(evt.cleaned_at).toLocaleString();
+    const dateStr = new Date(evt.cleaned_at).toISOString();
     const projectNum = evt.project_number || '';
     const vesselTag = evt.vessel_tag || 'TTN';
     rows.push(`${streamerNum},${startSection},${endSection},${evt.cleaning_method},"${dateStr}","${projectNum}","${vesselTag}"`);
