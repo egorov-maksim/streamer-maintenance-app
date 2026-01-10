@@ -239,16 +239,58 @@ function formatEB(num) {
   return `EB${String(num).padStart(2, '0')}`;
 }
 
-// Helper: sections per cable including tail (active + tail)
-function getSectionsPerCableWithTail() {
-  const base = config.sectionsPerCable || 0;
-  const tail = config.useRopeForTail ? 0 : 5;
+
+// Helper: Get config for a specific project (or fall back to current config)
+function getConfigForProject(projectNumber) {
+  const pn = (projectNumber || "").trim();
+  if (pn && Array.isArray(projects)) {
+    const p = projects.find(x => x.projectnumber === pn);
+    if (p) {
+      return {
+        numCables: p.numcables || config.numCables,
+        sectionsPerCable: p.sectionspercable || config.sectionsPerCable,
+        useRopeForTail: (p.useropefortail === 1) || (p.useropefortail === true),
+        sectionLength: p.sectionlength || config.sectionLength,
+        moduleFrequency: p.modulefrequency || config.moduleFrequency,
+        channelsPerSection: p.channelspersection || config.channelsPerSection
+      };
+    }
+  }
+  return config;
+}
+
+// UPDATED: Now accepts a config object
+function getSectionsPerCableWithTail(cfg = config) {
+  const base = cfg.sectionsPerCable || 0;
+  const tail = cfg.useRopeForTail ? 0 : 5;
   return base + tail;
 }
 
-// Helper: 1‑based max section number for UI validation
-function getMaxSectionIndex() {
-  return getSectionsPerCableWithTail();
+// UPDATED: Now accepts a config object
+function getMaxSectionIndex(cfg = config) {
+  return getSectionsPerCableWithTail(cfg);
+}
+
+// Single validation function - uses the helpers
+function validateStreamerAndSections(streamerNum, startSection, endSection, projectNumber = null) {
+  const eventConfig = getConfigForProject(projectNumber);
+  const maxStreamer = eventConfig.numCables;
+  const maxSection = getMaxSectionIndex(eventConfig); // ← Use helper!
+
+  if (
+    Number.isNaN(streamerNum) || streamerNum < 1 || streamerNum > maxStreamer ||
+    Number.isNaN(startSection) || startSection < 1 || startSection > maxSection ||
+    Number.isNaN(endSection) || endSection < 1 || endSection > maxSection
+  ) {
+    return {
+      valid: false,
+      maxStreamer,
+      maxSection,
+      message: `Streamer must be 1-${maxStreamer}, sections must be 1-${maxSection}.`
+    };
+  }
+
+  return { valid: true, maxStreamer, maxSection };
 }
 
 /* ============================================================================
@@ -1231,37 +1273,29 @@ async function loadEvents() {
 }
 
 async function addEvent() {
-  const statusEl = safeGet('event-status');
-  
+  const statusEl = safeGet("event-status");
   if (!isAdmin()) {
-    setStatus(statusEl, 'Admin access required', true);
+    setStatus(statusEl, "Admin access required", true);
     return;
   }
-  
+
   try {
-    const streamerNum = parseInt(safeGet('evt-streamer').value || 1, 10);
-    const startSection = parseInt(safeGet('evt-start').value || 1, 10);
-    const endSection = parseInt(safeGet('evt-end').value || 1, 10);
-    const method = safeGet('evt-method').value;
-    const dateVal = safeGet('evt-date').value;
-    const timeVal = safeGet('evt-time').value;
+    const streamerNum = parseInt(safeGet("evt-streamer").value, 10);
+    const startSection = parseInt(safeGet("evt-start").value, 10);
+    const endSection = parseInt(safeGet("evt-end").value, 10);
+    const method = safeGet("evt-method").value;
+    const dateVal = safeGet("evt-date").value;
+    const timeVal = safeGet("evt-time").value;
 
     if (!dateVal || !timeVal) {
-      setStatus(statusEl, 'Please select date and time', true);
+      setStatus(statusEl, "Please select date and time", true);
       return;
     }
 
-    const maxSection = getMaxSectionIndex();
-
-    if (
-      streamerNum < 1 ||
-      streamerNum > (config.numCables + 1) ||
-      startSection < 1 ||
-      endSection < 1 ||
-      startSection > maxSection ||
-      endSection > maxSection
-    ) {
-      setStatus(statusEl, 'Streamer or section out of range', true);
+    // Use unified validation
+    const validation = validateStreamerAndSections(streamerNum, startSection, endSection);
+    if (!validation.valid) {
+      setStatus(statusEl, validation.message, true);
       return;
     }
 
@@ -1392,6 +1426,19 @@ async function saveEditedEvent() {
   const timeVal = safeGet('edit-time').value;
   const projectNumber = safeGet("edit-project-number").value || null;
   const vesselTag = safeGet("edit-vessel-tag").value || "TTN";
+  // ✅ ADD VALIDATION WITH PROJECT AWARENESS
+  const validation = validateStreamerAndSections(
+    streamerNum, 
+    startSection, 
+    endSection, 
+    projectNumber  // ← Use the event's project config!
+  );
+  
+  if (!validation.valid) {
+    showErrorToast("Out of Range", validation.message);
+    return;
+  }
+
   const actualStart = Math.min(startSection, endSection) - 1;
   const actualEnd = Math.max(startSection, endSection) - 1;
   const cableId = `cable-${streamerNum - 1}`;
@@ -1441,27 +1488,92 @@ async function updateEvent(id, body) {
   }
 }
 
-async function clearAllEvents() {
+// Show the clear all modal
+function showClearAllModal() {
   if (!isAdmin()) {
     showAccessDeniedToast('clear all events');
     return;
   }
   
-  if (!confirm('Are you sure you want to permanently delete ALL cleaning events?')) return;
+  const activeProject = projects.find(p => p.is_active === true);
+  const modal = safeGet('clear-all-modal');
+  const scopeEl = safeGet('clear-all-scope');
+  const countEl = safeGet('clear-all-count');
+  const warningMsg = safeGet('clear-all-warning-message');
+  const confirmInput = safeGet('clear-all-confirm-input');
+  const confirmBtn = safeGet('btn-clear-all-confirm');
+  
+  if (!modal) return;
+  
+  // Set scope and count
+  if (activeProject) {
+    scopeEl.textContent = `Project: ${activeProject.project_number}`;
+    const projectEvents = events.filter(e => e.project_number === activeProject.project_number);
+    countEl.textContent = projectEvents.length;
+    warningMsg.textContent = `All cleaning events for project ${activeProject.project_number} will be permanently deleted.`;
+  } else {
+    scopeEl.textContent = 'All Projects (Global)';
+    countEl.textContent = events.length;
+    warningMsg.textContent = 'All cleaning events from ALL projects will be permanently deleted from the database.';
+  }
+  
+  // Reset input and disable button
+  confirmInput.value = '';
+  confirmBtn.disabled = true;
+  
+  
+  
+  modal.classList.add('show');
+  
+  // Focus the input
+  setTimeout(() => confirmInput.focus(), 100);
+}
 
+// Close the modal
+function closeClearAllModal() {
+  const modal = safeGet('clear-all-modal');
+  const confirmInput = safeGet('clear-all-confirm-input');
+  
+  if (modal) modal.classList.remove('show');
+  if (confirmInput) confirmInput.value = '';
+}
+
+// Actually clear the events
+async function confirmClearAllEvents() {
+  const activeProject = projects.find(p => p.is_active === true);
+  const confirmInput = safeGet('clear-all-confirm-input');
+  
+  if (confirmInput.value.trim().toUpperCase() !== 'DELETE') {
+    return;
+  }
+  
   try {
-    const res = await fetch('api/events', { 
+    let url = '/api/events';
+    if (activeProject) {
+      url += `?project=${encodeURIComponent(activeProject.project_number)}`;
+    }
+    
+    const res = await fetch(url, {
       method: 'DELETE',
-      headers: getAuthHeaders()
+      headers: getAuthHeaders(),
     });
     
     if (res.status === 401 || res.status === 403) {
       showAccessDeniedToast('clear all events');
+      closeClearAllModal();
       return;
     }
     
     if (!res.ok) throw new Error('Failed');
-
+    
+    closeClearAllModal();
+    
+    if (activeProject) {
+      showSuccessToast('Events Cleared', `All events deleted from project ${activeProject.project_number}.`);
+    } else {
+      showSuccessToast('All Events Cleared', 'All cleaning events have been permanently deleted.');
+    }
+    
     await refreshEverything();
     await renderHeatmap();
     await refreshStatsFiltered();
@@ -1816,21 +1928,21 @@ async function renderStreamerCards(startDate = null, endDate = null) {
       let cleanedCount = 0;
       let totalCleanings = 0;
 
+      // Count total cleaning events for this cable
+      totalCleanings = filteredEvents.length;
+
       sections.forEach((date, idx) => {
         if (!date) return; // Never cleaned
         
         // If filters applied, check if lastCleaned date is in range  
         if (startDate || endDate) {
           const sectionDate = new Date(date).toISOString().split('T')[0];
-          
           if (startDate && sectionDate < startDate) return;
           if (endDate && sectionDate > endDate) return;
-          
-          cleanedCount++;
-        } else {
-          // No filters - count all cleaned sections
-          cleanedCount++;
         }
+        
+        // Count this cleaned section (either passed filter checks or no filters)
+        cleanedCount++;
       });
 
       const coverage = totalPerCable > 0 ? Math.round((cleanedCount / totalPerCable) * 100) : 0;
@@ -2117,7 +2229,6 @@ function clearDragState() {
 
 function showConfirmationModal() {
   if (!dragState.active || isFinalizing) return;
-
   dragState.active = false;
 
   const { cableId, start, end } = dragState;
@@ -2125,33 +2236,29 @@ function showConfirmationModal() {
   const max = Math.max(start, end);
   const streamerNum = toStreamerNum(cableId);
 
-  // Active + tail 1‑based max for UI
-  const maxSection = getSectionsPerCableWithTail();
+  // Use validation helper to get limits and clamp
+  const validation = validateStreamerAndSections(streamerNum, min + 1, max + 1);
 
-  const streamerInput = safeGet('modal-streamer');
-  const startInput = safeGet('modal-start');
-  const endInput = safeGet('modal-end');
-  const methodSelect = safeGet('modal-method');
+  const streamerInput = safeGet("modal-streamer");
+  const startInput = safeGet("modal-start");
+  const endInput = safeGet("modal-end");
+  const methodSelect = safeGet("modal-method");
 
-  // Clamp values so they never exceed maxSection
-  const clampedStart = Math.min(min + 1, maxSection);
-  const clampedEnd = Math.min(max + 1, maxSection);
-
-  streamerInput.value = streamerNum;
-  streamerInput.max = config.numCables;
-
-  startInput.value = clampedStart;
+  // Set max attributes
+  streamerInput.max = validation.maxStreamer;
   startInput.min = 1;
-  startInput.max = maxSection;
-
-  endInput.value = clampedEnd;
+  startInput.max = validation.maxSection;
   endInput.min = 1;
-  endInput.max = maxSection;
+  endInput.max = validation.maxSection;
+
+  // Clamp values
+  streamerInput.value = Math.min(streamerNum, validation.maxStreamer);
+  startInput.value = Math.min(min + 1, validation.maxSection);
+  endInput.value = Math.min(max + 1, validation.maxSection);
 
   methodSelect.value = selectedMethod;
-
   updateModalSummary();
-  safeGet('confirmation-modal').classList.add('show');
+  safeGet("confirmation-modal").classList.add("show");
 
   streamerInput.oninput = updateModalSummary;
   startInput.oninput = updateModalSummary;
@@ -2187,74 +2294,69 @@ async function confirmCleaning() {
   if (isFinalizing) return;
   
   if (!isAdmin()) {
-    showAccessDeniedToast('add cleaning events');
+    showAccessDeniedToast("add cleaning events");
     closeConfirmationModal();
     return;
   }
   
   isFinalizing = true;
 
-  const streamerNum = parseInt(safeGet('modal-streamer').value, 10);
-  const startSection = parseInt(safeGet('modal-start').value, 10);
-  const endSection = parseInt(safeGet('modal-end').value, 10);
-  const method = safeGet('modal-method').value;
+  const streamerNum = parseInt(safeGet("modal-streamer").value, 10);
+  const startSection = parseInt(safeGet("modal-start").value, 10);
+  const endSection = parseInt(safeGet("modal-end").value, 10);
+  const method = safeGet("modal-method").value;
 
-  const maxSection = getMaxSectionIndex();
-
-  if (
-    isNaN(streamerNum) ||
-    streamerNum < 1 ||
-    streamerNum > config.numCables ||
-    isNaN(startSection) ||
-    startSection < 1 ||
-    startSection > maxSection ||
-    isNaN(endSection) ||
-    endSection < 1 ||
-    endSection > maxSection
-  ) {
-    showErrorToast('Invalid Input', 'Please check the streamer number and section range.');
+  // Use unified validation
+  const validation = validateStreamerAndSections(streamerNum, startSection, endSection);
+  if (!validation.valid) {
+    showErrorToast("Out of Range", validation.message);
     isFinalizing = false;
     return;
   }
 
+  // Convert to 0-based indices
   const actualStart = Math.min(startSection, endSection) - 1;
   const actualEnd = Math.max(startSection, endSection) - 1;
   const cableId = `cable-${streamerNum - 1}`;
 
   try {
     const now = new Date().toISOString();
-
+    
     const body = {
-      cable_id: cableId,
-      section_index_start: actualStart,
-      section_index_end: actualEnd,
-      cleaning_method: method,
-      cleaned_at: now,
-      cleaning_count: 1,
+      cableid: cableId,
+      sectionindexstart: actualStart,
+      sectionindexend: actualEnd,
+      cleaningmethod: method,
+      cleanedat: now,
+      cleaningcount: 1
     };
 
-    const res = await fetch('api/events', {
-      method: 'POST',
+    const res = await fetch("/api/events", {
+      method: "POST",
       headers: getAuthHeaders(),
-      body: JSON.stringify(body),
+      body: JSON.stringify(body)
     });
 
     if (res.status === 401 || res.status === 403) {
-      showAccessDeniedToast('add cleaning events');
+      showAccessDeniedToast("add cleaning events");
       closeConfirmationModal();
       isFinalizing = false;
       return;
     }
-    
-    if (!res.ok) throw new Error('Failed to save');
 
+    if (!res.ok) {
+      throw new Error("Failed to save");
+    }
+
+    // Success
     closeConfirmationModal();
     await refreshEverything();
     await renderHeatmap();
     await refreshStatsFiltered();
+
   } catch (err) {
     console.error(err);
-    showErrorToast('Save Failed', 'Failed to save cleaning event. Please try again.');
+    showErrorToast("Save Failed", "Failed to save cleaning event. Please try again.");
     isFinalizing = false;
   }
 }
@@ -2501,7 +2603,20 @@ function setupEventListeners() {
       handleCsvFile(e.target.files[0]);
     }
   });
-  safeGet('btn-clear-all')?.addEventListener('click', clearAllEvents);
+
+  // Clear all events modal
+  safeGet('btn-clear-all')?.addEventListener('click', showClearAllModal);
+  safeGet('btn-clear-all-confirm')?.addEventListener('click', confirmClearAllEvents);
+  safeGet('btn-clear-all-cancel')?.addEventListener('click', closeClearAllModal);
+  safeGet('btn-clear-all-close')?.addEventListener('click', closeClearAllModal);
+  document.querySelector('#clear-all-modal .modal-overlay')?.addEventListener('click', closeClearAllModal);
+  safeGet('clear-all-confirm-input')?.addEventListener('input', () => {
+    const btn = safeGet('btn-clear-all-confirm');
+    const input = safeGet('clear-all-confirm-input');
+    if (btn && input) {
+      btn.disabled = input.value.trim().toUpperCase() !== 'DELETE';
+    }
+  });
 
   // Filter stats
   safeGet('btn-apply-filter')?.addEventListener('click', refreshStatsFiltered);
