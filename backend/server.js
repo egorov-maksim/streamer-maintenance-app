@@ -758,13 +758,25 @@ app.delete("/api/events/:id", authMiddleware, adminOnly, async (req, res) => {
   }
 });
 
-app.delete("/api/events", authMiddleware, adminOnly, async (_req, res) => {
+app.delete("/api/events", authMiddleware, adminOnly, async (req, res) => {
   try {
-    await runAsync("DELETE FROM cleaning_events", []);
+    const project = req.query.project;
+    
+    if (project) {
+      // Delete only events for this project
+      await runAsync(
+        "DELETE FROM cleaning_events WHERE project_number = ?",
+        [project]
+      );
+    } else {
+      // Delete ALL events (global clear when no project specified)
+      await runAsync("DELETE FROM cleaning_events");
+    }
+    
     res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to clear all events" });
+    res.status(500).json({ error: "Failed to clear events" });
   }
 });
 
