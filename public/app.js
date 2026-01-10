@@ -235,6 +235,10 @@ async function getEBRange(startSection, endSection) {
   }
 }
 
+function formatEB(num) {
+  return `EB${String(num).padStart(2, '0')}`;
+}
+
 // Helper: sections per cable including tail (active + tail)
 function getSectionsPerCableWithTail() {
   const base = config.sectionsPerCable || 0;

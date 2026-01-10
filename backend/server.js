@@ -141,15 +141,15 @@ const defaultConfig = {
 // config helpers
 async function loadConfig() {
   const rows = await allAsync("SELECT key, value FROM app_config");
-  const cfg = { ...defaultConfig };
+  const config = { ...defaultConfig };
   for (const row of rows) {
     const v = row.value;
-    cfg[row.key] =
+    config[row.key] =
       v === "true" ? true :
       v === "false" ? false :
       Number.isFinite(Number(v)) ? Number(v) : v;
   }
-  return cfg;
+  return config;
 }
 async function saveConfig(partial = {}) {
   const keys = Object.keys(partial);
@@ -387,8 +387,8 @@ app.get("/api/eb-range", async (req, res) => {
       return res.status(400).json({ error: "start and end query params required" });
     }
     
-    const cfg = await loadConfig();
-    const ebRange = calculateEBRange(startSection, endSection, cfg);
+    const config = await loadConfig();
+    const ebRange = calculateEBRange(startSection, endSection, config);
     
     res.json({ ebRange });
   } catch (err) {
@@ -399,8 +399,8 @@ app.get("/api/eb-range", async (req, res) => {
 
 app.get("/api/config", async (_req, res) => {
   try {
-    const cfg = await loadConfig();
-    res.json(cfg);
+    const config = await loadConfig();
+    res.json(config);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to load config" });
@@ -423,8 +423,8 @@ app.put("/api/config", authMiddleware, adminOnly, async (req, res) => {
       partial.activeProjectNumber = req.body.activeProjectNumber || null;
     }
     await saveConfig(partial);
-    const cfg = await loadConfig();
-    res.json(cfg);
+    const config = await loadConfig();
+    res.json(config);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to save config" });
@@ -694,9 +694,9 @@ app.post("/api/events", authMiddleware, adminOnly, async (req, res) => {
     let finalVesselTag = vessel_tag || defaultConfig.vesselTag;
     
     if (!finalProjectNumber) {
-      const cfg = await loadConfig();
-      finalProjectNumber = cfg.activeProjectNumber || null;
-      finalVesselTag = cfg.vesselTag || defaultConfig.vesselTag;
+      const config = await loadConfig();
+      finalProjectNumber = config.activeProjectNumber || null;
+      finalVesselTag = config.vesselTag;
     }
     
     const result = await runAsync(
@@ -772,12 +772,12 @@ app.delete("/api/events", authMiddleware, adminOnly, async (_req, res) => {
 app.get("/api/stats", async (req, res) => {
   try {
     const { project } = req.query;
-    const cfg = await loadConfig();
-    const sectionLength = cfg.sectionLength || 1;
-    const N = cfg.sectionsPerCable;
-    const tailSections = cfg.useRopeForTail ? 0 : 5;
-    const totalAvailableSections = cfg.numCables * N;
-    const totalAvailableTail = cfg.numCables * tailSections;
+    const config = await loadConfig();
+    const sectionLength = config.sectionLength || 1;
+    const N = config.sectionsPerCable;
+    const tailSections = config.useRopeForTail ? 0 : 5;
+    const totalAvailableSections = config.numCables * N;
+    const totalAvailableTail = config.numCables * tailSections;
     
     let whereClause = "";
     const params = [];
@@ -831,7 +831,7 @@ app.get("/api/stats", async (req, res) => {
 
 /**
  * last-cleaned map for heat-map
- * NOW includes tail sections when cfg.useRopeForTail === false (adds 5 tail sections)
+ * NOW includes tail sections when config.useRopeForTail === false (adds 5 tail sections)
  * For each cable: Array(totalLen) where totalLen = N + tailSections.
  * Fill with latest cleaned_at per section index (active + tails).
  * Optionally filter by project_number
@@ -839,10 +839,10 @@ app.get("/api/stats", async (req, res) => {
 app.get("/api/last-cleaned", async (req, res) => {
   try {
     const { project } = req.query;
-    const cfg = await loadConfig();
-    const N = cfg.sectionsPerCable;
-    const cableCount = cfg.numCables;
-    const tailSections = cfg.useRopeForTail ? 0 : 5;
+    const config = await loadConfig();
+    const N = config.sectionsPerCable;
+    const cableCount = config.numCables;
+    const tailSections = config.useRopeForTail ? 0 : 5;
     const totalSections = N + tailSections;
 
     let sql = `SELECT cable_id, section_index_start, section_index_end, cleaned_at
@@ -881,10 +881,10 @@ app.get("/api/last-cleaned", async (req, res) => {
 app.get('/api/last-cleaned-filtered', async (req, res) => {
   try {
     const { start, end, project } = req.query;
-    const cfg = await loadConfig();
-    const N = cfg.sectionsPerCable;
-    const cableCount = cfg.numCables;
-    const tailSections = cfg.useRopeForTail ? 0 : 5;
+    const config = await loadConfig();
+    const N = config.sectionsPerCable;
+    const cableCount = config.numCables;
+    const tailSections = config.useRopeForTail ? 0 : 5;
     const totalSections = N + tailSections;
 
     // Build query with date and project filters
@@ -948,10 +948,10 @@ app.get('/api/last-cleaned-filtered', async (req, res) => {
 app.get("/api/stats/filter", async (req, res) => {
   try {
     const { start, end, project } = req.query;
-    const cfg = await loadConfig();
-    const sectionLength = cfg.sectionLength || 1;
-    const N = cfg.sectionsPerCable;
-    const tailSections = cfg.useRopeForTail ? 0 : 5;
+    const config = await loadConfig();
+    const sectionLength = config.sectionLength || 1;
+    const N = config.sectionsPerCable;
+    const tailSections = config.useRopeForTail ? 0 : 5;
 
     let sql = "SELECT * FROM cleaning_events";
     const params = [];
