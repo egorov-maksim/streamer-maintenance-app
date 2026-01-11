@@ -536,6 +536,8 @@ async function handleLogout() {
 }
 
 function showLogin() {
+  window.scrollTo(0, 0);
+  document.body.style.overflow = 'hidden';
   safeGet('login-page').classList.add('flex');
   safeGet('login-page').classList.remove('hidden');
   safeGet('app-container').classList.add('hidden');
@@ -551,7 +553,13 @@ function showLogin() {
 }
 
 function showApp() {
-  safeGet('login-page').classList.add('hidden');
+  window.scrollTo(0, 0);
+  document.body.style.overflow = 'auto';
+  const loginPage = safeGet('login-page');
+  if (loginPage) {
+    loginPage.classList.add('hidden');
+    loginPage.classList.remove('flex');
+  }
   safeGet('app-container').classList.remove('hidden');
   
   // Update user display
