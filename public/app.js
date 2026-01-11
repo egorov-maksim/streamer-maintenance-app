@@ -686,6 +686,16 @@ function populateConfigForm(cfg) {
   safeGet('cfg-moduleFrequency').value = cfg.moduleFrequency;
   safeGet('cfg-channelsPerSection').value = cfg.channelsPerSection;
   safeGet('cfg-useRopeForTail').value = cfg.useRopeForTail;
+  if (cfg.deploymentDate) {
+    // Convert ISO date to YYYY-MM-DD format for date input
+    const date = new Date(cfg.deploymentDate);
+    if (!isNaN(date.getTime())) {
+      safeGet('cfg-deploymentDate').value = date.toISOString().split('T')[0];
+    }
+  } else {
+    safeGet('cfg-deploymentDate').value = '';
+  }
+  safeGet('cfg-isCoated').checked = cfg.isCoated === true || cfg.isCoated === 1;
 }
 
 // Update the label showing which project the config belongs to
@@ -703,6 +713,9 @@ function updateConfigProjectLabel() {
 
 // Get current config values from form
 function getConfigFromForm() {
+  const deploymentDateEl = safeGet('cfg-deploymentDate');
+  const deploymentDate = deploymentDateEl?.value ? deploymentDateEl.value : null;
+  
   return {
     numCables: parseInt(safeGet('cfg-numCables').value, 10),
     sectionsPerCable: parseInt(safeGet('cfg-sectionsPerCable').value, 10),
@@ -710,6 +723,8 @@ function getConfigFromForm() {
     moduleFrequency: parseInt(safeGet('cfg-moduleFrequency').value, 10),
     channelsPerSection: parseInt(safeGet('cfg-channelsPerSection').value, 10),
     useRopeForTail: safeGet('cfg-useRopeForTail').value === 'true',
+    deploymentDate: deploymentDate,
+    isCoated: safeGet('cfg-isCoated').checked,
   };
 }
 
@@ -744,6 +759,8 @@ async function saveProjectConfig(projectId) {
     const body = {
       projectName: activeProject?.projectName || null,
       vesselTag: activeProject?.vesselTag || 'TTN',
+      deploymentDate: formConfig.deploymentDate || null,
+      isCoated: formConfig.isCoated || false,
       ...formConfig
     };
 
@@ -860,6 +877,8 @@ async function createProject() {
   const projectNumber = safeGet('new-project-number').value.trim();
   const projectName = safeGet('new-project-name').value.trim();
   const vesselTag = safeGet('new-project-vessel').value.trim() || 'TTN';
+  const deploymentDate = safeGet('new-deployment-date').value || null;
+  const isCoated = safeGet('new-is-coated').checked;
   
   if (!projectNumber) {
     setStatus(statusEl, 'Project number is required', true);
@@ -877,6 +896,8 @@ async function createProject() {
         projectNumber: projectNumber,
         projectName: projectName,
         vesselTag: vesselTag,
+        deploymentDate: deploymentDate,
+        isCoated: isCoated,
         // Include current streamer config as defaults for the new project
         ...currentConfig
       })
@@ -898,6 +919,8 @@ async function createProject() {
     safeGet('new-project-number').value = '';
     safeGet('new-project-name').value = '';
     safeGet('new-project-vessel').value = 'TTN';
+    safeGet('new-deployment-date').value = '';
+    safeGet('new-is-coated').checked = false;
     
     setStatus(statusEl, '✅ Project created with current configuration');
     await loadProjects();
@@ -933,6 +956,8 @@ async function activateProject(projectId) {
       config.useRopeForTail = project.useRopeForTail;
       config.vesselTag = project.vesselTag;
       config.activeProjectNumber = project.projectNumber;
+      config.deploymentDate = project.deploymentDate;
+      config.isCoated = project.isCoated;
       selectedProjectFilter = project.projectNumber;
       
       // Update CSS variable and form
@@ -1055,12 +1080,28 @@ function renderProjectList() {
     const deleteBtn = isAdminUser && !isActive && eventCount === 0 ? 
       `<button class="btn btn-outline btn-sm btn-delete-project" data-id="${p.id}" title="Delete project">🗑️</button>` : '';
     
+    // Format deployment date
+    let deploymentDateDisplay = '';
+    if (p.deploymentDate) {
+      const deployDate = new Date(p.deploymentDate);
+      if (!isNaN(deployDate.getTime())) {
+        deploymentDateDisplay = `<span class="project-deployment-date" title="Deployment Date">📅 ${deployDate.toLocaleDateString()}</span>`;
+      }
+    }
+    
+    // Coating badge
+    const coatingBadge = (p.isCoated === true || p.isCoated === 1) 
+      ? '<span class="badge badge-coated" title="Coated">🛡️ Coated</span>' 
+      : '';
+    
     return `
       <div class="project-item ${isActive ? 'active' : ''}">
         <div class="project-item-info">
           <span class="project-number">${p.projectNumber}</span>
           ${p.projectName ? `<span class="project-name">${p.projectName}</span>` : ''}
           <span class="project-vessel">${p.vesselTag || 'TTN'}</span>
+          ${deploymentDateDisplay}
+          ${coatingBadge}
           ${eventCountBadge}
           ${activeBadge}
         </div>
@@ -2471,6 +2512,53 @@ async function refreshStatsFiltered() {
     } else {
       safeGet('kpi-last').textContent = '—';
       safeGet('kpi-last-sub').textContent = 'No events';
+    }
+
+    // Calculate Days to First Clean
+    const activeProject = projects.find(p => p.isActive === true);
+    if (activeProject && activeProject.deploymentDate) {
+      try {
+        const deploymentDate = new Date(activeProject.deploymentDate);
+        if (!isNaN(deploymentDate.getTime())) {
+          // Find first cleaning event for this project
+          const projectEvents = events.filter(e => e.projectNumber === activeProject.projectNumber);
+          if (projectEvents.length > 0) {
+            // Sort by cleanedAt and get the earliest
+            const sortedEvents = projectEvents.sort((a, b) => 
+              new Date(a.cleanedAt) - new Date(b.cleanedAt)
+            );
+            const firstCleaningDate = new Date(sortedEvents[0].cleanedAt);
+            if (!isNaN(firstCleaningDate.getTime())) {
+              // Calculate days difference
+              const diffTime = firstCleaningDate - deploymentDate;
+              const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+              if (diffDays >= 0) {
+                safeGet('kpi-deploy-days').textContent = `${diffDays}`;
+                safeGet('kpi-deploy-sub').textContent = `days from deployment`;
+              } else {
+                safeGet('kpi-deploy-days').textContent = '—';
+                safeGet('kpi-deploy-sub').textContent = 'Invalid date range';
+              }
+            } else {
+              safeGet('kpi-deploy-days').textContent = '—';
+              safeGet('kpi-deploy-sub').textContent = 'No valid events';
+            }
+          } else {
+            safeGet('kpi-deploy-days').textContent = '—';
+            safeGet('kpi-deploy-sub').textContent = 'No cleaning events yet';
+          }
+        } else {
+          safeGet('kpi-deploy-days').textContent = '—';
+          safeGet('kpi-deploy-sub').textContent = 'Invalid deployment date';
+        }
+      } catch (err) {
+        console.error('Error calculating days to first clean:', err);
+        safeGet('kpi-deploy-days').textContent = '—';
+        safeGet('kpi-deploy-sub').textContent = 'Calculation error';
+      }
+    } else {
+      safeGet('kpi-deploy-days').textContent = '—';
+      safeGet('kpi-deploy-sub').textContent = 'No active project or deployment date';
     }
 
     // Method breakdown

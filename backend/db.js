@@ -136,6 +136,8 @@ function migrateProjectsTable() {
       { name: 'module_frequency', sql: 'ALTER TABLE projects ADD COLUMN module_frequency INTEGER DEFAULT 4' },
       { name: 'channels_per_section', sql: 'ALTER TABLE projects ADD COLUMN channels_per_section INTEGER DEFAULT 6' },
       { name: 'use_rope_for_tail', sql: 'ALTER TABLE projects ADD COLUMN use_rope_for_tail INTEGER DEFAULT 1' },
+      { name: 'deployment_date', sql: 'ALTER TABLE projects ADD COLUMN deployment_date TEXT' },
+      { name: 'is_coated', sql: 'ALTER TABLE projects ADD COLUMN is_coated INTEGER DEFAULT 0' },
     ];
     
     for (const col of configColumns) {

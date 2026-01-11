@@ -1268,13 +1268,17 @@
    ========================= */
 
 .login-page {
+  position: fixed;    /* ← Change from 'relative' to 'fixed' */
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
   background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%);
-  position: relative;
   overflow: hidden;
+  z-index: 9999;      /* ← Add high z-index to overlay everything */
 }
 
 /* Animated background waves */
@@ -2046,7 +2050,7 @@
    ========================= */
 
 /* Display utilities */
-.hidden { display: none; }
+.hidden { display: none !important; }
 .visible { display: block; }
 .flex { display: flex; }
 .inline { display: inline; }

@@ -469,7 +469,8 @@ app.get("/api/projects", async (_req, res) => {
     res.json(rows.map(p => ({
       ...p,
       useRopeForTail: p.useRopeForTail === 1,
-      isActive: p.isActive === 1
+      isActive: p.isActive === 1,
+      isCoated: p.isCoated === 1
     })));
   } catch (err) {
     console.error(err);
@@ -487,7 +488,8 @@ app.get("/api/projects/active", async (_req, res) => {
     res.json({
       ...project,
       useRopeForTail: project.useRopeForTail === 1,
-      isActive: project.isActive === 1
+      isActive: project.isActive === 1,
+      isCoated: project.isCoated === 1
     });
   } catch (err) {
     console.error(err);
@@ -508,7 +510,9 @@ app.post("/api/projects", authMiddleware, adminOnly, async (req, res) => {
       section_length,
       module_frequency,
       channels_per_section,
-      use_rope_for_tail
+      use_rope_for_tail,
+      deployment_date,
+      is_coated
     } = bodyData;
     
     if (!project_number || typeof project_number !== "string") {
@@ -519,8 +523,9 @@ app.post("/api/projects", authMiddleware, adminOnly, async (req, res) => {
     const result = await runAsync(
       `INSERT INTO projects (
         project_number, project_name, vessel_tag, created_at, is_active,
-        num_cables, sections_per_cable, section_length, module_frequency, channels_per_section, use_rope_for_tail
-      ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
+        num_cables, sections_per_cable, section_length, module_frequency, channels_per_section, use_rope_for_tail,
+        deployment_date, is_coated
+      ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         project_number, 
         project_name || null, 
@@ -531,7 +536,9 @@ app.post("/api/projects", authMiddleware, adminOnly, async (req, res) => {
         toInt(section_length, defaultConfig.sectionLength),
         toInt(module_frequency, defaultConfig.moduleFrequency),
         toInt(channels_per_section, defaultConfig.channelsPerSection),
-        use_rope_for_tail === false ? 0 : 1
+        use_rope_for_tail === false ? 0 : 1,
+        deployment_date || null,
+        is_coated === true ? 1 : 0
       ]
     );
     
@@ -540,7 +547,8 @@ app.post("/api/projects", authMiddleware, adminOnly, async (req, res) => {
       res.json({
         ...created,
         useRopeForTail: created.useRopeForTail === 1,
-        isActive: created.isActive === 1
+        isActive: created.isActive === 1,
+        isCoated: created.isCoated === 1
       });
     } else {
       res.status(500).json({ error: "Failed to fetch created project" });
@@ -586,7 +594,8 @@ app.put("/api/projects/:id/activate", authMiddleware, adminOnly, async (req, res
       res.json({
         ...project,
         useRopeForTail: project.useRopeForTail === 1,
-        isActive: project.isActive === 1
+        isActive: project.isActive === 1,
+        isCoated: project.isCoated === 1
       });
     } else {
       res.status(404).json({ error: "Project not found" });
@@ -612,7 +621,9 @@ app.put("/api/projects/:id", authMiddleware, adminOnly, async (req, res) => {
       section_length,
       module_frequency,
       channels_per_section,
-      use_rope_for_tail
+      use_rope_for_tail,
+      deployment_date,
+      is_coated
     } = bodyData;
     
     await runAsync(
@@ -624,7 +635,9 @@ app.put("/api/projects/:id", authMiddleware, adminOnly, async (req, res) => {
         section_length = ?,
         module_frequency = ?,
         channels_per_section = ?,
-        use_rope_for_tail = ?
+        use_rope_for_tail = ?,
+        deployment_date = ?,
+        is_coated = ?
       WHERE id = ?`,
       [
         project_name || null,
@@ -635,6 +648,8 @@ app.put("/api/projects/:id", authMiddleware, adminOnly, async (req, res) => {
         toInt(module_frequency, defaultConfig.moduleFrequency),
         toInt(channels_per_section, defaultConfig.channelsPerSection),
         use_rope_for_tail === false ? 0 : 1,
+        deployment_date || null,
+        is_coated === true ? 1 : 0,
         id
       ]
     );
@@ -658,7 +673,8 @@ app.put("/api/projects/:id", authMiddleware, adminOnly, async (req, res) => {
       res.json({
         ...updated,
         useRopeForTail: updated.useRopeForTail === 1,
-        isActive: updated.isActive === 1
+        isActive: updated.isActive === 1,
+        isCoated: updated.isCoated === 1
       });
     } else {
       res.status(404).json({ error: "Project not found" });

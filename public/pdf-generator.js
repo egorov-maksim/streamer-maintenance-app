@@ -95,6 +95,17 @@ async function generatePDFReport() {
     doc.text(`Sections per Cable: ${config.sectionsPerCable}`, 25, yPos);
     yPos += 6;
     doc.text(`Tail Sections: ${config.useRopeForTail ? 'Using rope (no tails)' : '5 tail sections added'}`, 25, yPos);
+    
+    // Add deployment date and coating status if available
+    if (config.deploymentDate) {
+      const deployDate = new Date(config.deploymentDate);
+      if (!isNaN(deployDate.getTime())) {
+        yPos += 6;
+        doc.text(`Deployment Date: ${deployDate.toLocaleDateString()}`, 25, yPos);
+      }
+    }
+    yPos += 6;
+    doc.text(`Coating Status: ${(config.isCoated === true || config.isCoated === 1) ? 'Yes' : 'No'}`, 25, yPos);
 
     // === Overall Statistics ===
     yPos += 15;
