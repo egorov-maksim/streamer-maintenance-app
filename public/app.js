@@ -184,15 +184,15 @@ function formatDateTime(iso) {
 }
 
 function sectionCount(evt) {
-  return evt.section_index_end - evt.section_index_start + 1;
+  return evt.sectionIndexEnd - evt.sectionIndexStart + 1;
 }
 
 function eventDistance(evt) {
   return sectionCount(evt) * (config.sectionLength || 1);
 }
 
-function toStreamerNum(cable_id) {
-  return parseInt(cable_id.split("-")[1] || "0", 10) + 1;
+function toStreamerNum(cableId) {
+  return parseInt(cableId.split("-")[1] || "0", 10) + 1;
 }
 
 function ageBucket(days) {
@@ -244,16 +244,16 @@ function formatEB(num) {
 function getConfigForProject(projectNumber) {
   const pn = (projectNumber || "").trim();
   if (pn && Array.isArray(projects)) {
-    const p = projects.find(x => x.project_number === pn);
+    const p = projects.find(x => x.projectNumber === pn);
     if (p) {
       return {
-        numCables: p.num_cables || config.numCables,
-        sectionsPerCable: p.sections_per_cable || config.sectionsPerCable,
-        sectionLength: p.section_length || config.sectionLength,
-        moduleFrequency: p.module_frequency || config.moduleFrequency,
-        channelsPerSection: p.channels_per_section || config.channelsPerSection,
-        useRopeForTail: p.use_rope_for_tail !== null && p.use_rope_for_tail !== undefined
-          ? p.use_rope_for_tail === 1
+        numCables: p.numCables || config.numCables,
+        sectionsPerCable: p.sectionsPerCable || config.sectionsPerCable,
+        sectionLength: p.sectionLength || config.sectionLength,
+        moduleFrequency: p.moduleFrequency || config.moduleFrequency,
+        channelsPerSection: p.channelsPerSection || config.channelsPerSection,
+        useRopeForTail: p.useRopeForTail !== null && p.useRopeForTail !== undefined
+          ? p.useRopeForTail === true || p.useRopeForTail === 1
           : config.useRopeForTail
       };
     }
@@ -320,9 +320,9 @@ function showSectionTooltip(e, cableId, sectionIndex) {
 
   // Get cleaning history for this specific section
   const sectionEvents = events.filter(evt =>
-    evt.cable_id === cableId &&
-    sectionIndex >= evt.section_index_start &&
-    sectionIndex <= evt.section_index_end
+    evt.cableId === cableId &&
+    sectionIndex >= evt.sectionIndexStart &&
+    sectionIndex <= evt.sectionIndexEnd
   );
 
   const totalCleanings = sectionEvents.length;
@@ -334,17 +334,17 @@ function showSectionTooltip(e, cableId, sectionIndex) {
 
   if (sectionEvents.length > 0) {
     const sortedEvents = sectionEvents.sort((a, b) =>
-      new Date(b.cleaned_at) - new Date(a.cleaned_at)
+      new Date(b.cleanedAt) - new Date(a.cleanedAt)
     );
-    lastCleaned = sortedEvents[0].cleaned_at;
-    lastMethod = sortedEvents[0].cleaning_method;
+    lastCleaned = sortedEvents[0].cleanedAt;
+    lastMethod = sortedEvents[0].cleaningMethod;
     daysSince = Math.floor((Date.now() - new Date(lastCleaned)) / (1000 * 60 * 60 * 24));
   }
 
   // Count methods used
   const methodCounts = {};
   sectionEvents.forEach(evt => {
-    methodCounts[evt.cleaning_method] = (methodCounts[evt.cleaning_method] || 0) + 1;
+    methodCounts[evt.cleaningMethod] = (methodCounts[evt.cleaningMethod] || 0) + 1;
   });
 
   // Build tooltip HTML
@@ -620,7 +620,7 @@ function updateUIForRole() {
   const btnClearProject = safeGet('btn-clear-project');
   if (btnClearProject && isAdminUser) {
     // Only show if there's an active project
-    const activeProject = projects.find(p => p.is_active === true);
+    const activeProject = projects.find(p => p.isActive === true);
     btnClearProject.style.display = activeProject ? '' : 'none';
   } else if (btnClearProject) {
     btnClearProject.style.display = 'none';
@@ -680,9 +680,9 @@ function updateConfigProjectLabel() {
   const label = safeGet('config-project-label');
   if (!label) return;
   
-  const activeProject = projects.find(p => p.is_active);
+  const activeProject = projects.find(p => p.isActive);
   if (activeProject) {
-    label.textContent = `(for ${activeProject.project_number})`;
+    label.textContent = `(for ${activeProject.projectNumber})`;
   } else {
     label.textContent = '(global defaults)';
   }
@@ -691,12 +691,12 @@ function updateConfigProjectLabel() {
 // Get current config values from form
 function getConfigFromForm() {
   return {
-    num_cables: parseInt(safeGet('cfg-numCables').value, 10),
-    sections_per_cable: parseInt(safeGet('cfg-sectionsPerCable').value, 10),
-    section_length: parseInt(safeGet('cfg-sectionLength').value, 10),
-    module_frequency: parseInt(safeGet('cfg-moduleFrequency').value, 10),
-    channels_per_section: parseInt(safeGet('cfg-channelsPerSection').value, 10),
-    use_rope_for_tail: safeGet('cfg-useRopeForTail').value === 'true',
+    numCables: parseInt(safeGet('cfg-numCables').value, 10),
+    sectionsPerCable: parseInt(safeGet('cfg-sectionsPerCable').value, 10),
+    sectionLength: parseInt(safeGet('cfg-sectionLength').value, 10),
+    moduleFrequency: parseInt(safeGet('cfg-moduleFrequency').value, 10),
+    channelsPerSection: parseInt(safeGet('cfg-channelsPerSection').value, 10),
+    useRopeForTail: safeGet('cfg-useRopeForTail').value === 'true',
   };
 }
 
@@ -709,7 +709,7 @@ async function saveConfig() {
   }
   
   // Find active project
-  const activeProject = projects.find(p => p.is_active);
+  const activeProject = projects.find(p => p.isActive);
   
   if (activeProject) {
     // Save to active project
@@ -729,8 +729,8 @@ async function saveProjectConfig(projectId) {
     const activeProject = projects.find(p => p.id === projectId);
     
     const body = {
-      project_name: activeProject?.project_name || null,
-      vessel_tag: activeProject?.vessel_tag || 'TTN',
+      projectName: activeProject?.projectName || null,
+      vesselTag: activeProject?.vesselTag || 'TTN',
       ...formConfig
     };
 
@@ -750,15 +750,15 @@ async function saveProjectConfig(projectId) {
     const updated = await res.json();
     
     // Update local config to reflect changes
-    config.numCables = updated.num_cables;
-    config.sectionsPerCable = updated.sections_per_cable;
-    config.sectionLength = updated.section_length;
-    config.moduleFrequency = updated.module_frequency;
-    config.channelsPerSection = updated.channels_per_section;
-    config.useRopeForTail = updated.use_rope_for_tail;
+    config.numCables = updated.numCables;
+    config.sectionsPerCable = updated.sectionsPerCable;
+    config.sectionLength = updated.sectionLength;
+    config.moduleFrequency = updated.moduleFrequency;
+    config.channelsPerSection = updated.channelsPerSection;
+    config.useRopeForTail = updated.useRopeForTail;
     
     document.documentElement.style.setProperty('--sections', config.sectionsPerCable);
-    setStatus(statusEl, `✅ Configuration saved for ${updated.project_number}`);
+    setStatus(statusEl, `✅ Configuration saved for ${updated.projectNumber}`);
     
     // Refresh projects list to update stored config
     await loadProjects();
@@ -861,9 +861,9 @@ async function createProject() {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        project_number: projectNumber,
-        project_name: projectName,
-        vessel_tag: vesselTag,
+        projectNumber: projectNumber,
+        projectName: projectName,
+        vesselTag: vesselTag,
         // Include current streamer config as defaults for the new project
         ...currentConfig
       })
@@ -912,15 +912,15 @@ async function activateProject(projectId) {
     
     // Update config with the project's streamer configuration
     if (project) {
-      config.numCables = project.num_cables;
-      config.sectionsPerCable = project.sections_per_cable;
-      config.sectionLength = project.section_length;
-      config.moduleFrequency = project.module_frequency;
-      config.channelsPerSection = project.channels_per_section;
-      config.useRopeForTail = project.use_rope_for_tail;
-      config.vesselTag = project.vessel_tag;
-      config.activeProjectNumber = project.project_number;
-      selectedProjectFilter = project.project_number;
+      config.numCables = project.numCables;
+      config.sectionsPerCable = project.sectionsPerCable;
+      config.sectionLength = project.sectionLength;
+      config.moduleFrequency = project.moduleFrequency;
+      config.channelsPerSection = project.channelsPerSection;
+      config.useRopeForTail = project.useRopeForTail;
+      config.vesselTag = project.vesselTag;
+      config.activeProjectNumber = project.projectNumber;
+      selectedProjectFilter = project.projectNumber;
       
       // Update CSS variable and form
       document.documentElement.style.setProperty('--sections', config.sectionsPerCable);
@@ -931,7 +931,7 @@ async function activateProject(projectId) {
     updateActiveProjectBanner();
     updateConfigProjectLabel();
     
-    showSuccessToast('Project Activated', `Streamer configuration loaded for ${project.project_number}. All new events will be associated with this project.`);
+    showSuccessToast('Project Activated', `Streamer configuration loaded for ${project.projectNumber}. All new events will be associated with this project.`);
     
     // Refresh UI with new config
     await refreshEverything();
@@ -953,7 +953,7 @@ async function activateSelectedProject() {
     return;
   }
   
-  const project = projects.find(p => p.project_number === projectNumber);
+  const project = projects.find(p => p.projectNumber === projectNumber);
   if (project) {
     await activateProject(project.id);
   }
@@ -1035,8 +1035,8 @@ function renderProjectList() {
   const isAdminUser = isAdmin();
   
   container.innerHTML = projects.map(p => {
-    const isActive = p.is_active === true;
-    const eventCount = projectEventCounts[p.project_number] || 0;
+    const isActive = p.isActive === true;
+    const eventCount = projectEventCounts[p.projectNumber] || 0;
     const eventCountBadge = `<span class="project-event-count" title="Events in this project">${eventCount} events</span>`;
     const activeBadge = isActive ? '<span class="badge badge-active">Active</span>' : '';
     const deleteBtn = isAdminUser && !isActive && eventCount === 0 ? 
@@ -1045,9 +1045,9 @@ function renderProjectList() {
     return `
       <div class="project-item ${isActive ? 'active' : ''}">
         <div class="project-item-info">
-          <span class="project-number">${p.project_number}</span>
-          ${p.project_name ? `<span class="project-name">${p.project_name}</span>` : ''}
-          <span class="project-vessel">${p.vessel_tag || 'TTN'}</span>
+          <span class="project-number">${p.projectNumber}</span>
+          ${p.projectName ? `<span class="project-name">${p.projectName}</span>` : ''}
+          <span class="project-vessel">${p.vesselTag || 'TTN'}</span>
           ${eventCountBadge}
           ${activeBadge}
         </div>
@@ -1073,18 +1073,18 @@ function populateProjectSelector() {
   
   projects.forEach(p => {
     const option = document.createElement('option');
-    option.value = p.project_number;
-    option.textContent = p.project_name ? `${p.project_number} - ${p.project_name}` : p.project_number;
-    if (p.is_active === true) {
+    option.value = p.projectNumber;
+    option.textContent = p.projectName ? `${p.projectNumber} - ${p.projectName}` : p.projectNumber;
+    if (p.isActive === true) {
       option.textContent += ' (Active)';
     }
     selector.appendChild(option);
   });
   
   // Set current selection to active project
-  const activeProject = projects.find(p => p.is_active === true);
+  const activeProject = projects.find(p => p.isActive === true);
   if (activeProject) {
-    selector.value = activeProject.project_number;
+    selector.value = activeProject.projectNumber;
   }
 }
 
@@ -1096,13 +1096,13 @@ function updateActiveProjectBanner() {
   
   if (!banner || !nameEl) return;
   
-  const activeProject = projects.find(p => p.is_active === true);
+  const activeProject = projects.find(p => p.isActive === true);
   
   if (activeProject) {
-    nameEl.textContent = activeProject.project_name 
-      ? `${activeProject.project_number} - ${activeProject.project_name}`
-      : activeProject.project_number;
-    vesselEl.textContent = `[${activeProject.vessel_tag || 'TTN'}]`;
+    nameEl.textContent = activeProject.projectName 
+      ? `${activeProject.projectNumber} - ${activeProject.projectName}`
+      : activeProject.projectNumber;
+    vesselEl.textContent = `[${activeProject.vesselTag || 'TTN'}]`;
     banner.classList.add('has-project');
     if (clearBtn && isAdmin()) clearBtn.style.display = '';
   } else {
@@ -1150,7 +1150,7 @@ async function loadBackups() {
     }
     
     container.innerHTML = backups.map(backup => {
-      const date = new Date(backup.created_at);
+      const date = new Date(backup.createdAt);
       const formattedDate = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
       const sizeKB = (backup.size / 1024).toFixed(1);
       
@@ -1307,12 +1307,12 @@ async function addEvent() {
     const cableId = `cable-${streamerNum - 1}`;
 
     const body = {
-      cable_id: cableId,
-      section_index_start: actualStart,
-      section_index_end: actualEnd,
-      cleaning_method: method,
-      cleaned_at: datetimeIso,
-      cleaning_count: 1,
+      cableId: cableId,
+      sectionIndexStart: actualStart,
+      sectionIndexEnd: actualEnd,
+      cleaningMethod: method,
+      cleanedAt: datetimeIso,
+      cleaningCount: 1,
     };
 
     const res = await fetch('api/events', {
@@ -1343,15 +1343,15 @@ async function deleteEvent(id) {
   if (!evt) return;
 
   // Populate delete modal
-  const cableIndex = parseInt(evt.cable_id.split('-')[1], 10);
+  const cableIndex = parseInt(evt.cableId.split('-')[1], 10);
   const streamerNum = cableIndex + 1;
 
   safeGet('delete-event-id').value = evt.id;
   safeGet('delete-streamer-display').textContent = streamerNum;
-  safeGet('delete-range-display').textContent = `${formatAS(evt.section_index_start)} – ${formatAS(evt.section_index_end)}`;
-  safeGet('delete-eb-display').textContent = await getEBRange(evt.section_index_start, evt.section_index_end);
-  safeGet('delete-method-display').textContent = evt.cleaning_method;
-  safeGet('delete-date-display').textContent = formatDateTime(evt.cleaned_at);
+  safeGet('delete-range-display').textContent = `${formatAS(evt.sectionIndexStart)} – ${formatAS(evt.sectionIndexEnd)}`;
+  safeGet('delete-eb-display').textContent = await getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd);
+  safeGet('delete-method-display').textContent = evt.cleaningMethod;
+  safeGet('delete-date-display').textContent = formatDateTime(evt.cleanedAt);
   safeGet('delete-distance-display').textContent = `${eventDistance(evt)} m`;
 
   safeGet('delete-modal').classList.add('show');
@@ -1396,18 +1396,18 @@ function editEventPrompt(id) {
   const evt = events.find(e => e.id === id);
   if (!evt) return;
 
-  const cableIndex = parseInt(evt.cable_id.split('-')[1] || 0, 10);
+  const cableIndex = parseInt(evt.cableId.split('-')[1] || 0, 10);
   const streamerNum = cableIndex + 1;
 
   safeGet('edit-event-id').value = evt.id;
   safeGet('edit-streamer').value = streamerNum;
-  safeGet('edit-start').value = evt.section_index_start + 1;
-  safeGet('edit-end').value = evt.section_index_end + 1;
-  safeGet('edit-method').value = evt.cleaning_method;
-  safeGet("edit-project-number").value = evt.project_number || "";
-  safeGet("edit-vessel-tag").value = evt.vessel_tag || "TTN";
+  safeGet('edit-start').value = evt.sectionIndexStart + 1;
+  safeGet('edit-end').value = evt.sectionIndexEnd + 1;
+  safeGet('edit-method').value = evt.cleaningMethod;
+  safeGet("edit-project-number").value = evt.projectNumber || "";
+  safeGet("edit-vessel-tag").value = evt.vesselTag || "TTN";
 
-  const dateObj = new Date(evt.cleaned_at);
+  const dateObj = new Date(evt.cleanedAt);
   safeGet('edit-date').value = dateObj.toISOString().split('T')[0];
   safeGet('edit-time').value = dateObj.toTimeString().slice(0, 5);
 
@@ -1447,14 +1447,14 @@ async function saveEditedEvent() {
   const datetimeIso = new Date(`${dateVal}T${timeVal}`).toISOString();
 
   const body = {
-    cable_id: cableId,
-    section_index_start: actualStart,
-    section_index_end: actualEnd,
-    cleaning_method: method,
-    cleaned_at: datetimeIso,
-    cleaning_count: 1,
-    project_number: projectNumber,
-    vessel_tag: vesselTag,
+    cableId: cableId,
+    sectionIndexStart: actualStart,
+    sectionIndexEnd: actualEnd,
+    cleaningMethod: method,
+    cleanedAt: datetimeIso,
+    cleaningCount: 1,
+    projectNumber: projectNumber,
+    vesselTag: vesselTag,
   };
 
   await updateEvent(id, body);
@@ -1497,7 +1497,7 @@ function showClearAllModal() {
     return;
   }
   
-  const activeProject = projects.find(p => p.is_active === true);
+  const activeProject = projects.find(p => p.isActive === true);
   const modal = safeGet('clear-all-modal');
   const scopeEl = safeGet('clear-all-scope');
   const countEl = safeGet('clear-all-count');
@@ -1509,10 +1509,10 @@ function showClearAllModal() {
   
   // Set scope and count
   if (activeProject) {
-    scopeEl.textContent = `Project: ${activeProject.project_number}`;
-    const projectEvents = events.filter(e => e.project_number === activeProject.project_number);
+    scopeEl.textContent = `Project: ${activeProject.projectNumber}`;
+    const projectEvents = events.filter(e => e.projectNumber === activeProject.projectNumber);
     countEl.textContent = projectEvents.length;
-    warningMsg.textContent = `All cleaning events for project ${activeProject.project_number} will be permanently deleted.`;
+    warningMsg.textContent = `All cleaning events for project ${activeProject.projectNumber} will be permanently deleted.`;
   } else {
     scopeEl.textContent = 'All Projects (Global)';
     countEl.textContent = events.length;
@@ -1542,7 +1542,7 @@ function closeClearAllModal() {
 
 // Actually clear the events
 async function confirmClearAllEvents() {
-  const activeProject = projects.find(p => p.is_active === true);
+  const activeProject = projects.find(p => p.isActive === true);
   const confirmInput = safeGet('clear-all-confirm-input');
   
   if (confirmInput.value.trim().toUpperCase() !== 'DELETE') {
@@ -1552,7 +1552,7 @@ async function confirmClearAllEvents() {
   try {
     let url = '/api/events';
     if (activeProject) {
-      url += `?project=${encodeURIComponent(activeProject.project_number)}`;
+      url += `?project=${encodeURIComponent(activeProject.projectNumber)}`;
     }
     
     const res = await fetch(url, {
@@ -1571,7 +1571,7 @@ async function confirmClearAllEvents() {
     closeClearAllModal();
     
     if (activeProject) {
-      showSuccessToast('Events Cleared', `All events deleted from project ${activeProject.project_number}.`);
+      showSuccessToast('Events Cleared', `All events deleted from project ${activeProject.projectNumber}.`);
     } else {
       showSuccessToast('All Events Cleared', 'All cleaning events have been permanently deleted.');
     }
@@ -1597,13 +1597,13 @@ function exportCsv() {
   const rows = [header];
 
   events.forEach(evt => {
-    const streamerNum = toStreamerNum(evt.cable_id);
-    const startSection = evt.section_index_start + 1;
-    const endSection = evt.section_index_end + 1;
-    const dateStr = new Date(evt.cleaned_at).toISOString();
-    const projectNum = evt.project_number || '';
-    const vesselTag = evt.vessel_tag || 'TTN';
-    rows.push(`${streamerNum},${startSection},${endSection},${evt.cleaning_method},"${dateStr}","${projectNum}","${vesselTag}"`);
+    const streamerNum = toStreamerNum(evt.cableId);
+    const startSection = evt.sectionIndexStart + 1;
+    const endSection = evt.sectionIndexEnd + 1;
+    const dateStr = new Date(evt.cleanedAt).toISOString();
+    const projectNum = evt.projectNumber || '';
+    const vesselTag = evt.vesselTag || 'TTN';
+    rows.push(`${streamerNum},${startSection},${endSection},${evt.cleaningMethod},"${dateStr}","${projectNum}","${vesselTag}"`);
   });
 
   const csv = rows.join('\n');
@@ -1707,14 +1707,14 @@ async function handleCsvFile(file) {
       const cableId = `cable-${streamerNum - 1}`;
 
       const body = {
-        cable_id: cableId,
-        section_index_start: actualStart,
-        section_index_end: actualEnd,
-        cleaning_method: method,
-        cleaned_at: dateObj.toISOString(),
-        cleaning_count: 1,
-        project_number: projectNumber,
-        vessel_tag: vesselTag,
+        cableId: cableId,
+        sectionIndexStart: actualStart,
+        sectionIndexEnd: actualEnd,
+        cleaningMethod: method,
+        cleanedAt: dateObj.toISOString(),
+        cleaningCount: 1,
+        projectNumber: projectNumber,
+        vesselTag: vesselTag,
       };
 
       try {
@@ -1757,18 +1757,18 @@ async function renderLog() {
 
   // Fetch all EB ranges in parallel for performance
   const ebRangePromises = events.map(evt => 
-    getEBRange(evt.section_index_start, evt.section_index_end)
+    getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd)
   );
   const ebRanges = await Promise.all(ebRangePromises);
 
   events.forEach((evt, idx) => {
     const tr = document.createElement('tr');
-    const streamerNum = toStreamerNum(evt.cable_id);
-    const rangeLabel = `${formatAS(evt.section_index_end)}–${formatAS(evt.section_index_start)}`;
+    const streamerNum = toStreamerNum(evt.cableId);
+    const rangeLabel = `${formatAS(evt.sectionIndexEnd)}–${formatAS(evt.sectionIndexStart)}`;
     const ebRange = ebRanges[idx];
     const distance = eventDistance(evt);
-    const projectDisplay = evt.project_number || '<span style="color:#9ca3af">—</span>';
-    const vesselDisplay = evt.vessel_tag || 'TTN';
+    const projectDisplay = evt.projectNumber || '<span style="color:#9ca3af">—</span>';
+    const vesselDisplay = evt.vesselTag || 'TTN';
 
     const actionButtons = isAdminUser 
       ? `<button class="btn btn-outline btn-edit" data-id="${evt.id}">✏️</button>
@@ -1776,14 +1776,14 @@ async function renderLog() {
       : '<span class="view-only-badge">View Only</span>';
 
     tr.innerHTML = `
-      <td>${formatDateTime(evt.cleaned_at)}</td>
+      <td>${formatDateTime(evt.cleanedAt)}</td>
       <td>${projectDisplay}</td>
       <td>${vesselDisplay}</td>
       <td>Streamer ${streamerNum}</td>
       <td>${rangeLabel}</td>
       <td>${ebRange}</td>
       <td>${distance} m</td>
-      <td>${evt.cleaning_method}</td>
+      <td>${evt.cleaningMethod}</td>
       <td>${actionButtons}</td>
     `;
     tbody.appendChild(tr);
@@ -1915,11 +1915,11 @@ async function renderStreamerCards(startDate = null, endDate = null) {
       const sections = lastCleaned[cableId] || [];
 
       // Filter events by date range if provided
-      let filteredEvents = events.filter(evt => evt.cable_id === cableId);
+      let filteredEvents = events.filter(evt => evt.cableId === cableId);
 
       if (startDate || endDate) {
         filteredEvents = filteredEvents.filter(evt => {
-          const evtDate = new Date(evt.cleaned_at).toISOString().split('T')[0];
+          const evtDate = new Date(evt.cleanedAt).toISOString().split('T')[0];
           if (startDate && evtDate < startDate) return false;
           if (endDate && evtDate > endDate) return false;
           return true;
@@ -2232,36 +2232,36 @@ function clearDragState() {
 function showConfirmationModal() {
   if (!dragState.active || isFinalizing) return;
   dragState.active = false;
-
+  
   const { cableId, start, end } = dragState;
   const min = Math.min(start, end);
   const max = Math.max(start, end);
   const streamerNum = toStreamerNum(cableId);
-
-  // Use validation helper to get limits and clamp
-  const validation = validateStreamerAndSections(streamerNum, min + 1, max + 1);
-
-  const streamerInput = safeGet("modal-streamer");
-  const startInput = safeGet("modal-start");
-  const endInput = safeGet("modal-end");
-  const methodSelect = safeGet("modal-method");
-
-  // Set max attributes
-  streamerInput.max = validation.maxStreamer;
+    const streamerInput = safeGet('modal-streamer');
+  const startInput = safeGet('modal-start');
+  const endInput = safeGet('modal-end');
+  const methodSelect = safeGet('modal-method');
+  
+  // Calculate the TRUE max section including tails from current config
+  const totalSections = getSectionsPerCableWithTail(config);
+  
+  // Set max attributes based on ACTUAL config (not validation)
+  streamerInput.max = config.numCables;
   startInput.min = 1;
-  startInput.max = validation.maxSection;
+  startInput.max = totalSections;  // ✅ Use calculated value, not validation
   endInput.min = 1;
-  endInput.max = validation.maxSection;
-
-  // Clamp values
-  streamerInput.value = Math.min(streamerNum, validation.maxStreamer);
-  startInput.value = Math.min(min + 1, validation.maxSection);
-  endInput.value = Math.min(max + 1, validation.maxSection);
-
+  endInput.max = totalSections;    // ✅ Use calculated value, not validation
+  
+  // Set values WITHOUT clamping or validation
+  streamerInput.value = streamerNum;
+  startInput.value = min + 1;  // Convert 0-based to 1-based
+  endInput.value = max + 1;    // Convert 0-based to 1-based
   methodSelect.value = selectedMethod;
+  
   updateModalSummary();
-  safeGet("confirmation-modal").classList.add("show");
-
+  safeGet('confirmation-modal').classList.add('show');
+  
+  // Update summary when inputs change
   streamerInput.oninput = updateModalSummary;
   startInput.oninput = updateModalSummary;
   endInput.oninput = updateModalSummary;
@@ -2294,71 +2294,72 @@ function closeConfirmationModal() {
 
 async function confirmCleaning() {
   if (isFinalizing) return;
-  
   if (!isAdmin()) {
-    showAccessDeniedToast("add cleaning events");
+    showAccessDeniedToast('add cleaning events');
     closeConfirmationModal();
     return;
   }
   
   isFinalizing = true;
-
-  const streamerNum = parseInt(safeGet("modal-streamer").value, 10);
-  const startSection = parseInt(safeGet("modal-start").value, 10);
-  const endSection = parseInt(safeGet("modal-end").value, 10);
-  const method = safeGet("modal-method").value;
-
-  // Use unified validation
-  const validation = validateStreamerAndSections(streamerNum, startSection, endSection);
+  
+  const streamerNum = parseInt(safeGet('modal-streamer').value, 10);
+  const startSection = parseInt(safeGet('modal-start').value, 10);
+  const endSection = parseInt(safeGet('modal-end').value, 10);
+  const method = safeGet('modal-method').value;
+  
+  // Get active project for validation
+  const activeProject = projects.find(p => p.isActive);
+  const projectNumber = activeProject ? activeProject.projectNumber : null;
+  
+  // Use unified validation WITH project number
+  const validation = validateStreamerAndSections(streamerNum, startSection, endSection, projectNumber);
   if (!validation.valid) {
-    showErrorToast("Out of Range", validation.message);
+    showErrorToast('Out of Range', validation.message);
     isFinalizing = false;
     return;
   }
-
+  
   // Convert to 0-based indices
   const actualStart = Math.min(startSection, endSection) - 1;
   const actualEnd = Math.max(startSection, endSection) - 1;
   const cableId = `cable-${streamerNum - 1}`;
-
+  
   try {
     const now = new Date().toISOString();
-    
     const body = {
-      cableid: cableId,
-      sectionindexstart: actualStart,
-      sectionindexend: actualEnd,
-      cleaningmethod: method,
-      cleanedat: now,
-      cleaningcount: 1
+      cableId: cableId,                    
+      sectionIndexStart: actualStart,     
+      sectionIndexEnd: actualEnd,         
+      cleaningMethod: method,              
+      cleanedAt: now,                      
+      cleaningCount: 1,                    
+      projectNumber: projectNumber         
     };
-
-    const res = await fetch("/api/events", {
-      method: "POST",
+    
+    const res = await fetch('/api/events', {
+      method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
     });
-
+    
     if (res.status === 401 || res.status === 403) {
-      showAccessDeniedToast("add cleaning events");
+      showAccessDeniedToast('add cleaning events');
       closeConfirmationModal();
       isFinalizing = false;
       return;
     }
-
-    if (!res.ok) {
-      throw new Error("Failed to save");
-    }
-
+    
+    if (!res.ok) throw new Error('Failed to save');
+    
     // Success
     closeConfirmationModal();
     await refreshEverything();
     await renderHeatmap();
     await refreshStatsFiltered();
-
   } catch (err) {
     console.error(err);
-    showErrorToast("Save Failed", "Failed to save cleaning event. Please try again.");
+    showErrorToast('Save Failed', 'Failed to save cleaning event. Please try again.');
+  } finally {
     isFinalizing = false;
   }
 }
@@ -2514,28 +2515,28 @@ async function sortTable(column) {
 
     switch (column) {
       case 'date':
-        valA = new Date(a.cleaned_at).getTime();
-        valB = new Date(b.cleaned_at).getTime();
+        valA = new Date(a.cleanedAt).getTime();
+        valB = new Date(b.cleanedAt).getTime();
         break;
       case 'project':
-        valA = a.project_number || '';
-        valB = b.project_number || '';
+        valA = a.projectNumber || '';
+        valB = b.projectNumber || '';
         break;
       case 'streamer':
-        valA = toStreamerNum(a.cable_id);
-        valB = toStreamerNum(b.cable_id);
+        valA = toStreamerNum(a.cableId);
+        valB = toStreamerNum(b.cableId);
         break;
       case 'section':
-        valA = a.section_index_start;
-        valB = b.section_index_start;
+        valA = a.sectionIndexStart;
+        valB = b.sectionIndexStart;
         break;
       case 'distance':
         valA = eventDistance(a);
         valB = eventDistance(b);
         break;
       case 'method':
-        valA = a.cleaning_method;
-        valB = b.cleaning_method;
+        valA = a.cleaningMethod;
+        valB = b.cleaningMethod;
         break;
       default:
         return 0;

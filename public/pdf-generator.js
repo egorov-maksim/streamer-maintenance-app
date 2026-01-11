@@ -369,7 +369,7 @@ async function addAllEventsSection(doc) {
 
     // Fetch all EB ranges in parallel for performance
     const ebRanges = await Promise.all(
-      eventsToShow.map(evt => getEBRange(evt.section_index_start, evt.section_index_end))
+      eventsToShow.map(evt => getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd))
     );
 
     for (let i = 0; i < eventsToShow.length; i++) {
@@ -384,19 +384,19 @@ async function addAllEventsSection(doc) {
         yPos += 5;
       }
 
-      const date = new Date(evt.cleaned_at).toLocaleDateString();
-      const streamer = `S${toStreamerNum(evt.cable_id)}`;
-      const sections = `${formatAS(evt.section_index_start)} - ${formatAS(evt.section_index_end)}`;
+      const date = new Date(evt.cleanedAt).toLocaleDateString();
+      const streamer = `S${toStreamerNum(evt.cableId)}`;
+      const sections = `${formatAS(evt.sectionIndexStart)} - ${formatAS(evt.sectionIndexEnd)}`;
       const ebRange = ebRanges[i];
       const distance = `${eventDistance(evt)}m`;
-      const count = evt.cleaning_count || 1;
+      const count = evt.cleaningCount || 1;
 
       doc.setFontSize(7);
       doc.text(date, 15, yPos);
       doc.text(streamer, 40, yPos);
       doc.text(sections, 55, yPos);
       doc.text(ebRange, 85, yPos);
-      doc.text(evt.cleaning_method, 120, yPos);
+      doc.text(evt.cleaningMethod, 120, yPos);
       doc.text(distance, 145, yPos);
       doc.text(String(count), 165, yPos);
       yPos += 5;

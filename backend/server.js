@@ -6,6 +6,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const path = require("path");
 const crypto = require("crypto");
+const humps = require("humps");
 const { db, initDb } = require("./db");
 
 const app = express();
@@ -126,6 +127,17 @@ function getAsync(sql, params = []) {
   });
 }
 
+// Helper wrappers with automatic camelCase conversion
+async function getAllCamelized(sql, params = []) {
+  const rows = await allAsync(sql, params);
+  return rows.map(row => humps.camelizeKeys(row));
+}
+
+async function getOneCamelized(sql, params = []) {
+  const row = await getAsync(sql, params);
+  return row ? humps.camelizeKeys(row) : null;
+}
+
 // defaults
 const defaultConfig = {
   numCables: 12,
@@ -144,7 +156,9 @@ async function loadConfig() {
   const config = { ...defaultConfig };
   for (const row of rows) {
     const v = row.value;
-    config[row.key] =
+    // Convert snake_case key to camelCase
+    const camelKey = humps.camelize(row.key);
+    config[camelKey] =
       v === "true" ? true :
       v === "false" ? false :
       Number.isFinite(Number(v)) ? Number(v) : v;
@@ -155,9 +169,11 @@ async function saveConfig(partial = {}) {
   const keys = Object.keys(partial);
   for (const key of keys) {
     const value = String(partial[key]);
+    // Convert camelCase key to snake_case for database storage
+    const snakeKey = humps.decamelize(key);
     await runAsync(
       "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-      [key, value]
+      [snakeKey, value]
     );
   }
 }
@@ -248,13 +264,13 @@ app.get("/api/backups", authMiddleware, adminOnly, async (_req, res) => {
       .map(f => {
         const filePath = path.join(backupDir, f);
         const stats = fs.statSync(filePath);
-        return {
+        return humps.camelizeKeys({
           filename: f,
           size: stats.size,
           created_at: stats.mtime.toISOString(),
-        };
+        });
       })
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     
     res.json({ backups: files });
   } catch (err) {
@@ -325,7 +341,8 @@ app.get("/api/projects/stats", async (_req, res) => {
     
     const stats = {};
     for (const row of rows) {
-      stats[row.project_number] = row.event_count;
+      const camelized = humps.camelizeKeys(row);
+      stats[camelized.projectNumber] = camelized.eventCount;
     }
     
     res.json(stats);
@@ -400,7 +417,7 @@ app.get("/api/eb-range", async (req, res) => {
 app.get("/api/config", async (_req, res) => {
   try {
     const config = await loadConfig();
-    res.json(config);
+    res.json(humps.camelizeKeys(config));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to load config" });
@@ -409,22 +426,23 @@ app.get("/api/config", async (_req, res) => {
 
 app.put("/api/config", authMiddleware, adminOnly, async (req, res) => {
   try {
+    const bodyData = humps.decamelizeKeys(req.body);
     const partial = {
-      numCables: toInt(req.body?.numCables, defaultConfig.numCables),
-      sectionsPerCable: toInt(req.body?.sectionsPerCable, defaultConfig.sectionsPerCable),
-      sectionLength: toInt(req.body?.sectionLength, defaultConfig.sectionLength),
-      moduleFrequency: toInt(req.body?.moduleFrequency, defaultConfig.moduleFrequency),
-      useRopeForTail: Boolean(req.body?.useRopeForTail),
-      channelsPerSection: toInt(req.body?.channelsPerSection, defaultConfig.channelsPerSection),
-      vesselTag: req.body?.vesselTag || defaultConfig.vesselTag,
+      numCables: toInt(bodyData?.num_cables, defaultConfig.numCables),
+      sectionsPerCable: toInt(bodyData?.sections_per_cable, defaultConfig.sectionsPerCable),
+      sectionLength: toInt(bodyData?.section_length, defaultConfig.sectionLength),
+      moduleFrequency: toInt(bodyData?.module_frequency, defaultConfig.moduleFrequency),
+      useRopeForTail: Boolean(bodyData?.use_rope_for_tail),
+      channelsPerSection: toInt(bodyData?.channels_per_section, defaultConfig.channelsPerSection),
+      vesselTag: bodyData?.vessel_tag || defaultConfig.vesselTag,
     };
     // Handle activeProjectNumber separately (can be null)
-    if (req.body?.activeProjectNumber !== undefined) {
-      partial.activeProjectNumber = req.body.activeProjectNumber || null;
+    if (bodyData?.active_project_number !== undefined) {
+      partial.activeProjectNumber = bodyData.active_project_number || null;
     }
     await saveConfig(partial);
     const config = await loadConfig();
-    res.json(config);
+    res.json(humps.camelizeKeys(config));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to save config" });
@@ -436,18 +454,23 @@ app.put("/api/config", authMiddleware, adminOnly, async (req, res) => {
 // Helper to format project response with proper boolean conversion
 function formatProjectResponse(project) {
   if (!project) return null;
+  const camelized = humps.camelizeKeys(project);
   return {
-    ...project,
-    use_rope_for_tail: project.use_rope_for_tail === 1,
-    is_active: project.is_active === 1
+    ...camelized,
+    useRopeForTail: project.use_rope_for_tail === 1,
+    isActive: project.is_active === 1
   };
 }
 
 // Get all projects
 app.get("/api/projects", async (_req, res) => {
   try {
-    const rows = await allAsync("SELECT * FROM projects ORDER BY created_at DESC");
-    res.json(rows.map(formatProjectResponse));
+    const rows = await getAllCamelized("SELECT * FROM projects ORDER BY created_at DESC");
+    res.json(rows.map(p => ({
+      ...p,
+      useRopeForTail: p.useRopeForTail === 1,
+      isActive: p.isActive === 1
+    })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch projects" });
@@ -457,8 +480,15 @@ app.get("/api/projects", async (_req, res) => {
 // Get active project with full config
 app.get("/api/projects/active", async (_req, res) => {
   try {
-    const project = await getAsync("SELECT * FROM projects WHERE is_active = 1");
-    res.json(formatProjectResponse(project));
+    const project = await getOneCamelized("SELECT * FROM projects WHERE is_active = 1");
+    if (!project) {
+      return res.json(null);
+    }
+    res.json({
+      ...project,
+      useRopeForTail: project.useRopeForTail === 1,
+      isActive: project.isActive === 1
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch active project" });
@@ -468,6 +498,7 @@ app.get("/api/projects/active", async (_req, res) => {
 // Create new project with streamer configuration
 app.post("/api/projects", authMiddleware, adminOnly, async (req, res) => {
   try {
+    const bodyData = humps.decamelizeKeys(req.body);
     const { 
       project_number, 
       project_name, 
@@ -478,7 +509,7 @@ app.post("/api/projects", authMiddleware, adminOnly, async (req, res) => {
       module_frequency,
       channels_per_section,
       use_rope_for_tail
-    } = req.body;
+    } = bodyData;
     
     if (!project_number || typeof project_number !== "string") {
       return res.status(400).json({ error: "Project number is required" });
@@ -504,8 +535,16 @@ app.post("/api/projects", authMiddleware, adminOnly, async (req, res) => {
       ]
     );
     
-    const created = await getAsync("SELECT * FROM projects WHERE id = ?", [result.lastID]);
-    res.json(formatProjectResponse(created));
+    const created = await getOneCamelized("SELECT * FROM projects WHERE id = ?", [result.lastID]);
+    if (created) {
+      res.json({
+        ...created,
+        useRopeForTail: created.useRopeForTail === 1,
+        isActive: created.isActive === 1
+      });
+    } else {
+      res.status(500).json({ error: "Failed to fetch created project" });
+    }
   } catch (err) {
     console.error(err);
     if (err.message?.includes("UNIQUE constraint failed")) {
@@ -527,23 +566,31 @@ app.put("/api/projects/:id/activate", authMiddleware, adminOnly, async (req, res
     // Activate the selected project
     await runAsync("UPDATE projects SET is_active = 1 WHERE id = ?", [id]);
     
-    const project = await getAsync("SELECT * FROM projects WHERE id = ?", [id]);
+    const project = await getOneCamelized("SELECT * FROM projects WHERE id = ?", [id]);
     
     // Update global config with active project's settings
     if (project) {
       await saveConfig({ 
-        activeProjectNumber: project.project_number,
-        vesselTag: project.vessel_tag || defaultConfig.vesselTag,
-        numCables: project.num_cables || defaultConfig.numCables,
-        sectionsPerCable: project.sections_per_cable || defaultConfig.sectionsPerCable,
-        sectionLength: project.section_length || defaultConfig.sectionLength,
-        moduleFrequency: project.module_frequency || defaultConfig.moduleFrequency,
-        channelsPerSection: project.channels_per_section || defaultConfig.channelsPerSection,
-        useRopeForTail: project.use_rope_for_tail === 1
+        activeProjectNumber: project.projectNumber,
+        vesselTag: project.vesselTag || defaultConfig.vesselTag,
+        numCables: project.numCables || defaultConfig.numCables,
+        sectionsPerCable: project.sectionsPerCable || defaultConfig.sectionsPerCable,
+        sectionLength: project.sectionLength || defaultConfig.sectionLength,
+        moduleFrequency: project.moduleFrequency || defaultConfig.moduleFrequency,
+        channelsPerSection: project.channelsPerSection || defaultConfig.channelsPerSection,
+        useRopeForTail: project.useRopeForTail === 1
       });
     }
     
-    res.json(formatProjectResponse(project));
+    if (project) {
+      res.json({
+        ...project,
+        useRopeForTail: project.useRopeForTail === 1,
+        isActive: project.isActive === 1
+      });
+    } else {
+      res.status(404).json({ error: "Project not found" });
+    }
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to activate project" });
@@ -556,6 +603,7 @@ app.put("/api/projects/:id", authMiddleware, adminOnly, async (req, res) => {
     const id = requireValidId(req, res);
     if (id === null) return;
     
+    const bodyData = humps.decamelizeKeys(req.body);
     const { 
       project_name, 
       vessel_tag,
@@ -565,7 +613,7 @@ app.put("/api/projects/:id", authMiddleware, adminOnly, async (req, res) => {
       module_frequency,
       channels_per_section,
       use_rope_for_tail
-    } = req.body;
+    } = bodyData;
     
     await runAsync(
       `UPDATE projects SET 
@@ -591,22 +639,30 @@ app.put("/api/projects/:id", authMiddleware, adminOnly, async (req, res) => {
       ]
     );
     
-    const updated = await getAsync("SELECT * FROM projects WHERE id = ?", [id]);
+    const updated = await getOneCamelized("SELECT * FROM projects WHERE id = ?", [id]);
     
     // If this is the active project, also update global config
-    if (updated && updated.is_active === 1) {
+    if (updated && updated.isActive === 1) {
       await saveConfig({ 
-        vesselTag: updated.vessel_tag || defaultConfig.vesselTag,
-        numCables: updated.num_cables || defaultConfig.numCables,
-        sectionsPerCable: updated.sections_per_cable || defaultConfig.sectionsPerCable,
-        sectionLength: updated.section_length || defaultConfig.sectionLength,
-        moduleFrequency: updated.module_frequency || defaultConfig.moduleFrequency,
-        channelsPerSection: updated.channels_per_section || defaultConfig.channelsPerSection,
-        useRopeForTail: updated.use_rope_for_tail === 1
+        vesselTag: updated.vesselTag || defaultConfig.vesselTag,
+        numCables: updated.numCables || defaultConfig.numCables,
+        sectionsPerCable: updated.sectionsPerCable || defaultConfig.sectionsPerCable,
+        sectionLength: updated.sectionLength || defaultConfig.sectionLength,
+        moduleFrequency: updated.moduleFrequency || defaultConfig.moduleFrequency,
+        channelsPerSection: updated.channelsPerSection || defaultConfig.channelsPerSection,
+        useRopeForTail: updated.useRopeForTail === 1
       });
     }
     
-    res.json(formatProjectResponse(updated));
+    if (updated) {
+      res.json({
+        ...updated,
+        useRopeForTail: updated.useRopeForTail === 1,
+        isActive: updated.isActive === 1
+      });
+    } else {
+      res.status(404).json({ error: "Project not found" });
+    }
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update project" });
@@ -668,7 +724,7 @@ app.get("/api/events", async (req, res) => {
     }
     
     sql += " ORDER BY datetime(cleaned_at) DESC";
-    const rows = await allAsync(sql, params);
+    const rows = await getAllCamelized(sql, params);
     res.json(rows);
   } catch (err) {
     console.error(err);
@@ -678,7 +734,10 @@ app.get("/api/events", async (req, res) => {
 
 app.post("/api/events", authMiddleware, adminOnly, async (req, res) => {
   try {
-    const { cable_id, section_index_start, section_index_end, cleaning_method, cleaned_at, cleaning_count, project_number, vessel_tag } = req.body;
+    const bodyData = humps.decamelizeKeys(req.body);
+    const { cable_id, section_index_start, section_index_end, cleaning_method, cleaned_at, cleaning_count, project_number, vessel_tag } = bodyData;
+
+    
     if (
       typeof cable_id !== "string" ||
       !Number.isFinite(section_index_start) ||
@@ -704,7 +763,7 @@ app.post("/api/events", authMiddleware, adminOnly, async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [cable_id, section_index_start, section_index_end, cleaning_method, cleaned_at, Number.isFinite(cleaning_count) ? cleaning_count : 1, finalProjectNumber, finalVesselTag]
     );
-    const created = await getAsync("SELECT * FROM cleaning_events WHERE id = ?", [result.lastID]);
+    const created = await getOneCamelized("SELECT * FROM cleaning_events WHERE id = ?", [result.lastID]);
     res.json(created);
   } catch (err) {
     console.error(err);
@@ -717,7 +776,8 @@ app.put("/api/events/:id", authMiddleware, adminOnly, async (req, res) => {
     const id = requireValidId(req, res);
     if (id === null) return;
 
-    const { cable_id, section_index_start, section_index_end, cleaning_method, cleaned_at, cleaning_count, project_number, vessel_tag } = req.body;
+    const bodyData = humps.decamelizeKeys(req.body);
+    const { cable_id, section_index_start, section_index_end, cleaning_method, cleaned_at, cleaning_count, project_number, vessel_tag } = bodyData;
     if (
       typeof cable_id !== "string" ||
       !Number.isFinite(section_index_start) ||
@@ -728,9 +788,9 @@ app.put("/api/events/:id", authMiddleware, adminOnly, async (req, res) => {
       return res.status(400).json({ error: "Invalid payload" });
     }
 
-    const existing = await getAsync("SELECT * FROM cleaning_events WHERE id = ?", [id]);
-    const finalProjectNumber = project_number !== undefined ? project_number : (existing?.project_number || null);
-    const finalVesselTag = vessel_tag !== undefined ? vessel_tag : (existing?.vessel_tag || defaultConfig.vesselTag);
+    const existing = await getOneCamelized("SELECT * FROM cleaning_events WHERE id = ?", [id]);
+    const finalProjectNumber = project_number !== undefined ? project_number : (existing?.projectNumber || null);
+    const finalVesselTag = vessel_tag !== undefined ? vessel_tag : (existing?.vesselTag || defaultConfig.vesselTag);
 
     await runAsync(
       `UPDATE cleaning_events
@@ -738,7 +798,7 @@ app.put("/api/events/:id", authMiddleware, adminOnly, async (req, res) => {
        WHERE id = ?`,
       [cable_id, section_index_start, section_index_end, cleaning_method, cleaned_at, Number.isFinite(cleaning_count) ? cleaning_count : 1, finalProjectNumber, finalVesselTag, id]
     );
-    const updated = await getAsync("SELECT * FROM cleaning_events WHERE id = ?", [id]);
+    const updated = await getOneCamelized("SELECT * FROM cleaning_events WHERE id = ?", [id]);
       res.json(updated);
     } catch (err) {
     console.error(err);
@@ -805,18 +865,18 @@ app.get("/api/stats", async (req, res) => {
     const totalDistance = totalSectionsCleaned * sectionLength;
 
     // Calculate unique sections cleaned with active/tail breakdown
-    const allEvents = await allAsync(`SELECT cable_id, section_index_start, section_index_end FROM cleaning_events${whereClause}`, params);
+    const allEvents = await getAllCamelized(`SELECT cable_id, section_index_start, section_index_end FROM cleaning_events${whereClause}`, params);
     const uniqueSections = new Set();
     const uniqueActiveSections = new Set();
     const uniqueTailSections = new Set();
 
     for (const evt of allEvents) {
-      for (let s = evt.section_index_start; s <= evt.section_index_end; s++) {
-        uniqueSections.add(`${evt.cable_id}-${s}`);
+      for (let s = evt.sectionIndexStart; s <= evt.sectionIndexEnd; s++) {
+        uniqueSections.add(`${evt.cableId}-${s}`);
         if (s < N) {
-          uniqueActiveSections.add(`${evt.cable_id}-${s}`);
+          uniqueActiveSections.add(`${evt.cableId}-${s}`);
         } else {
-          uniqueTailSections.add(`${evt.cable_id}-${s}`);
+          uniqueTailSections.add(`${evt.cableId}-${s}`);
         }
       }
     }
@@ -867,7 +927,7 @@ app.get("/api/last-cleaned", async (req, res) => {
     }
     
     sql += " ORDER BY datetime(cleaned_at) DESC";
-    const rows = await allAsync(sql, params);
+    const rows = await getAllCamelized(sql, params);
 
     const map = {};
     for (let c = 0; c < cableCount; c++) {
@@ -875,10 +935,10 @@ app.get("/api/last-cleaned", async (req, res) => {
     }
 
     for (const r of rows) {
-      const arr = map[r.cable_id];
+      const arr = map[r.cableId];
       if (!arr) continue;
-      for (let s = r.section_index_start; s <= r.section_index_end && s < totalSections; s++) {
-        if (!arr[s]) arr[s] = r.cleaned_at;   // keep latest per section
+      for (let s = r.sectionIndexStart; s <= r.sectionIndexEnd && s < totalSections; s++) {
+        if (!arr[s]) arr[s] = r.cleanedAt;   // keep latest per section
       }
     }
 
@@ -929,7 +989,7 @@ app.get('/api/last-cleaned-filtered', async (req, res) => {
     
     sql += ' ORDER BY datetime(cleaned_at) DESC';
 
-    const rows = await allAsync(sql, params);
+    const rows = await getAllCamelized(sql, params);
 
     // Initialize map with nulls
     const map = {};
@@ -939,11 +999,11 @@ app.get('/api/last-cleaned-filtered', async (req, res) => {
 
     // Fill with last cleaned date per section (within filter period only)
     for (const r of rows) {
-      const arr = map[r.cable_id];
+      const arr = map[r.cableId];
       if (!arr) continue;
-      for (let s = r.section_index_start; s <= r.section_index_end && s < totalSections; s++) {
+      for (let s = r.sectionIndexStart; s <= r.sectionIndexEnd && s < totalSections; s++) {
         if (!arr[s]) {
-          arr[s] = r.cleaned_at; // keep latest per section in filtered period
+          arr[s] = r.cleanedAt; // keep latest per section in filtered period
         }
       }
     }
@@ -990,11 +1050,11 @@ app.get("/api/stats/filter", async (req, res) => {
     }
 
     sql += " ORDER BY datetime(cleaned_at) DESC";
-    const rows = await allAsync(sql, params);
+    const rows = await getAllCamelized(sql, params);
 
-    const totalSectionsCleaned = rows.reduce((acc, r) => acc + (r.section_index_end - r.section_index_start + 1), 0);
+    const totalSectionsCleaned = rows.reduce((acc, r) => acc + (r.sectionIndexEnd - r.sectionIndexStart + 1), 0);
     const totalDistance = totalSectionsCleaned * sectionLength;
-    const lastCleaning = rows[0]?.cleaned_at || null;
+    const lastCleaning = rows[0]?.cleanedAt || null;
 
     // Calculate unique sections in filtered period with active/tail breakdown
     const uniqueSections = new Set();
@@ -1003,15 +1063,15 @@ app.get("/api/stats/filter", async (req, res) => {
 
     const byMethod = {};
     for (const r of rows) {
-      const len = (r.section_index_end - r.section_index_start + 1) * sectionLength;
-      byMethod[r.cleaning_method] = (byMethod[r.cleaning_method] || 0) + len;
+      const len = (r.sectionIndexEnd - r.sectionIndexStart + 1) * sectionLength;
+      byMethod[r.cleaningMethod] = (byMethod[r.cleaningMethod] || 0) + len;
 
-      for (let s = r.section_index_start; s <= r.section_index_end; s++) {
-        uniqueSections.add(`${r.cable_id}-${s}`);
+      for (let s = r.sectionIndexStart; s <= r.sectionIndexEnd; s++) {
+        uniqueSections.add(`${r.cableId}-${s}`);
         if (s < N) {
-          uniqueActiveSections.add(`${r.cable_id}-${s}`);
+          uniqueActiveSections.add(`${r.cableId}-${s}`);
         } else {
-          uniqueTailSections.add(`${r.cable_id}-${s}`);
+          uniqueTailSections.add(`${r.cableId}-${s}`);
         }
       }
     }
