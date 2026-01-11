@@ -1,12 +1,12 @@
-/* =========================
-PDF Report Generator
-pdf-generator.js
-========================= */
+/**
+ * PDF Report Generator
+ * pdf-generator.js
+ */
 
 // Color map for heatmap
 const AGE_COLOR_MAP = {
-  'never': [200, 200, 200],
-  'fresh': [34, 197, 94],
+  never: [200, 200, 200],
+  fresh: [34, 197, 94],
   '4plus': [250, 204, 21],
   '7plus': [251, 146, 60],
   '10plus': [239, 68, 68],
@@ -20,14 +20,15 @@ async function generatePDFReport() {
     const doc = new jsPDF('landscape');
 
     // Fetch stats from backend
-    let statsUrl = '/api/stats';
+    let statsUrl = 'api/stats';
     if (config.activeProjectNumber) {
       statsUrl += `?project=${encodeURIComponent(config.activeProjectNumber)}`;
     }
     const statsRes = await fetch(statsUrl);
     const stats = await statsRes.json();
 
-    let lastCleanedUrl = '/api/last-cleaned';
+    // Fetch last-cleaned data
+    let lastCleanedUrl = 'api/last-cleaned';
     if (config.activeProjectNumber) {
       lastCleanedUrl += `?project=${encodeURIComponent(config.activeProjectNumber)}`;
     }
@@ -46,14 +47,13 @@ async function generatePDFReport() {
       const params = new URLSearchParams();
       if (startDate) params.append('start', startDate);
       if (endDate) params.append('end', endDate);
-      if (config.activeProjectNumber) {
-        params.append('project', config.activeProjectNumber);
-      }
-      const filterRes = await fetch(`/api/stats/filter?${params}`);
+      if (config.activeProjectNumber) params.append('project', config.activeProjectNumber);
+
+      const filterRes = await fetch(`api/stats/filter?${params}`);
       filteredStats = await filterRes.json();
 
       // Fetch filtered last-cleaned data for filtered heatmap
-      const filteredCleanedRes = await fetch(`/api/last-cleaned-filtered?${params}`);
+      const filteredCleanedRes = await fetch(`api/last-cleaned-filtered?${params}`);
       const filteredCleanedData = await filteredCleanedRes.json();
       filteredLastCleaned = filteredCleanedData.lastCleaned;
     }
@@ -61,21 +61,22 @@ async function generatePDFReport() {
     // Calculate totals using API data
     const totalSections = stats.totalAvailableSections + stats.totalAvailableTail;
     const overallCoverage = totalSections > 0 
-      ? (stats.uniqueCleanedSections / totalSections * 100).toFixed(1) 
+      ? ((stats.uniqueCleanedSections / totalSections) * 100).toFixed(1) 
       : 0;
     const activeCoverage = stats.totalAvailableSections > 0 
-      ? (stats.activeCleanedSections / stats.totalAvailableSections * 100).toFixed(1) 
+      ? ((stats.activeCleanedSections / stats.totalAvailableSections) * 100).toFixed(1) 
       : 0;
     const tailCoverage = stats.totalAvailableTail > 0 
-      ? (stats.tailCleanedSections / stats.totalAvailableTail * 100).toFixed(1) 
+      ? ((stats.tailCleanedSections / stats.totalAvailableTail) * 100).toFixed(1) 
       : 0;
 
-    // PDF Header
+    // === PDF Header ===
     doc.setFontSize(20);
     doc.text('Streamer Maintenance Report', 148, 15, { align: 'center' });
     doc.setFontSize(10);
     const reportDate = new Date().toLocaleString();
     doc.text(`Generated: ${reportDate}`, 148, 22, { align: 'center' });
+
     if (config.activeProjectNumber) {
       doc.setFontSize(10);
       doc.setTextColor(100, 100, 100);
@@ -83,7 +84,7 @@ async function generatePDFReport() {
       doc.setTextColor(0, 0, 0); // Reset color
     }
 
-    // Configuration Section
+    // === Configuration Section ===
     let yPos = 35;
     doc.setFontSize(14);
     doc.text('Configuration', 20, yPos);
@@ -95,7 +96,7 @@ async function generatePDFReport() {
     yPos += 6;
     doc.text(`Tail Sections: ${config.useRopeForTail ? 'Using rope (no tails)' : '5 tail sections added'}`, 25, yPos);
 
-    // Overall Statistics
+    // === Overall Statistics ===
     yPos += 15;
     doc.setFontSize(14);
     doc.text('Overall Statistics', 20, yPos);
@@ -108,18 +109,20 @@ async function generatePDFReport() {
     doc.text(`Overall Coverage: ${overallCoverage}% (${stats.uniqueCleanedSections}/${totalSections} sections)`, 25, yPos);
     yPos += 6;
     doc.text(`Active Section Coverage: ${activeCoverage}% (${stats.activeCleanedSections}/${stats.totalAvailableSections} sections)`, 25, yPos);
+    
     if (stats.totalAvailableTail > 0) {
       yPos += 6;
       doc.text(`Tail Section Coverage: ${tailCoverage}% (${stats.tailCleanedSections}/${stats.totalAvailableTail} sections)`, 25, yPos);
     }
 
-    // Filtered Statistics (if applicable)
+    // === Filtered Statistics (if applicable) ===
     if (filteredStats) {
       yPos += 15;
       doc.setFontSize(14);
       doc.text('Filtered Period Statistics', 20, yPos);
       yPos += 8;
       doc.setFontSize(10);
+      
       if (startDate) {
         doc.text(`From: ${startDate}`, 25, yPos);
         yPos += 6;
@@ -128,23 +131,27 @@ async function generatePDFReport() {
         doc.text(`To: ${endDate}`, 25, yPos);
         yPos += 6;
       }
+      
       doc.text(`Events: ${filteredStats.events}`, 25, yPos);
       yPos += 6;
       doc.text(`Distance: ${fmtKm(filteredStats.totalDistance)}`, 25, yPos);
       yPos += 6;
+
       const filteredTotal = filteredStats.uniqueCleanedSections;
       const filteredCoverage = totalSections > 0 
-        ? (filteredTotal / totalSections * 100).toFixed(1) 
+        ? ((filteredTotal / totalSections) * 100).toFixed(1) 
         : 0;
       doc.text(`Sections Cleaned: ${filteredTotal} (${filteredCoverage}%)`, 25, yPos);
       yPos += 6;
+
       const filteredActivePct = stats.totalAvailableSections > 0 
-        ? (filteredStats.activeCleanedSections / stats.totalAvailableSections * 100).toFixed(1) 
+        ? ((filteredStats.activeCleanedSections / stats.totalAvailableSections) * 100).toFixed(1) 
         : 0;
       doc.text(`Active Coverage: ${filteredActivePct}% (${filteredStats.activeCleanedSections}/${stats.totalAvailableSections})`, 25, yPos);
+
       if (stats.totalAvailableTail > 0) {
         yPos += 6;
-        const filteredTailPct = (filteredStats.tailCleanedSections / stats.totalAvailableTail * 100).toFixed(1);
+        const filteredTailPct = ((filteredStats.tailCleanedSections / stats.totalAvailableTail) * 100).toFixed(1);
         doc.text(`Tail Coverage: ${filteredTailPct}% (${filteredStats.tailCleanedSections}/${stats.totalAvailableTail})`, 25, yPos);
       }
 
@@ -164,28 +171,29 @@ async function generatePDFReport() {
       }
     }
 
-    // ALL HISTORY Heatmap (always included)
+    // === ALL HISTORY Heatmap (always included) ===
     doc.addPage('landscape');
-    addHeatmapPage(doc, lastCleaned, 'All History');
+    await addHeatmapPage(doc, lastCleaned, 'All History');
 
-    // FILTERED Heatmap (only if filters are active)
+    // === FILTERED Heatmap (only if filters are active) ===
     if (filteredLastCleaned && (startDate || endDate)) {
       doc.addPage('landscape');
-      const filterLabel = startDate && endDate 
+      const filterLabel = (startDate && endDate) 
         ? `${startDate} to ${endDate}` 
         : startDate 
           ? `From ${startDate}` 
           : `Until ${endDate}`;
-      addHeatmapPage(doc, filteredLastCleaned, `Filtered Period: ${filterLabel}`);
+      await addHeatmapPage(doc, filteredLastCleaned, `Filtered Period (${filterLabel})`);
     }
 
-    // All Events
+    // === All Events ===
     doc.addPage('landscape');
     await addAllEventsSection(doc);
 
     // Save
     const filename = `streamer-maintenance-report-${new Date().toISOString().split('T')[0]}.pdf`;
     doc.save(filename);
+
     setStatus(statusEl, 'PDF report generated successfully!', false);
   } catch (err) {
     console.error('PDF generation error:', err);
@@ -193,30 +201,13 @@ async function generatePDFReport() {
   }
 }
 
-
-// Helper: Calculate EB range for a specific section range
-function getEBRangeForSection(sectionIndex) {
-  const moduleFreq = config.moduleFrequency || 4;
-  const N = config.sectionsPerCable;
-
-  // Determine which module this section is near
-  if (sectionIndex === 0) return formatEB(1);
-  if (sectionIndex === N - 1) return formatEB(Math.floor((N - 1) / moduleFreq) + 1);
-
-  if (sectionIndex % moduleFreq === 0) {
-    const moduleNum = Math.floor(sectionIndex / moduleFreq) + 1;
-    return formatEB(moduleNum);
-  }
-
-  // Find nearest module
-  const nearestModule = Math.floor(sectionIndex / moduleFreq) + 1;
-  return formatEB(nearestModule);
-}
-
-// Helper: Add heatmap page with HORIZONTAL orientation
-// Cables as columns (RIGHT TO LEFT: S12, S11... S2, S1)
-// Sections as rows (AS01-AS107 down left)
-function addHeatmapPage(doc, lastCleaned, title = 'Cleaning Status Heatmap') {
+/**
+ * Helper: Add heatmap page with HORIZONTAL orientation
+ * Cables as columns (RIGHT TO LEFT: S12, S11... S2, S1)
+ * Sections as rows (AS01-AS107 down left)
+ */
+async function addHeatmapPage(doc, lastCleaned, title) {
+  // === Cleaning Status Heatmap ===
   let yPos = 15;
   doc.setFontSize(16);
   doc.text(title, 148, yPos, { align: 'center' });
@@ -234,10 +225,12 @@ function addHeatmapPage(doc, lastCleaned, title = 'Cleaning Status Heatmap') {
   const rightMargin = 35; // Space for EB range labels
   const topMargin = yPos + 5;
   const bottomMargin = 25; // Space for legend
+
   const availableWidth = pageWidth - leftMargin - rightMargin;
   const availableHeight = pageHeight - topMargin - bottomMargin;
 
-  // Calculate cell dimensions (Cables as columns ~12 cables, sections as rows ~107 sections)
+  // Calculate cell dimensions
+  // Cables as columns (12 cables), sections as rows (107+ sections)
   const cellWidth = Math.min(availableWidth / numCables, 18);
   const cellHeight = Math.min(availableHeight / totalSections, 1.2);
 
@@ -247,6 +240,11 @@ function addHeatmapPage(doc, lastCleaned, title = 'Cleaning Status Heatmap') {
   // Center the heatmap horizontally
   const startX = leftMargin + 15; // Space for section labels
   const startY = topMargin + 8; // Space for cable labels
+
+  // Pre-fetch all EB ranges for the sections
+  const ebRanges = await Promise.all(
+    Array.from({ length: totalSections }, (_, s) => getEBRange(s, s))
+  );
 
   // Draw cable numbers at top (RIGHT TO LEFT: S12, S11, S10... S2, S1)
   doc.setFontSize(8);
@@ -276,7 +274,7 @@ function addHeatmapPage(doc, lastCleaned, title = 'Cleaning Status Heatmap') {
       const cableIndex = numCables - 1 - c;
       const cableId = `cable-${cableIndex}`;
       const cableData = lastCleaned[cableId];
-      const lastCleanedDate = cableData[s];
+      const lastCleanedDate = cableData?.[s];
 
       let days = null;
       if (lastCleanedDate) {
@@ -288,6 +286,7 @@ function addHeatmapPage(doc, lastCleaned, title = 'Cleaning Status Heatmap') {
 
       doc.setFillColor(color[0], color[1], color[2]);
       doc.rect(startX + c * cellWidth, rowY, cellWidth, cellHeight, 'F');
+
       doc.setDrawColor(240, 240, 240);
       doc.setLineWidth(0.05);
       doc.rect(startX + c * cellWidth, rowY, cellWidth, cellHeight, 'S');
@@ -295,7 +294,7 @@ function addHeatmapPage(doc, lastCleaned, title = 'Cleaning Status Heatmap') {
 
     // EB label on right side - show every 10 sections
     if (s % 10 === 0 || s === 0 || s === totalSections - 1) {
-      const ebLabel = getEBRangeForSection(s);
+      const ebLabel = ebRanges[s];
       doc.setFontSize(5);
       doc.setTextColor(80, 80, 80);
       doc.text(ebLabel, startX + heatmapWidth + 3, rowY + cellHeight / 2 + 0.8);
@@ -332,82 +331,85 @@ function addHeatmapPage(doc, lastCleaned, title = 'Cleaning Status Heatmap') {
   }
 }
 
-// Helper: Add all events section with EB range column
+/**
+ * Helper: Add all events section with EB range column
+ */
 async function addAllEventsSection(doc) {
   let yPos = 20;
-  
+
   // Fetch events from API with project filter
-  let eventsUrl = '/api/events';
+  let eventsUrl = 'api/events';
   if (config.activeProjectNumber) {
     eventsUrl += `?project=${encodeURIComponent(config.activeProjectNumber)}`;
   }
-  
   const eventsRes = await fetch(eventsUrl);
   const eventsToShow = await eventsRes.json();
-  
+
   doc.setFontSize(14);
   doc.text(`All Cleaning Events (${eventsToShow.length} total)`, 20, yPos);
   yPos += 8;
   doc.setFontSize(8);
 
-  if (eventsToShow.length > 0) {
-    // Table headers with EB Range column
-    const drawHeaders = (y) => {
-      doc.text('Date', 15, y);
-      doc.text('Cable', 40, y);
-      doc.text('Sections', 55, y);
-      doc.text('EB Range', 85, y);
-      doc.text('Method', 120, y);
-      doc.text('Length', 145, y);
-      doc.text('Count', 165, y);
-    };
+  if (eventsToShow.length === 0) {
+    doc.text('No cleaning events recorded.', 25, yPos);
+    return;
+  }
 
-    drawHeaders(yPos);
-    yPos += 5;
-    doc.line(15, yPos, 175, yPos);
-    yPos += 5;
+  // Table headers with EB Range column
+  const drawHeaders = (y) => {
+    doc.text('Date', 15, y);
+    doc.text('Cable', 40, y);
+    doc.text('Sections', 55, y);
+    doc.text('EB Range', 85, y);
+    doc.text('Method', 120, y);
+    doc.text('Length', 145, y);
+    doc.text('Count', 165, y);
+  };
 
-    // Fetch all EB ranges in parallel for performance
-    const ebRanges = await Promise.all(
-      eventsToShow.map(evt => getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd))
-    );
+  drawHeaders(yPos);
+  yPos += 5;
+  doc.line(15, yPos, 175, yPos);
+  yPos += 5;
 
-    for (let i = 0; i < eventsToShow.length; i++) {
-      const evt = eventsToShow[i];
+  // Fetch all EB ranges in parallel for performance
+  const ebRanges = await Promise.all(
+    eventsToShow.map(evt => getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd))
+  );
 
-      if (yPos > 195) {
-        doc.addPage('landscape');
-        yPos = 20;
-        drawHeaders(yPos);
-        yPos += 5;
-        doc.line(15, yPos, 175, yPos);
-        yPos += 5;
-      }
+  for (let i = 0; i < eventsToShow.length; i++) {
+    const evt = eventsToShow[i];
 
-      const date = new Date(evt.cleanedAt).toLocaleDateString();
-      const streamer = `S${toStreamerNum(evt.cableId)}`;
-      const sections = `${formatAS(evt.sectionIndexStart)} - ${formatAS(evt.sectionIndexEnd)}`;
-      const ebRange = ebRanges[i];
-      const distance = `${eventDistance(evt)}m`;
-      const count = evt.cleaningCount || 1;
-
-      doc.setFontSize(7);
-      doc.text(date, 15, yPos);
-      doc.text(streamer, 40, yPos);
-      doc.text(sections, 55, yPos);
-      doc.text(ebRange, 85, yPos);
-      doc.text(evt.cleaningMethod, 120, yPos);
-      doc.text(distance, 145, yPos);
-      doc.text(String(count), 165, yPos);
+    if (yPos > 195) {
+      doc.addPage('landscape');
+      yPos = 20;
+      drawHeaders(yPos);
+      yPos += 5;
+      doc.line(15, yPos, 175, yPos);
       yPos += 5;
     }
-  } else {
-    doc.text('No cleaning events recorded.', 25, yPos);
+
+    const date = new Date(evt.cleanedAt).toLocaleDateString();
+    const streamer = `S${toStreamerNum(evt.cableId)}`;
+    const sections = `${formatAS(evt.sectionIndexStart)} - ${formatAS(evt.sectionIndexEnd)}`;
+    const ebRange = ebRanges[i];
+    const distance = `${eventDistance(evt)}m`;
+    const count = evt.cleaningCount || 1;
+
+    doc.setFontSize(7);
+    doc.text(date, 15, yPos);
+    doc.text(streamer, 40, yPos);
+    doc.text(sections, 55, yPos);
+    doc.text(ebRange, 85, yPos);
+    doc.text(evt.cleaningMethod, 120, yPos);
+    doc.text(distance, 145, yPos);
+    doc.text(String(count), 165, yPos);
+    yPos += 5;
   }
 }
 
-
-// Initialize PDF button
+/**
+ * Initialize PDF button
+ */
 function initPDFGeneration() {
   const pdfBtn = safeGet('generatePdfBtn');
   if (pdfBtn) {
