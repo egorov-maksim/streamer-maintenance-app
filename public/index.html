@@ -53,7 +53,7 @@
         
         <button type="submit" class="login-btn" id="login-submit">
           <span class="btn-text">Sign In</span>
-          <span class="btn-loader" style="display: none;">⏳</span>
+          <span class="btn-loader hidden">⏳</span>
         </button>
       </form>
       
@@ -68,7 +68,7 @@
   </div>
 
   <!-- Main App Container (hidden until logged in) -->
-  <div id="app-container" class="app-container" style="display: none;">
+  <div id="app-container" class="app-container hidden">
     
     <!-- User Header Bar -->
     <div class="user-header">
@@ -108,7 +108,7 @@
 
            <!-- Unified Project & Streamer Configuration -->
            <section class="card" id="project-config-section">
-            <h2 class="card-title project-header" style="cursor: pointer; user-select: none;">
+            <h2 class="card-title project-header clickable">
               <span>📋 Project & Streamer Configuration</span>
               <span class="collapse-icon" id="project-collapse-icon">▼</span>
             </h2>
@@ -121,24 +121,24 @@
                   <span class="active-project-name" id="active-project-name">No project selected</span>
                   <span class="active-project-vessel" id="active-project-vessel"></span>
                 </div>
-                <button class="btn btn-outline btn-sm" id="btn-clear-project" style="display: none;">Clear</button>
+                <button class="btn btn-outline btn-sm hidden" id="btn-clear-project">Clear</button>
               </div>
               
               <!-- Project Selector -->
-              <div class="grid grid-2" style="margin-top: 16px;">
+              <div class="grid grid-2 mt-16">
                 <label>Select Project
                   <select id="project-selector">
                     <option value="">-- All Projects (No Filter) --</option>
                   </select>
                 </label>
-                <div class="actions" style="align-self: flex-end;">
+                <div class="actions actions-align-end">
                   <button class="btn btn-primary" id="btn-activate-project">🎯 Set as Active</button>
                 </div>
               </div>
               
               <!-- Streamer Configuration (tied to active project) -->
-              <div class="streamer-config-section" style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
-                <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">⚙️ Streamer Configuration <span id="config-project-label" style="color: #6b7280; font-weight: 400;"></span></h3>
+              <div class="streamer-config-section section-divider">
+                <h3 class="section-heading">⚙️ Streamer Configuration <span id="config-project-label" class="text-muted font-normal"></span></h3>
                 <div class="grid grid-3">
                   <label>Number of Streamers <input type="number" id="cfg-numCables" min="1" value="12"></label>
                   <label>Active Sections per Streamer <input type="number" id="cfg-sectionsPerCable" min="1" value="107"></label>
@@ -152,45 +152,45 @@
                     </select>
                   </label>
                 </div>
-                <div class="actions" style="margin-top: 12px;">
+                <div class="actions mt-12">
                   <button class="btn btn-primary admin-only" id="btn-save-config">💾 Save Configuration</button>
                   <span id="config-status" class="status"></span>
                 </div>
-                <p style="font-size: 13px; color: #6b7280; margin-top: 8px;">
+                <p class="info-text-sm">
                   <strong>Note:</strong> Configuration is saved per project. eBird appear after 1st section, then every N sections.
                 </p>
               </div>
               
               <!-- Create New Project -->
-              <div class="project-create-section admin-only" style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
-                <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">➕ Create New Project</h3>
+              <div class="project-create-section admin-only section-divider">
+                <h3 class="section-heading">➕ Create New Project</h3>
                 <div class="grid grid-3">
                   <label>Project Number <input type="text" id="new-project-number" placeholder="e.g., PRJ-2026-001"></label>
                   <label>Project Name <input type="text" id="new-project-name" placeholder="e.g., North Sea Survey"></label>
                   <label>Vessel Tag <input type="text" id="new-project-vessel" value="TTN" placeholder="e.g., TTN"></label>
                 </div>
-                <p style="font-size: 12px; color: #6b7280; margin-top: 8px;">
+                <p class="info-text-sm">
                   New projects inherit the current streamer configuration. You can modify it after creation.
                 </p>
-                <div class="actions" style="margin-top: 12px;">
+                <div class="actions mt-12">
                   <button class="btn btn-secondary" id="btn-create-project">➕ Create Project</button>
                   <span id="project-status" class="status"></span>
                 </div>
               </div>
               
               <!-- Project List -->
-              <div class="project-list-section" style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
-                <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">📁 All Projects</h3>
+              <div class="project-list-section section-divider">
+                <h3 class="section-heading">📁 All Projects</h3>
                 <div id="project-list" class="project-list"></div>
               </div>
               
               <!-- Database Backup & Restore (Admin Only) -->
-              <div class="backup-section admin-only" style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
-                <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">💾 Database Backup & Restore</h3>
-                <p style="font-size: 13px; color: #6b7280; margin-bottom: 12px;">
+              <div class="backup-section admin-only section-divider">
+                <h3 class="section-heading">💾 Database Backup & Restore</h3>
+                <p class="info-text mb-12">
                   Database is automatically backed up every 12 hours. You can create manual backups or restore from previous backups.
                 </p>
-                <div class="actions" style="margin-bottom: 12px;">
+                <div class="actions mb-12">
                   <button class="btn btn-secondary" id="btn-create-backup">💾 Create Backup Now</button>
                   <button class="btn btn-outline" id="btn-refresh-backups">🔄 Refresh List</button>
                   <span id="backup-status" class="status"></span>
@@ -207,30 +207,30 @@
       <!-- Method Selection -->
       <section class="card">
         <h2 class="card-title">🧹 Cleaning Method Selection</h2>
-        <p style="font-size: 14px; margin-bottom: 12px">Select a cleaning method to use</p>
+        <p class="mb-12">Select a cleaning method to use</p>
         <div class="method-tiles">
           <div class="method-tile active" data-method="rope">
-            <div style="font-size: 32px">🪢</div>
+            <div class="method-icon">🪢</div>
             <div class="method-name">Rope</div>
           </div>
           <div class="method-tile" data-method="scraper">
-            <div style="font-size: 32px">🛠️</div>
+            <div class="method-icon">🛠️</div>
             <div class="method-name">Scraper</div>
           </div>
           <div class="method-tile" data-method="scraper-rope">
-            <div style="font-size: 32px">🪢🛠️</div>
+            <div class="method-icon">🪢🛠️</div>
             <div class="method-name">Scraper&Rope</div>
           </div>
           <div class="method-tile" data-method="scue">
-            <div style="font-size: 32px">⚙️</div>
+            <div class="method-icon">⚙️</div>
             <div class="method-name">SCUE</div>
           </div>
           <div class="method-tile" data-method="knife">
-            <div style="font-size: 32px">🔪</div>
+            <div class="method-icon">🔪</div>
             <div class="method-name">Knife</div>
           </div>
         </div>
-        <p style="margin-top: 12px; font-size: 13px"><strong>How to mark sections:</strong> Click and drag across active section cells to mark them as cleaned.</p>
+        <p class="info-text mt-12"><strong>How to mark sections:</strong> Click and drag across active section cells to mark them as cleaned.</p>
       </section>
 
       <!-- Heat Map -->
@@ -238,14 +238,14 @@
         <h2 class="card-title">🗺️ Streamers Detail View</h2>
 
         <!-- Legend -->
-        <div class="legend" style="margin-bottom: 16px">
-          <div class="badge"><span class="legend-swatch" style="background: var(--heat-fresh)"></span> 0 day (fresh)</div>
-          <div class="badge"><span class="legend-swatch" style="background: var(--heat-4plus)"></span> 4+ days</div>
-          <div class="badge"><span class="legend-swatch" style="background: var(--heat-7plus)"></span> 7+ days</div>
-          <div class="badge"><span class="legend-swatch" style="background: var(--heat-10plus)"></span> 10–13 days</div>
-          <div class="badge"><span class="legend-swatch" style="background: var(--heat-14plus)"></span> 14+ days (needs cleaning)</div>
-          <div class="badge"><span class="legend-swatch" style="background: var(--heat-never)"></span> Never cleaned</div>
-          <div class="badge"><span class="legend-swatch" style="background: #fbbf24; border: 2px solid #f59e0b;"></span> EB Module</div>
+        <div class="legend mb-16">
+          <div class="badge"><span class="legend-swatch legend-swatch-fresh"></span> 0 day (fresh)</div>
+          <div class="badge"><span class="legend-swatch legend-swatch-4plus"></span> 4+ days</div>
+          <div class="badge"><span class="legend-swatch legend-swatch-7plus"></span> 7+ days</div>
+          <div class="badge"><span class="legend-swatch legend-swatch-10plus"></span> 10–13 days</div>
+          <div class="badge"><span class="legend-swatch legend-swatch-14plus"></span> 14+ days (needs cleaning)</div>
+          <div class="badge"><span class="legend-swatch legend-swatch-never"></span> Never cleaned</div>
+          <div class="badge"><span class="legend-swatch legend-swatch-module"></span> EB Module</div>
         </div>
 
         <div id="heatmap-container" class="hm-grid-container"></div>
@@ -254,10 +254,10 @@
       <!-- History Log -->
       <section id="log-section" class="card">
         <h2 class="card-title">📜 Cleaning History Log</h2>
-        <div class="actions" style="margin-bottom: 12px">
+        <div class="actions mb-12">
           <button class="btn btn-secondary" id="btn-export-csv">📥 Export CSV</button>
           <button class="btn btn-secondary" id="btn-import-csv">📤 Import CSV</button>
-          <input type="file" id="csv-input" accept=".csv" style="display:none">
+          <input type="file" id="csv-input" accept=".csv" class="hidden">
           <button class="btn btn-danger" id="btn-clear-all">🗑️ Clear All Events</button>
         </div>
         <textarea id="csv-output" class="csv-output" readonly></textarea>
@@ -346,7 +346,7 @@
           </div>
           <div class="kpi">
             <div class="kpi-title">Last Cleaning</div>
-            <div class="kpi-value" id="kpi-last" style="font-size: 14px">—</div>
+            <div class="kpi-value text-sm" id="kpi-last">—</div>
             <div class="kpi-sub" id="kpi-last-sub">No events</div>
           </div>
         </div>
@@ -354,7 +354,7 @@
         <div id="method-breakdown" class="method-breakdown"></div>
       </section>
 
-      <div class="actions" style="margin-top: 20px;">
+      <div class="actions mt-20">
         <button id="generatePdfBtn" class="btn btn-primary">
           📄 Generate PDF Report
         </button>
@@ -521,7 +521,7 @@
         <div class="event-details">
           <div class="detail-row">
             <span class="detail-label">Action</span>
-            <span class="detail-value" style="color: #dc2626; font-weight: 700;">
+            <span class="detail-value text-danger-strong">
               DELETE ALL EVENTS
             </span>
           </div>
@@ -535,14 +535,14 @@
           </div>
         </div>
         
-        <p style="margin-top: 16px; font-size: 13px; color: #7f1d1d; font-weight: 600;">
-          Type <strong style="background: #fef2f2; padding: 2px 8px; border-radius: 4px;">DELETE</strong> to confirm:
+        <p class="delete-warning-text">
+          Type <strong class="delete-emphasis">DELETE</strong> to confirm:
         </p>
         <input 
           type="text" 
           id="clear-all-confirm-input" 
           placeholder="Type DELETE" 
-          style="width: 100%; margin-top: 8px;"
+          class="w-full mt-8"
         />
       </div>
       

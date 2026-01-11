@@ -104,7 +104,8 @@ function safeGet(id) {
 function setStatus(el, msg, isError = false) {
   if (!el) return;
   el.textContent = msg;
-  el.style.color = isError ? "#ef4444" : "#2563eb";
+  el.classList.toggle('status-error', isError);
+  el.classList.toggle('status-info', !isError);
   if (msg) setTimeout(() => { el.textContent = ""; }, 4000);
 }
 
@@ -480,15 +481,16 @@ async function handleLogin(event) {
   
   if (!username || !password) {
     errorDiv.textContent = 'Please enter username and password';
-    errorDiv.style.display = 'block';
+    errorDiv.classList.remove('hidden');
     return;
   }
   
   // Show loading state
-  btnText.style.display = 'none';
-  btnLoader.style.display = 'inline';
+  btnText.classList.add('hidden');
+  btnLoader.classList.remove('hidden');
+  btnLoader.classList.add('inline');
   submitBtn.disabled = true;
-  errorDiv.style.display = 'none';
+  errorDiv.classList.add('hidden');
   
   try {
     const res = await fetch('api/login', {
@@ -504,15 +506,17 @@ async function handleLogin(event) {
       showApp();
     } else {
       errorDiv.textContent = data.error || 'Login failed';
-      errorDiv.style.display = 'block';
+      errorDiv.classList.remove('hidden');
     }
   } catch (err) {
     console.error('Login error:', err);
     errorDiv.textContent = 'Connection error. Please try again.';
-    errorDiv.style.display = 'block';
+    errorDiv.classList.remove('hidden');
   } finally {
-    btnText.style.display = 'inline';
-    btnLoader.style.display = 'none';
+    btnText.classList.remove('hidden');
+    btnText.classList.add('inline');
+    btnLoader.classList.add('hidden');
+    btnLoader.classList.remove('inline');
     submitBtn.disabled = false;
   }
 }
@@ -532,8 +536,9 @@ async function handleLogout() {
 }
 
 function showLogin() {
-  safeGet('login-page').style.display = 'flex';
-  safeGet('app-container').style.display = 'none';
+  safeGet('login-page').classList.add('flex');
+  safeGet('login-page').classList.remove('hidden');
+  safeGet('app-container').classList.add('hidden');
   
   // Clear form
   const usernameInput = safeGet('login-username');
@@ -542,12 +547,12 @@ function showLogin() {
   
   if (usernameInput) usernameInput.value = '';
   if (passwordInput) passwordInput.value = '';
-  if (errorDiv) errorDiv.style.display = 'none';
+  if (errorDiv) errorDiv.classList.add('hidden');
 }
 
 function showApp() {
-  safeGet('login-page').style.display = 'none';
-  safeGet('app-container').style.display = 'block';
+  safeGet('login-page').classList.add('hidden');
+  safeGet('app-container').classList.remove('hidden');
   
   // Update user display
   const userDisplayName = safeGet('user-display-name');
@@ -575,13 +580,13 @@ function updateUIForRole() {
   // Hide/show admin-only elements
   const adminOnlyElements = document.querySelectorAll('.admin-only');
   adminOnlyElements.forEach(el => {
-    el.style.display = isAdminUser ? '' : 'none';
+    el.classList.toggle('hidden', !isAdminUser);
   });
   
   // Disable buttons for viewers
   const editDeleteBtns = document.querySelectorAll('.btn-edit, .btn-delete');
   editDeleteBtns.forEach(btn => {
-    btn.style.display = isAdminUser ? '' : 'none';
+    btn.classList.toggle('hidden', !isAdminUser);
   });
   
   // Hide action column header for viewers
@@ -590,13 +595,13 @@ function updateUIForRole() {
   
   // Show/hide manual entry section, clear all button, etc.
   const btnClearAll = safeGet('btn-clear-all');
-  if (btnClearAll) btnClearAll.style.display = isAdminUser ? '' : 'none';
+  if (btnClearAll) btnClearAll.classList.toggle('hidden', !isAdminUser);
   
   const btnSaveConfig = safeGet('btn-save-config');
-  if (btnSaveConfig) btnSaveConfig.style.display = isAdminUser ? '' : 'none';
+  if (btnSaveConfig) btnSaveConfig.classList.toggle('hidden', !isAdminUser);
   
   const btnAddEvent = safeGet('btn-add-event');
-  if (btnAddEvent) btnAddEvent.style.display = isAdminUser ? '' : 'none';
+  if (btnAddEvent) btnAddEvent.classList.toggle('hidden', !isAdminUser);
   
   // Disable config inputs for viewers
   const configInputs = document.querySelectorAll('#cfg-numCables, #cfg-sectionsPerCable, #cfg-sectionLength, #cfg-moduleFrequency, #cfg-channelsPerSection, #cfg-useRopeForTail');
@@ -612,18 +617,18 @@ function updateUIForRole() {
   
   // Project management buttons and inputs
   const btnCreateProject = safeGet('btn-create-project');
-  if (btnCreateProject) btnCreateProject.style.display = isAdminUser ? '' : 'none';
+  if (btnCreateProject) btnCreateProject.classList.toggle('hidden', !isAdminUser);
   
   const btnActivateProject = safeGet('btn-activate-project');
-  if (btnActivateProject) btnActivateProject.style.display = isAdminUser ? '' : 'none';
+  if (btnActivateProject) btnActivateProject.classList.toggle('hidden', !isAdminUser);
   
   const btnClearProject = safeGet('btn-clear-project');
   if (btnClearProject && isAdminUser) {
     // Only show if there's an active project
     const activeProject = projects.find(p => p.isActive === true);
-    btnClearProject.style.display = activeProject ? '' : 'none';
+    btnClearProject.classList.toggle('hidden', !activeProject);
   } else if (btnClearProject) {
-    btnClearProject.style.display = 'none';
+    btnClearProject.classList.add('hidden');
   }
   
   // Disable project creation inputs for viewers
@@ -1104,12 +1109,12 @@ function updateActiveProjectBanner() {
       : activeProject.projectNumber;
     vesselEl.textContent = `[${activeProject.vesselTag || 'TTN'}]`;
     banner.classList.add('has-project');
-    if (clearBtn && isAdmin()) clearBtn.style.display = '';
+    if (clearBtn && isAdmin()) clearBtn.classList.remove('hidden');
   } else {
     nameEl.textContent = 'No project selected';
     vesselEl.textContent = '';
     banner.classList.remove('has-project');
-    if (clearBtn) clearBtn.style.display = 'none';
+    if (clearBtn) clearBtn.classList.add('hidden');
   }
 }
 
