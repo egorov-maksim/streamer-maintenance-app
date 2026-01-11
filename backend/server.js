@@ -155,7 +155,8 @@ const defaultConfig = {
 // config helpers
 async function loadConfig() {
   const rows = await allAsync("SELECT key, value FROM app_config");
-  const config = { ...defaultConfig };
+  // Start with defaultConfig converted to camelCase
+  const config = humps.camelizeKeys(defaultConfig);
   for (const row of rows) {
     const v = row.value;
     // Convert snake_case key to camelCase
@@ -419,6 +420,14 @@ app.get("/api/eb-range", async (req, res) => {
 app.get("/api/config", async (_req, res) => {
   try {
     const config = await loadConfig();
+    
+    // Include deployment_date and is_coated from active project if available
+    const activeProject = await getOneCamelized("SELECT * FROM projects WHERE is_active = 1");
+    if (activeProject) {
+      config.deploymentDate = activeProject.deploymentDate || null;
+      config.isCoated = activeProject.isCoated === 1 || activeProject.isCoated === true;
+    }
+    
     res.json(humps.camelizeKeys(config));
   } catch (err) {
     console.error(err);
@@ -430,20 +439,71 @@ app.put("/api/config", authMiddleware, adminOnly, async (req, res) => {
   try {
     const bodyData = humps.decamelizeKeys(req.body);
     const partial = {
-      numCables: toInt(bodyData?.num_cables, defaultConfig.numCables),
-      sectionsPerCable: toInt(bodyData?.sections_per_cable, defaultConfig.sectionsPerCable),
-      sectionLength: toInt(bodyData?.section_length, defaultConfig.sectionLength),
-      moduleFrequency: toInt(bodyData?.module_frequency, defaultConfig.moduleFrequency),
+      numCables: toInt(bodyData?.num_cables, defaultConfig.num_cables),
+      sectionsPerCable: toInt(bodyData?.sections_per_cable, defaultConfig.sections_per_cable),
+      sectionLength: toInt(bodyData?.section_length, defaultConfig.section_length),
+      moduleFrequency: toInt(bodyData?.module_frequency, defaultConfig.module_frequency),
       useRopeForTail: Boolean(bodyData?.use_rope_for_tail),
-      channelsPerSection: toInt(bodyData?.channels_per_section, defaultConfig.channelsPerSection),
-      vesselTag: bodyData?.vessel_tag || defaultConfig.vesselTag,
+      channelsPerSection: toInt(bodyData?.channels_per_section, defaultConfig.channels_per_section),
+      vesselTag: bodyData?.vessel_tag || defaultConfig.vessel_tag,
     };
     // Handle activeProjectNumber separately (can be null)
     if (bodyData?.active_project_number !== undefined) {
       partial.activeProjectNumber = bodyData.active_project_number || null;
     }
-    await saveConfig(partial);
+    // Handle deployment_date and is_coated
+    if (bodyData?.deployment_date !== undefined) {
+      partial.deploymentDate = bodyData.deployment_date || null;
+    }
+    if (bodyData?.is_coated !== undefined) {
+      partial.isCoated = Boolean(bodyData.is_coated);
+    }
+    
+    // If there's an active project, update the project instead of global config
+    const activeProject = await getOneCamelized("SELECT * FROM projects WHERE is_active = 1");
+    if (activeProject) {
+      // Update the active project with these config values
+      await runAsync(
+        `UPDATE projects SET 
+          num_cables = ?,
+          sections_per_cable = ?,
+          section_length = ?,
+          module_frequency = ?,
+          channels_per_section = ?,
+          use_rope_for_tail = ?,
+          vessel_tag = ?,
+          deployment_date = ?,
+          is_coated = ?
+        WHERE id = ?`,
+        [
+          partial.numCables,
+          partial.sectionsPerCable,
+          partial.sectionLength,
+          partial.moduleFrequency,
+          partial.channelsPerSection,
+          partial.useRopeForTail ? 1 : 0,
+          partial.vesselTag,
+          partial.deploymentDate || null,
+          partial.isCoated ? 1 : 0,
+          activeProject.id
+        ]
+      );
+    } else {
+      // No active project, save to global config
+      await saveConfig(partial);
+    }
+    
     const config = await loadConfig();
+    
+    // Include deployment_date and is_coated from active project if available
+    if (activeProject) {
+      const updatedProject = await getOneCamelized("SELECT * FROM projects WHERE id = ?", [activeProject.id]);
+      if (updatedProject) {
+        config.deploymentDate = updatedProject.deploymentDate || null;
+        config.isCoated = updatedProject.isCoated === 1 || updatedProject.isCoated === true;
+      }
+    }
+    
     res.json(humps.camelizeKeys(config));
   } catch (err) {
     console.error(err);
@@ -531,13 +591,13 @@ app.post("/api/projects", authMiddleware, adminOnly, async (req, res) => {
       [
         project_number, 
         project_name || null, 
-        vessel_tag || defaultConfig.vesselTag, 
+        vessel_tag || defaultConfig.vessel_tag, 
         created_at,
-        toInt(num_cables, defaultConfig.numCables),
-        toInt(sections_per_cable, defaultConfig.sectionsPerCable),
-        toInt(section_length, defaultConfig.sectionLength),
-        toInt(module_frequency, defaultConfig.moduleFrequency),
-        toInt(channels_per_section, defaultConfig.channelsPerSection),
+        toInt(num_cables, defaultConfig.num_cables),
+        toInt(sections_per_cable, defaultConfig.sections_per_cable),
+        toInt(section_length, defaultConfig.section_length),
+        toInt(module_frequency, defaultConfig.module_frequency),
+        toInt(channels_per_section, defaultConfig.channels_per_section),
         use_rope_for_tail === false ? 0 : 1,
         deployment_date || null,
         is_coated === true ? 1 : 0
@@ -582,12 +642,12 @@ app.put("/api/projects/:id/activate", authMiddleware, adminOnly, async (req, res
     if (project) {
       await saveConfig({ 
         activeProjectNumber: project.projectNumber,
-        vesselTag: project.vesselTag || defaultConfig.vesselTag,
-        numCables: project.numCables || defaultConfig.numCables,
-        sectionsPerCable: project.sectionsPerCable || defaultConfig.sectionsPerCable,
-        sectionLength: project.sectionLength || defaultConfig.sectionLength,
-        moduleFrequency: project.moduleFrequency || defaultConfig.moduleFrequency,
-        channelsPerSection: project.channelsPerSection || defaultConfig.channelsPerSection,
+        vesselTag: project.vesselTag || defaultConfig.vessel_tag,
+        numCables: project.numCables || defaultConfig.num_cables,
+        sectionsPerCable: project.sectionsPerCable || defaultConfig.sections_per_cable,
+        sectionLength: project.sectionLength || defaultConfig.section_length,
+        moduleFrequency: project.moduleFrequency || defaultConfig.module_frequency,
+        channelsPerSection: project.channelsPerSection || defaultConfig.channels_per_section,
         useRopeForTail: project.useRopeForTail === 1
       });
     }
@@ -643,12 +703,12 @@ app.put("/api/projects/:id", authMiddleware, adminOnly, async (req, res) => {
       WHERE id = ?`,
       [
         project_name || null,
-        vessel_tag || defaultConfig.vesselTag,
-        toInt(num_cables, defaultConfig.numCables),
-        toInt(sections_per_cable, defaultConfig.sectionsPerCable),
-        toInt(section_length, defaultConfig.sectionLength),
-        toInt(module_frequency, defaultConfig.moduleFrequency),
-        toInt(channels_per_section, defaultConfig.channelsPerSection),
+        vessel_tag || defaultConfig.vessel_tag,
+        toInt(num_cables, defaultConfig.num_cables),
+        toInt(sections_per_cable, defaultConfig.sections_per_cable),
+        toInt(section_length, defaultConfig.section_length),
+        toInt(module_frequency, defaultConfig.module_frequency),
+        toInt(channels_per_section, defaultConfig.channels_per_section),
         use_rope_for_tail === false ? 0 : 1,
         deployment_date || null,
         is_coated === true ? 1 : 0,
@@ -661,12 +721,12 @@ app.put("/api/projects/:id", authMiddleware, adminOnly, async (req, res) => {
     // If this is the active project, also update global config
     if (updated && updated.isActive === 1) {
       await saveConfig({ 
-        vesselTag: updated.vesselTag || defaultConfig.vesselTag,
-        numCables: updated.numCables || defaultConfig.numCables,
-        sectionsPerCable: updated.sectionsPerCable || defaultConfig.sectionsPerCable,
-        sectionLength: updated.sectionLength || defaultConfig.sectionLength,
-        moduleFrequency: updated.moduleFrequency || defaultConfig.moduleFrequency,
-        channelsPerSection: updated.channelsPerSection || defaultConfig.channelsPerSection,
+        vesselTag: updated.vesselTag || defaultConfig.vessel_tag,
+        numCables: updated.numCables || defaultConfig.num_cables,
+        sectionsPerCable: updated.sectionsPerCable || defaultConfig.sections_per_cable,
+        sectionLength: updated.sectionLength || defaultConfig.section_length,
+        moduleFrequency: updated.moduleFrequency || defaultConfig.module_frequency,
+        channelsPerSection: updated.channelsPerSection || defaultConfig.channels_per_section,
         useRopeForTail: updated.useRopeForTail === 1
       });
     }
@@ -768,7 +828,7 @@ app.post("/api/events", authMiddleware, adminOnly, async (req, res) => {
     
     // Get active project if not specified
     let finalProjectNumber = project_number;
-    let finalVesselTag = vessel_tag || defaultConfig.vesselTag;
+    let finalVesselTag = vessel_tag || defaultConfig.vessel_tag;
     
     if (!finalProjectNumber) {
       const config = await loadConfig();
@@ -808,7 +868,7 @@ app.put("/api/events/:id", authMiddleware, adminOnly, async (req, res) => {
 
     const existing = await getOneCamelized("SELECT * FROM cleaning_events WHERE id = ?", [id]);
     const finalProjectNumber = project_number !== undefined ? project_number : (existing?.projectNumber || null);
-    const finalVesselTag = vessel_tag !== undefined ? vessel_tag : (existing?.vesselTag || defaultConfig.vesselTag);
+    const finalVesselTag = vessel_tag !== undefined ? vessel_tag : (existing?.vesselTag || defaultConfig.vessel_tag);
 
     await runAsync(
       `UPDATE cleaning_events
