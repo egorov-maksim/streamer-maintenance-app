@@ -1948,7 +1948,16 @@ async function renderStreamerCards(startDate = null, endDate = null) {
       });
 
       const coverage = totalPerCable > 0 ? Math.round((cleanedCount / totalPerCable) * 100) : 0;
-      const avgCleanings = cleanedCount > 0 ? (totalCleanings / cleanedCount).toFixed(1) : 0;
+            // Count total times all sections were cleaned
+      let totalSectionCleanings = 0;
+
+      filteredEvents.forEach(evt => {
+        // Each event covers a range of sections, count them all
+        totalSectionCleanings += (evt.sectionIndexEnd - evt.sectionIndexStart + 1);
+      });
+
+      // Average = total section cleanings / total available sections
+      const avgCleanings = totalPerCable > 0 ? (totalSectionCleanings / totalPerCable).toFixed(1) : 0;
 
       const card = document.createElement('div');
       card.className = 'streamer-card';
