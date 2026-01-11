@@ -140,14 +140,16 @@ async function getOneCamelized(sql, params = []) {
 
 // defaults
 const defaultConfig = {
-  numCables: 12,
-  sectionsPerCable: 107,
-  sectionLength: 75,
-  moduleFrequency: 4,
-  useRopeForTail: true,     // true = rope (no tails), false = add 5 tails
-  channelsPerSection: 6,
-  activeProjectNumber: null,
-  vesselTag: 'TTN',
+  num_cables: 12,
+  sections_per_cable: 107,
+  section_length: 75,
+  module_frequency: 4,
+  use_rope_for_tail: true,
+  channels_per_section: 6,
+  active_project_number: null,
+  vessel_tag: 'TTN',
+  deployment_date: null,
+  is_coated: false
 };
 
 // config helpers
