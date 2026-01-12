@@ -26,6 +26,35 @@ function getAuthHeaders() {
   return headers;
 }
 
+async function apiCall(url, options = {}) {
+  try {
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+        ...options.headers
+      }
+    });
+
+    if (res.status === 401 || res.status === 403) {
+      const action = options.action || 'perform this action';
+      showAccessDeniedToast(action);
+      throw new Error('Unauthorized');
+    }
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || `Request failed: ${res.status}`);
+    }
+
+    return data;
+  } catch (err) {
+    throw err;
+  }
+}
+
 function isAdmin() {
   return currentUser?.role === 'admin';
 }
@@ -226,9 +255,7 @@ function formatAS(sectionIndex) {
 // Finds closest module AT OR BEFORE startSection and AT OR AFTER endSection
 async function getEBRange(startSection, endSection) {
   try {
-    const res = await fetch(`api/eb-range?start=${startSection}&end=${endSection}`);
-    if (!res.ok) throw new Error('Failed to fetch EB range');
-    const data = await res.json();
+    const data = await apiCall(`api/eb-range?start=${startSection}&end=${endSection}`);
     return data.ebRange || '-';
   } catch (err) {
     console.error('getEBRange error:', err);
@@ -523,9 +550,8 @@ async function handleLogin(event) {
 
 async function handleLogout() {
   try {
-    await fetch('api/logout', {
-      method: 'POST',
-      headers: getAuthHeaders()
+    await apiCall('api/logout', {
+      method: 'POST'
     });
   } catch (err) {
     console.error('Logout error:', err);
@@ -667,8 +693,7 @@ function setupPasswordToggle() {
 
 async function loadConfig() {
   try {
-    const res = await fetch('api/config');
-    const data = await res.json();
+    const data = await apiCall('api/config');
     config = data;
     document.documentElement.style.setProperty('--sections', config.sectionsPerCable);
     populateConfigForm(config);
@@ -764,20 +789,11 @@ async function saveProjectConfig(projectId) {
       ...formConfig
     };
 
-    const res = await fetch(`api/projects/${projectId}`, {
+    const updated = await apiCall(`api/projects/${projectId}`, {
       method: 'PUT',
-      headers: getAuthHeaders(),
       body: JSON.stringify(body),
+      action: 'save project configuration'
     });
-
-    if (res.status === 401 || res.status === 403) {
-      setStatus(statusEl, 'Admin access required', true);
-      return;
-    }
-    
-    if (!res.ok) throw new Error('Failed to save config');
-
-    const updated = await res.json();
     
     // Update local config to reflect changes
     config.numCables = updated.numCables;
@@ -815,20 +831,11 @@ async function saveGlobalConfig() {
       useRopeForTail: safeGet('cfg-useRopeForTail').value === 'true',
     };
 
-    const res = await fetch('api/config', {
+    const data = await apiCall('api/config', {
       method: 'PUT',
-      headers: getAuthHeaders(),
       body: JSON.stringify(body),
+      action: 'save global configuration'
     });
-
-    if (res.status === 401 || res.status === 403) {
-      setStatus(statusEl, 'Admin access required', true);
-      return;
-    }
-    
-    if (!res.ok) throw new Error('Failed to save config');
-
-    const data = await res.json();
     config = data;
     document.documentElement.style.setProperty('--sections', config.sectionsPerCable);
     setStatus(statusEl, '✅ Global configuration updated');
@@ -849,13 +856,13 @@ let projectEventCounts = {};
 async function loadProjects() {
   try {
     // Load projects and event counts in parallel
-    const [projectsRes, statsRes] = await Promise.all([
-      fetch('api/projects'),
-      fetch('api/projects/stats')
+    const [projectsData, statsData] = await Promise.all([
+      apiCall('api/projects'),
+      apiCall('api/projects/stats')
     ]);
     
-    projects = await projectsRes.json();
-    projectEventCounts = await statsRes.json();
+    projects = projectsData;
+    projectEventCounts = statsData;
     
     renderProjectList();
     populateProjectSelector();
@@ -889,9 +896,8 @@ async function createProject() {
   const currentConfig = getConfigFromForm();
   
   try {
-    const res = await fetch('api/projects', {
+    const data = await apiCall('api/projects', {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify({
         projectNumber: projectNumber,
         projectName: projectName,
@@ -900,20 +906,9 @@ async function createProject() {
         isCoated: isCoated,
         // Include current streamer config as defaults for the new project
         ...currentConfig
-      })
+      }),
+      action: 'create project'
     });
-    
-    if (res.status === 401 || res.status === 403) {
-      setStatus(statusEl, 'Admin access required', true);
-      return;
-    }
-    
-    const data = await res.json();
-    
-    if (!res.ok) {
-      setStatus(statusEl, data.error || 'Failed to create project', true);
-      return;
-    }
     
     // Clear inputs
     safeGet('new-project-number').value = '';
@@ -937,14 +932,10 @@ async function activateProject(projectId) {
   }
   
   try {
-    const res = await fetch(`api/projects/${projectId}/activate`, {
+    const project = await apiCall(`api/projects/${projectId}/activate`, {
       method: 'PUT',
-      headers: getAuthHeaders()
+      action: 'activate project'
     });
-    
-    if (!res.ok) throw new Error('Failed');
-    
-    const project = await res.json();
     
     // Update config with the project's streamer configuration
     if (project) {
@@ -1004,12 +995,10 @@ async function clearActiveProject() {
   }
   
   try {
-    const res = await fetch('api/projects/deactivate', {
+    await apiCall('api/projects/deactivate', {
       method: 'POST',
-      headers: getAuthHeaders()
+      action: 'clear active project'
     });
-    
-    if (!res.ok) throw new Error('Failed');
     
     // Reset to global config
     await loadConfig();
@@ -1041,17 +1030,10 @@ async function deleteProject(projectId) {
   }
   
   try {
-    const res = await fetch(`api/projects/${projectId}`, {
+    await apiCall(`api/projects/${projectId}`, {
       method: 'DELETE',
-      headers: getAuthHeaders()
+      action: 'delete project'
     });
-    
-    const data = await res.json();
-    
-    if (!res.ok) {
-      showErrorToast('Cannot Delete', data.error || 'Failed to delete project.');
-      return;
-    }
     
     showSuccessToast('Project Deleted', 'The project has been removed.');
     await loadProjects();
@@ -1186,16 +1168,7 @@ async function loadBackups() {
   }
   
   try {
-    const res = await fetch('api/backups', {
-      headers: getAuthHeaders()
-    });
-    
-    if (!res.ok) {
-      container.innerHTML = '<div class="backup-empty">Unable to load backups</div>';
-      return;
-    }
-    
-    const data = await res.json();
+    const data = await apiCall('api/backups');
     const backups = data.backups || [];
     
     if (backups.length === 0) {
@@ -1248,12 +1221,10 @@ async function createBackup() {
   try {
     setStatus(statusEl, 'Creating backup...', false);
     
-    const res = await fetch('api/backups', {
+    await apiCall('api/backups', {
       method: 'POST',
-      headers: getAuthHeaders()
+      action: 'create backups'
     });
-    
-    if (!res.ok) throw new Error('Failed');
     
     setStatus(statusEl, '✅ Backup created successfully');
     showSuccessToast('Backup Created', 'Database backup has been created successfully.');
@@ -1287,16 +1258,10 @@ async function restoreBackup(filename) {
   try {
     setStatus(statusEl, 'Restoring backup...', false);
     
-    const res = await fetch(`api/backups/${encodeURIComponent(filename)}/restore`, {
+    await apiCall(`api/backups/${encodeURIComponent(filename)}/restore`, {
       method: 'POST',
-      headers: getAuthHeaders()
+      action: 'restore backups'
     });
-    
-    const data = await res.json();
-    
-    if (!res.ok) {
-      throw new Error(data.error || 'Failed to restore');
-    }
     
     setStatus(statusEl, '✅ Backup restored');
     showSuccessToast(
@@ -1324,8 +1289,7 @@ async function loadEvents() {
   if (selectedProjectFilter) {
     url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
   }
-  const res = await fetch(url);
-  events = await res.json();
+  events = await apiCall(url);
 }
 
 async function addEvent() {
@@ -1369,18 +1333,11 @@ async function addEvent() {
       cleaningCount: 1,
     };
 
-    const res = await fetch('api/events', {
+    await apiCall('api/events', {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify(body),
+      action: 'add events'
     });
-
-    if (res.status === 401 || res.status === 403) {
-      setStatus(statusEl, 'Admin access required', true);
-      return;
-    }
-    
-    if (!res.ok) throw new Error('Failed');
 
     setStatus(statusEl, '✅ Event added');
     await refreshEverything();
@@ -1424,17 +1381,10 @@ async function confirmDeleteEvent() {
   const id = parseInt(safeGet('delete-event-id').value);
   
   try {
-    const res = await fetch(`api/events/${id}`, { 
+    await apiCall(`api/events/${id}`, {
       method: 'DELETE',
-      headers: getAuthHeaders()
+      action: 'delete events'
     });
-    
-    if (res.status === 401 || res.status === 403) {
-      showAccessDeniedToast('delete events');
-      return;
-    }
-    
-    if (!res.ok) throw new Error('Failed');
 
     closeDeleteModal();
     await refreshEverything();
@@ -1522,18 +1472,11 @@ async function updateEvent(id, body) {
   }
   
   try {
-    const res = await fetch(`api/events/${id}`, {
+    await apiCall(`api/events/${id}`, {
       method: 'PUT',
-      headers: getAuthHeaders(),
       body: JSON.stringify(body),
+      action: 'edit events'
     });
-
-    if (res.status === 401 || res.status === 403) {
-      showAccessDeniedToast('edit events');
-      return;
-    }
-    
-    if (!res.ok) throw new Error('Failed');
 
     await refreshEverything();
     await renderHeatmap();
@@ -1609,18 +1552,10 @@ async function confirmClearAllEvents() {
       url += `?project=${encodeURIComponent(activeProject.projectNumber)}`;
     }
     
-    const res = await fetch(url, {
+    await apiCall(url, {
       method: 'DELETE',
-      headers: getAuthHeaders(),
+      action: 'clear all events'
     });
-    
-    if (res.status === 401 || res.status === 403) {
-      showAccessDeniedToast('clear all events');
-      closeClearAllModal();
-      return;
-    }
-    
-    if (!res.ok) throw new Error('Failed');
     
     closeClearAllModal();
     
@@ -1772,13 +1707,11 @@ async function handleCsvFile(file) {
       };
 
       try {
-        const res = await fetch('api/events', {
+        await apiCall('api/events', {
           method: 'POST',
-          headers: getAuthHeaders(),
           body: JSON.stringify(body),
+          action: 'import CSV data'
         });
-
-        if (!res.ok) throw new Error('Failed');
         successCount++;
       } catch {
         errorCount++;
@@ -1877,8 +1810,7 @@ async function renderAlerts() {
     if (selectedProjectFilter) {
       url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
     }
-    const res = await fetch(url);
-    const data = await res.json();
+    const data = await apiCall(url);
     const lastCleaned = data.lastCleaned;
 
     let critical = 0;
@@ -1955,8 +1887,7 @@ async function renderStreamerCards(startDate = null, endDate = null) {
     if (selectedProjectFilter) {
       url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
     }
-    const res = await fetch(url);
-    const data = await res.json();
+    const data = await apiCall(url);
     const lastCleaned = data.lastCleaned;
 
     const cableCount = config.numCables;
@@ -2047,8 +1978,7 @@ async function renderHeatmap() {
     if (selectedProjectFilter) {
       url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
     }
-    const res = await fetch(url);
-    const data = await res.json();
+    const data = await apiCall(url);
     const lastCleaned = data.lastCleaned;
 
     const N = config.sectionsPerCable;
@@ -2399,20 +2329,11 @@ async function confirmCleaning() {
       projectNumber: projectNumber         
     };
     
-    const res = await fetch('/api/events', {
+    await apiCall('/api/events', {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify(body),
+      action: 'add cleaning events'
     });
-    
-    if (res.status === 401 || res.status === 403) {
-      showAccessDeniedToast('add cleaning events');
-      closeConfirmationModal();
-      isFinalizing = false;
-      return;
-    }
-    
-    if (!res.ok) throw new Error('Failed to save');
     
     // Success
     closeConfirmationModal();
@@ -2439,8 +2360,7 @@ async function refreshStatsFiltered() {
     if (selectedProjectFilter) statsParams.append('project', selectedProjectFilter);
     
     // Get overall stats from backend
-    const statsRes = await fetch(`/api/stats?${statsParams}`);
-    const overallStats = await statsRes.json();
+    const overallStats = await apiCall(`/api/stats?${statsParams}`);
     
     // Prepare filtered query params
     let params = new URLSearchParams();
@@ -2449,8 +2369,7 @@ async function refreshStatsFiltered() {
     if (selectedProjectFilter) params.append('project', selectedProjectFilter);
     
     // Get filtered stats (or overall if no filters)
-    const filterRes = await fetch(`/api/stats/filter?${params}`);
-    const data = await filterRes.json();
+    const data = await apiCall(`/api/stats/filter?${params}`);
     
     // Use totals from overall stats API
     const totalActiveSections = overallStats.totalAvailableSections;
