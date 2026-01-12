@@ -2155,6 +2155,7 @@ function attachDragListeners() {
   cells.forEach(cell => {
     cell.addEventListener('mousedown', (e) => {
       e.preventDefault();
+      hideSectionTooltip();
       const cableId = cell.dataset.cable;
       const section = parseInt(cell.dataset.section, 10);
 

@@ -454,7 +454,7 @@
     outline: 3px solid var(--primary);
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
     transform: scale(1.05);
-    z-index: 100;
+    z-index: 50;
   }
   
   .hm-vcell.saved {
@@ -636,7 +636,7 @@
     font-weight: 600;
     position: sticky;
     top: 0;
-    z-index: 10;
+    z-index: 400;
   }
   
   tr:hover {
@@ -1268,7 +1268,7 @@
    ========================= */
 
 .login-page {
-  position: fixed;    /* ← Change from 'relative' to 'fixed' */
+  position: fixed;
   top: 0;
   left: 0;
   right: 0;
@@ -1278,7 +1278,7 @@
   justify-content: center;
   background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%);
   overflow: hidden;
-  z-index: 9999;      /* ← Add high z-index to overlay everything */
+  z-index: 9999;
 }
 
 /* Animated background waves */
@@ -1553,7 +1553,7 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   position: sticky;
   top: 0;
-  z-index: 50;
+  z-index: 500;
 }
 
 .user-info {
