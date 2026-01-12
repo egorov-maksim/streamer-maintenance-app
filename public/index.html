@@ -152,9 +152,11 @@
                     </select>
                   </label>
                   <label>Deployment Date <input type="date" id="cfg-deploymentDate"></label>
-                  <label class="checkbox-label">
-                    <input type="checkbox" id="cfg-isCoated">
-                    <span>Coating Status</span>
+                  <label>Coating Status
+                    <select id="cfg-isCoated">
+                      <option value="true">Yes</option>
+                      <option value="false">No</option>
+                    </select>
                   </label>
                 </div>
                 <div class="actions mt-12">
@@ -174,9 +176,11 @@
                   <label>Project Name <input type="text" id="new-project-name" placeholder="e.g., North Sea Survey"></label>
                   <label>Vessel Tag <input type="text" id="new-project-vessel" value="TTN" placeholder="e.g., TTN"></label>
                   <label>Deployment Date <input type="date" id="new-deployment-date"></label>
-                  <label class="checkbox-label">
-                    <input type="checkbox" id="new-is-coated">
-                    <span>Coating Status</span>
+                  <label>Coating Status
+                    <select id="new-is-coated">
+                      <option value="true">Yes</option>
+                      <option value="false">No</option>
+                    </select>
                   </label>
                 </div>
                 <p class="info-text-sm">
