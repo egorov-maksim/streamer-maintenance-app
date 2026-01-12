@@ -695,7 +695,7 @@ function populateConfigForm(cfg) {
   } else {
     safeGet('cfg-deploymentDate').value = '';
   }
-  safeGet('cfg-isCoated').checked = cfg.isCoated === true || cfg.isCoated === 1;
+  safeGet('cfg-isCoated').value = cfg.isCoated === true || cfg.isCoated === 1 ? 'true' : 'false';
 }
 
 // Update the label showing which project the config belongs to
@@ -724,7 +724,7 @@ function getConfigFromForm() {
     channelsPerSection: parseInt(safeGet('cfg-channelsPerSection').value, 10),
     useRopeForTail: safeGet('cfg-useRopeForTail').value === 'true',
     deploymentDate: deploymentDate,
-    isCoated: safeGet('cfg-isCoated').checked,
+    isCoated: safeGet('cfg-isCoated').value === 'true',
   };
 }
 
@@ -878,7 +878,7 @@ async function createProject() {
   const projectName = safeGet('new-project-name').value.trim();
   const vesselTag = safeGet('new-project-vessel').value.trim() || 'TTN';
   const deploymentDate = safeGet('new-deployment-date').value || null;
-  const isCoated = safeGet('new-is-coated').checked;
+  const isCoated = safeGet('new-is-coated').value === 'true';
   
   if (!projectNumber) {
     setStatus(statusEl, 'Project number is required', true);
@@ -920,7 +920,7 @@ async function createProject() {
     safeGet('new-project-name').value = '';
     safeGet('new-project-vessel').value = 'TTN';
     safeGet('new-deployment-date').value = '';
-    safeGet('new-is-coated').checked = false;
+    safeGet('new-is-coated').value = 'false';
     
     setStatus(statusEl, '✅ Project created with current configuration');
     await loadProjects();
