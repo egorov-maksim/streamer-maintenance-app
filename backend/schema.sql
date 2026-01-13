@@ -33,7 +33,18 @@ CREATE TABLE IF NOT EXISTS projects (
   section_length INTEGER DEFAULT 75,
   module_frequency INTEGER DEFAULT 4,
   channels_per_section INTEGER DEFAULT 6,
-  use_rope_for_tail INTEGER DEFAULT 1,
-  deployment_date TEXT,
-  is_coated INTEGER DEFAULT 0
+  use_rope_for_tail INTEGER DEFAULT 1
 );
+
+-- Per-streamer deployment configuration
+CREATE TABLE IF NOT EXISTS streamer_deployments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL,
+  streamer_number INTEGER NOT NULL,
+  deployment_date TEXT,
+  is_coated INTEGER DEFAULT 0,
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  UNIQUE(project_id, streamer_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_streamer_deployments_project ON streamer_deployments(project_id);

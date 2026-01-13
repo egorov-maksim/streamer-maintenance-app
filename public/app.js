@@ -711,16 +711,6 @@ function populateConfigForm(cfg) {
   safeGet('cfg-moduleFrequency').value = cfg.moduleFrequency;
   safeGet('cfg-channelsPerSection').value = cfg.channelsPerSection;
   safeGet('cfg-useRopeForTail').value = cfg.useRopeForTail;
-  if (cfg.deploymentDate) {
-    // Convert ISO date to YYYY-MM-DD format for date input
-    const date = new Date(cfg.deploymentDate);
-    if (!isNaN(date.getTime())) {
-      safeGet('cfg-deploymentDate').value = date.toISOString().split('T')[0];
-    }
-  } else {
-    safeGet('cfg-deploymentDate').value = '';
-  }
-  safeGet('cfg-isCoated').value = cfg.isCoated === true || cfg.isCoated === 1 ? 'true' : 'false';
 }
 
 // Update the label showing which project the config belongs to
@@ -738,9 +728,6 @@ function updateConfigProjectLabel() {
 
 // Get current config values from form
 function getConfigFromForm() {
-  const deploymentDateEl = safeGet('cfg-deploymentDate');
-  const deploymentDate = deploymentDateEl?.value ? deploymentDateEl.value : null;
-  
   return {
     numCables: parseInt(safeGet('cfg-numCables').value, 10),
     sectionsPerCable: parseInt(safeGet('cfg-sectionsPerCable').value, 10),
@@ -748,8 +735,6 @@ function getConfigFromForm() {
     moduleFrequency: parseInt(safeGet('cfg-moduleFrequency').value, 10),
     channelsPerSection: parseInt(safeGet('cfg-channelsPerSection').value, 10),
     useRopeForTail: safeGet('cfg-useRopeForTail').value === 'true',
-    deploymentDate: deploymentDate,
-    isCoated: safeGet('cfg-isCoated').value === 'true',
   };
 }
 
@@ -784,8 +769,6 @@ async function saveProjectConfig(projectId) {
     const body = {
       projectName: activeProject?.projectName || null,
       vesselTag: activeProject?.vesselTag || 'TTN',
-      deploymentDate: formConfig.deploymentDate || null,
-      isCoated: formConfig.isCoated || false,
       ...formConfig
     };
 
@@ -884,8 +867,6 @@ async function createProject() {
   const projectNumber = safeGet('new-project-number').value.trim();
   const projectName = safeGet('new-project-name').value.trim();
   const vesselTag = safeGet('new-project-vessel').value.trim() || 'TTN';
-  const deploymentDate = safeGet('new-deployment-date').value || null;
-  const isCoated = safeGet('new-is-coated').value === 'true';
   
   if (!projectNumber) {
     setStatus(statusEl, 'Project number is required', true);
@@ -902,8 +883,6 @@ async function createProject() {
         projectNumber: projectNumber,
         projectName: projectName,
         vesselTag: vesselTag,
-        deploymentDate: deploymentDate,
-        isCoated: isCoated,
         // Include current streamer config as defaults for the new project
         ...currentConfig
       }),
@@ -914,8 +893,6 @@ async function createProject() {
     safeGet('new-project-number').value = '';
     safeGet('new-project-name').value = '';
     safeGet('new-project-vessel').value = 'TTN';
-    safeGet('new-deployment-date').value = '';
-    safeGet('new-is-coated').value = 'false';
     
     setStatus(statusEl, '✅ Project created with current configuration');
     await loadProjects();
@@ -947,8 +924,6 @@ async function activateProject(projectId) {
       config.useRopeForTail = project.useRopeForTail;
       config.vesselTag = project.vesselTag;
       config.activeProjectNumber = project.projectNumber;
-      config.deploymentDate = project.deploymentDate;
-      config.isCoated = project.isCoated;
       selectedProjectFilter = project.projectNumber;
       
       // Update CSS variable and form
@@ -965,6 +940,7 @@ async function activateProject(projectId) {
     // Refresh UI with new config
     await refreshEverything();
     await renderHeatmap();
+    await renderStreamerDeploymentGrid();
     await refreshStatsFiltered();
   } catch (err) {
     console.error(err);
@@ -1006,6 +982,10 @@ async function clearActiveProject() {
     selectedProjectFilter = null;
     updateActiveProjectBanner();
     updateConfigProjectLabel();
+    
+    // Hide streamer deployment section
+    const section = safeGet('streamer-deployment-section');
+    if (section) section.style.display = 'none';
     
     showSuccessToast('Project Cleared', 'Using global configuration. New events will not be associated with any project.');
     
@@ -1062,28 +1042,12 @@ function renderProjectList() {
     const deleteBtn = isAdminUser && !isActive && eventCount === 0 ? 
       `<button class="btn btn-outline btn-sm btn-delete-project" data-id="${p.id}" title="Delete project">🗑️</button>` : '';
     
-    // Format deployment date
-    let deploymentDateDisplay = '';
-    if (p.deploymentDate) {
-      const deployDate = new Date(p.deploymentDate);
-      if (!isNaN(deployDate.getTime())) {
-        deploymentDateDisplay = `<span class="project-deployment-date" title="Deployment Date">📅 ${deployDate.toLocaleDateString()}</span>`;
-      }
-    }
-    
-    // Coating badge
-    const coatingBadge = (p.isCoated === true || p.isCoated === 1) 
-      ? '<span class="badge badge-coated" title="Coated">🛡️ Coated</span>' 
-      : '';
-    
     return `
       <div class="project-item ${isActive ? 'active' : ''}">
         <div class="project-item-info">
           <span class="project-number">${p.projectNumber}</span>
           ${p.projectName ? `<span class="project-name">${p.projectName}</span>` : ''}
           <span class="project-vessel">${p.vesselTag || 'TTN'}</span>
-          ${deploymentDateDisplay}
-          ${coatingBadge}
           ${eventCountBadge}
           ${activeBadge}
         </div>
@@ -1154,6 +1118,270 @@ function setProjectFilter(projectNumber) {
   refreshEverything();
   renderHeatmap();
   refreshStatsFiltered();
+}
+
+// ============================================
+// Streamer Deployment Configuration
+// ============================================
+
+/**
+ * Render per-streamer deployment configuration grid
+ */
+async function renderStreamerDeploymentGrid() {
+  const container = safeGet('streamer-deployment-grid');
+  const section = safeGet('streamer-deployment-section');
+  if (!container || !section) return;
+
+  // Only show if there's an active project
+  const activeProject = projects.find(p => p.isActive);
+  if (!activeProject) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+
+  // Update label
+  const label = safeGet('streamer-config-project-label');
+  if (label) {
+    label.textContent = `for ${activeProject.projectNumber}`;
+  }
+
+  const numCables = config.numCables;
+
+  // Load existing streamer deployments
+  let deployments = {};
+  try {
+    deployments = await apiCall(`/api/projects/${activeProject.id}/streamer-deployments`);
+  } catch (err) {
+    console.error('Failed to load streamer deployments', err);
+  }
+
+  container.innerHTML = '';
+
+  for (let streamerNum = 1; streamerNum <= numCables; streamerNum++) {
+    const deployment = deployments[streamerNum] || {};
+    const hasConfig = deployment.deploymentDate || (deployment.isCoated !== null && deployment.isCoated !== undefined);
+
+    const card = document.createElement('div');
+    card.className = `streamer-deployment-card ${hasConfig ? 'has-config' : ''}`;
+    card.dataset.streamer = streamerNum;
+
+    const deployDateValue = deployment.deploymentDate 
+      ? new Date(deployment.deploymentDate).toISOString().split('T')[0] 
+      : '';
+
+    let coatingValue = '';
+    if (deployment.isCoated === true) coatingValue = 'true';
+    else if (deployment.isCoated === false) coatingValue = 'false';
+
+    card.innerHTML = `
+      <div class="streamer-card-header">
+        <span class="streamer-card-title">
+          🔧 Streamer ${streamerNum}
+        </span>
+        <span class="streamer-card-badge ${hasConfig ? 'configured' : ''}">
+          ${hasConfig ? '✓ Configured' : 'Default'}
+        </span>
+      </div>
+      <div class="streamer-deployment-inputs">
+        <div class="streamer-input-group">
+          <label>📅 Deployment Date</label>
+          <input 
+            type="date" 
+            class="streamer-deploy-date"
+            data-streamer="${streamerNum}"
+            value="${deployDateValue}"
+            ${!isAdmin() ? 'disabled' : ''}
+          />
+        </div>
+        <div class="streamer-input-group">
+          <label>🛡️ Coating Status</label>
+          <select 
+            class="streamer-coating-status"
+            data-streamer="${streamerNum}"
+            ${!isAdmin() ? 'disabled' : ''}
+          >
+            <option value="">Not specified</option>
+            <option value="true" ${coatingValue === 'true' ? 'selected' : ''}>Yes - Coated</option>
+            <option value="false" ${coatingValue === 'false' ? 'selected' : ''}>No - Uncoated</option>
+          </select>
+        </div>
+      </div>
+      ${isAdmin() && hasConfig ? `
+        <div class="streamer-card-actions">
+          <button class="streamer-card-clear" data-streamer="${streamerNum}">
+            🗑️ Clear Config
+          </button>
+        </div>
+      ` : ''}
+    `;
+
+    container.appendChild(card);
+  }
+
+  // Attach event listeners for clear buttons
+  if (isAdmin()) {
+    container.querySelectorAll('.streamer-card-clear').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const streamerNum = e.target.dataset.streamer;
+        await clearStreamerDeployment(activeProject.id, streamerNum);
+      });
+    });
+  }
+}
+
+/**
+ * Save all streamer deployment configurations
+ */
+async function saveStreamerDeployments() {
+  const statusEl = safeGet('streamer-deployment-status');
+
+  if (!isAdmin()) {
+    setStatus(statusEl, 'Admin access required', true);
+    return;
+  }
+
+  const activeProject = projects.find(p => p.isActive);
+  if (!activeProject) {
+    setStatus(statusEl, 'No active project', true);
+    return;
+  }
+
+  const deployments = {};
+
+  // Collect all streamer configurations
+  const dateInputs = document.querySelectorAll('.streamer-deploy-date');
+  const coatingInputs = document.querySelectorAll('.streamer-coating-status');
+
+  dateInputs.forEach(input => {
+    const streamerNum = input.dataset.streamer;
+    if (!deployments[streamerNum]) deployments[streamerNum] = {};
+    deployments[streamerNum].deploymentDate = input.value || null;
+  });
+
+  coatingInputs.forEach(input => {
+    const streamerNum = input.dataset.streamer;
+    if (!deployments[streamerNum]) deployments[streamerNum] = {};
+    const value = input.value;
+    deployments[streamerNum].isCoated = value === '' ? null : value === 'true';
+  });
+
+  try {
+    setStatus(statusEl, 'Saving configurations...', false);
+
+    await apiCall(`/api/projects/${activeProject.id}/streamer-deployments`, {
+      method: 'PUT',
+      body: JSON.stringify(deployments),
+      action: 'save streamer deployment configurations'
+    });
+
+    setStatus(statusEl, '✓ Configurations saved successfully');
+    showSuccessToast('Saved', 'Streamer deployment configurations updated');
+
+    // Refresh grid to show updated badges
+    await renderStreamerDeploymentGrid();
+
+    // Refresh stats to update "Days to First Clean"
+    await refreshStatsFiltered();
+  } catch (err) {
+    console.error(err);
+    setStatus(statusEl, 'Failed to save configurations', true);
+    showErrorToast('Save Failed', 'Could not save streamer configurations');
+  }
+}
+
+/**
+ * Clear deployment config for a specific streamer
+ */
+async function clearStreamerDeployment(projectId, streamerNum) {
+  if (!isAdmin()) {
+    showAccessDeniedToast('clear streamer configuration');
+    return;
+  }
+
+  const confirmed = confirm(`Clear configuration for Streamer ${streamerNum}?`);
+  if (!confirmed) return;
+
+  try {
+    await apiCall(`/api/projects/${projectId}/streamer-deployments/${streamerNum}`, {
+      method: 'DELETE',
+      action: 'clear streamer deployment configuration'
+    });
+
+    showSuccessToast('Cleared', `Streamer ${streamerNum} configuration cleared`);
+    await renderStreamerDeploymentGrid();
+  } catch (err) {
+    console.error(err);
+    showErrorToast('Clear Failed', 'Could not clear configuration');
+  }
+}
+
+/**
+ * Set deployment date for all streamers
+ */
+async function setAllDeploymentDates() {
+  if (!isAdmin()) {
+    showAccessDeniedToast('set deployment dates');
+    return;
+  }
+
+  const date = prompt('Enter deployment date for ALL streamers (YYYY-MM-DD):');
+  if (!date) return;
+
+  // Validate date format
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    showErrorToast('Invalid Date', 'Please use format: YYYY-MM-DD');
+    return;
+  }
+
+  document.querySelectorAll('.streamer-deploy-date').forEach(input => {
+    input.value = date;
+  });
+
+  showSuccessToast('Applied', 'Date set for all streamers. Click Save to apply.');
+}
+
+/**
+ * Set coating status for all streamers
+ */
+async function setAllCoatingStatus() {
+  if (!isAdmin()) {
+    showAccessDeniedToast('set coating status');
+    return;
+  }
+
+  const coating = confirm('Set coating status for ALL streamers:\n\nOK = Coated\nCancel = Uncoated');
+  const value = coating ? 'true' : 'false';
+
+  document.querySelectorAll('.streamer-coating-status').forEach(input => {
+    input.value = value;
+  });
+
+  showSuccessToast('Applied', `All streamers set to ${coating ? 'Coated' : 'Uncoated'}. Click Save to apply.`);
+}
+
+/**
+ * Clear all streamer deployment configurations
+ */
+async function clearAllStreamerDeployments() {
+  if (!isAdmin()) {
+    showAccessDeniedToast('clear streamer configurations');
+    return;
+  }
+
+  const confirmed = confirm('Clear ALL streamer configurations?\n\nThis will reset all deployment dates and coating status.');
+  if (!confirmed) return;
+
+  document.querySelectorAll('.streamer-deploy-date').forEach(input => {
+    input.value = '';
+  });
+
+  document.querySelectorAll('.streamer-coating-status').forEach(input => {
+    input.value = '';
+  });
+
+  showSuccessToast('Cleared', 'All configurations cleared. Click Save to apply.');
 }
 
 /* ------------ Backup Management API ------------ */
@@ -2434,57 +2662,104 @@ async function refreshStatsFiltered() {
       safeGet('kpi-last-sub').textContent = 'No events';
     }
 
-    // Calculate Days to First Clean
-    const activeProject = projects.find(p => p.isActive === true);
-    if (activeProject && activeProject.deploymentDate) {
-      try {
-        const deploymentDate = new Date(activeProject.deploymentDate);
-        if (!isNaN(deploymentDate.getTime())) {
-          // Find first cleaning event for this project
-          const projectEvents = events.filter(e => e.projectNumber === activeProject.projectNumber);
-          if (projectEvents.length > 0) {
-            // Sort by cleanedAt and get the earliest
-            const sortedEvents = projectEvents.sort((a, b) => 
-              new Date(a.cleanedAt) - new Date(b.cleanedAt)
-            );
-            const firstCleaningDate = new Date(sortedEvents[0].cleanedAt);
-            if (!isNaN(firstCleaningDate.getTime())) {
-              // Calculate days difference
-              const diffTime = firstCleaningDate - deploymentDate;
-              const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-              if (diffDays >= 0) {
-                safeGet('kpi-deploy-days').textContent = `${diffDays}`;
-                safeGet('kpi-deploy-sub').textContent = `days from deployment`;
-              } else {
-                safeGet('kpi-deploy-days').textContent = '—';
-                safeGet('kpi-deploy-sub').textContent = 'Invalid date range';
-              }
-            } else {
-              safeGet('kpi-deploy-days').textContent = '—';
-              safeGet('kpi-deploy-sub').textContent = 'No valid events';
-            }
-          } else {
-            safeGet('kpi-deploy-days').textContent = '—';
-            safeGet('kpi-deploy-sub').textContent = 'No cleaning events yet';
+    // Calculate Days to First Clean per-streamer breakdown
+    const deployDaysBreakdownDiv = safeGet('deploy-days-breakdown');
+    if (deployDaysBreakdownDiv) {
+      const activeProject = projects.find(p => p.isActive === true);
+      
+      if (!activeProject) {
+        deployDaysBreakdownDiv.innerHTML = '<h3 style="margin-top: 0">Days to First Clean per Streamer</h3><p style="color: #6b7280; font-size: 14px;">Requires active project with deployment dates</p>';
+      } else if (data.events === 0) {
+        deployDaysBreakdownDiv.innerHTML = '<h3 style="margin-top: 0">Days to First Clean per Streamer</h3><p style="color: #6b7280; font-size: 14px;">No cleaning events yet</p>';
+      } else {
+        try {
+          // Get filtered events for calculation
+          let filteredEvents = events;
+          if (selectedProjectFilter) {
+            filteredEvents = filteredEvents.filter(e => e.projectNumber === selectedProjectFilter);
           }
-        } else {
-          safeGet('kpi-deploy-days').textContent = '—';
-          safeGet('kpi-deploy-sub').textContent = 'Invalid deployment date';
+          if (startDate || endDate) {
+            filteredEvents = filteredEvents.filter(e => {
+              const eventDate = new Date(e.cleanedAt).toISOString().split('T')[0];
+              if (startDate && endDate) {
+                return eventDate >= startDate && eventDate <= endDate;
+              } else if (startDate) {
+                return eventDate >= startDate;
+              } else if (endDate) {
+                return eventDate <= endDate;
+              }
+              return true;
+            });
+          }
+
+          const streamerDeployments = await apiCall(`/api/projects/${activeProject.id}/streamer-deployments`);
+
+          // Collect days for each streamer
+          const streamerDays = [];
+          let maxDays = 0;
+
+          for (let streamerNum = 1; streamerNum <= config.numCables; streamerNum++) {
+            const cableId = `cable-${streamerNum - 1}`;
+            const streamerEvents = filteredEvents.filter(e => e.cableId === cableId);
+
+            // Get deployment date for this streamer
+            const deployment = streamerDeployments[streamerNum];
+            const deployDate = deployment?.deploymentDate;
+
+            if (deployDate && streamerEvents.length > 0) {
+              // Find first cleaning for this streamer
+              const firstCleaning = streamerEvents.sort((a, b) => 
+                new Date(a.cleanedAt) - new Date(b.cleanedAt)
+              )[0];
+
+              const days = Math.floor(
+                (new Date(firstCleaning.cleanedAt) - new Date(deployDate)) / (1000 * 60 * 60 * 24)
+              );
+
+              if (days >= 0) {
+                streamerDays.push({ streamerNum, days });
+                if (days > maxDays) {
+                  maxDays = days;
+                }
+              }
+            }
+          }
+
+          // Generate breakdown HTML
+          if (streamerDays.length === 0) {
+            deployDaysBreakdownDiv.innerHTML = '<h3 style="margin-top: 0">Days to First Clean per Streamer</h3><p style="color: #6b7280; font-size: 14px;">No deployment dates configured</p>';
+          } else {
+            deployDaysBreakdownDiv.innerHTML = '<h3 style="margin-top: 0">Days to First Clean per Streamer</h3>';
+            
+            // Sort by streamer number for consistent display
+            streamerDays.sort((a, b) => a.streamerNum - b.streamerNum);
+            
+            streamerDays.forEach(({ streamerNum, days }) => {
+              const percentage = maxDays > 0 ? (days / maxDays) * 100 : 0;
+              const bar = document.createElement('div');
+              bar.innerHTML = `
+                <div class="bar-label">
+                  <span>Streamer ${streamerNum}</span>
+                  <span>${days} days</span>
+                </div>
+                <div class="bar">
+                  <div class="bar-fill" style="width: ${percentage}%"></div>
+                </div>
+              `;
+              deployDaysBreakdownDiv.appendChild(bar);
+            });
+          }
+        } catch (err) {
+          console.error('Failed to calculate days to first clean', err);
+          deployDaysBreakdownDiv.innerHTML = '<h3 style="margin-top: 0">Days to First Clean per Streamer</h3><p style="color: #ef4444; font-size: 14px;">Calculation error</p>';
         }
-      } catch (err) {
-        console.error('Error calculating days to first clean:', err);
-        safeGet('kpi-deploy-days').textContent = '—';
-        safeGet('kpi-deploy-sub').textContent = 'Calculation error';
       }
-    } else {
-      safeGet('kpi-deploy-days').textContent = '—';
-      safeGet('kpi-deploy-sub').textContent = 'No active project or deployment date';
     }
 
     // Method breakdown
-    const breakdownDiv = safeGet('method-breakdown');
-    if (breakdownDiv && data.byMethod && Object.keys(data.byMethod).length > 0) {
-      breakdownDiv.innerHTML = '<h3 style="margin-top: 0">Distance by Method</h3>';
+    const methodBreakdownDiv = safeGet('method-breakdown');
+    if (methodBreakdownDiv && data.byMethod && Object.keys(data.byMethod).length > 0) {
+      methodBreakdownDiv.innerHTML = '<h3 style="margin-top: 0">Distance by Method</h3>';
       Object.keys(data.byMethod).forEach(method => {
         const distance = data.byMethod[method];
         const bar = document.createElement('div');
@@ -2497,7 +2772,7 @@ async function refreshStatsFiltered() {
             <div class="bar-fill" style="width: ${(distance / data.totalDistance) * 100}%"></div>
           </div>
         `;
-        breakdownDiv.appendChild(bar);
+        methodBreakdownDiv.appendChild(bar);
       });
     }
 
@@ -2669,6 +2944,12 @@ function setupEventListeners() {
   safeGet('btn-create-backup')?.addEventListener('click', createBackup);
   safeGet('btn-refresh-backups')?.addEventListener('click', loadBackups);
 
+  // Streamer deployment configuration
+  safeGet('btn-save-streamer-deployments')?.addEventListener('click', saveStreamerDeployments);
+  safeGet('btn-set-all-date')?.addEventListener('click', setAllDeploymentDates);
+  safeGet('btn-set-all-coating')?.addEventListener('click', setAllCoatingStatus);
+  safeGet('btn-clear-all-streamers')?.addEventListener('click', clearAllStreamerDeployments);
+
   // Modal - Confirmation
   safeGet('btn-modal-close')?.addEventListener('click', closeConfirmationModal);
   safeGet('btn-modal-cancel')?.addEventListener('click', closeConfirmationModal);
@@ -2731,6 +3012,7 @@ async function initApp() {
   await loadBackups();
   await refreshEverything();
   await renderHeatmap();
+  await renderStreamerDeploymentGrid();
   await refreshStatsFiltered();
 
   // Set default date/time for manual entry

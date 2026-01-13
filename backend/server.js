@@ -418,14 +418,6 @@ app.get("/api/eb-range", async (req, res) => {
 app.get("/api/config", async (_req, res) => {
   try {
     const config = await loadConfig();
-    
-    // Include deployment_date and is_coated from active project if available
-    const activeProject = await getOneCamelized("SELECT * FROM projects WHERE is_active = 1");
-    if (activeProject) {
-      config.deploymentDate = activeProject.deploymentDate || null;
-      config.isCoated = activeProject.isCoated === 1 || activeProject.isCoated === true;
-    }
-    
     res.json(humps.camelizeKeys(config));
   } catch (err) {
     console.error(err);
@@ -449,13 +441,6 @@ app.put("/api/config", authMiddleware, adminOnly, async (req, res) => {
     if (bodyData?.active_project_number !== undefined) {
       partial.activeProjectNumber = bodyData.active_project_number || null;
     }
-    // Handle deployment_date and is_coated
-    if (bodyData?.deployment_date !== undefined) {
-      partial.deploymentDate = bodyData.deployment_date || null;
-    }
-    if (bodyData?.is_coated !== undefined) {
-      partial.isCoated = Boolean(bodyData.is_coated);
-    }
     
     // If there's an active project, update the project instead of global config
     const activeProject = await getOneCamelized("SELECT * FROM projects WHERE is_active = 1");
@@ -469,9 +454,7 @@ app.put("/api/config", authMiddleware, adminOnly, async (req, res) => {
           module_frequency = ?,
           channels_per_section = ?,
           use_rope_for_tail = ?,
-          vessel_tag = ?,
-          deployment_date = ?,
-          is_coated = ?
+          vessel_tag = ?
         WHERE id = ?`,
         [
           partial.numCables,
@@ -481,8 +464,6 @@ app.put("/api/config", authMiddleware, adminOnly, async (req, res) => {
           partial.channelsPerSection,
           partial.useRopeForTail ? 1 : 0,
           partial.vesselTag,
-          partial.deploymentDate || null,
-          partial.isCoated ? 1 : 0,
           activeProject.id
         ]
       );
@@ -492,16 +473,6 @@ app.put("/api/config", authMiddleware, adminOnly, async (req, res) => {
     }
     
     const config = await loadConfig();
-    
-    // Include deployment_date and is_coated from active project if available
-    if (activeProject) {
-      const updatedProject = await getOneCamelized("SELECT * FROM projects WHERE id = ?", [activeProject.id]);
-      if (updatedProject) {
-        config.deploymentDate = updatedProject.deploymentDate || null;
-        config.isCoated = updatedProject.isCoated === 1 || updatedProject.isCoated === true;
-      }
-    }
-    
     res.json(humps.camelizeKeys(config));
   } catch (err) {
     console.error(err);
@@ -529,8 +500,7 @@ app.get("/api/projects", async (_req, res) => {
     res.json(rows.map(p => ({
       ...p,
       useRopeForTail: p.useRopeForTail === 1,
-      isActive: p.isActive === 1,
-      isCoated: p.isCoated === 1
+      isActive: p.isActive === 1
     })));
   } catch (err) {
     console.error(err);
@@ -548,8 +518,7 @@ app.get("/api/projects/active", async (_req, res) => {
     res.json({
       ...project,
       useRopeForTail: project.useRopeForTail === 1,
-      isActive: project.isActive === 1,
-      isCoated: project.isCoated === 1
+      isActive: project.isActive === 1
     });
   } catch (err) {
     console.error(err);
@@ -570,9 +539,7 @@ app.post("/api/projects", authMiddleware, adminOnly, async (req, res) => {
       section_length,
       module_frequency,
       channels_per_section,
-      use_rope_for_tail,
-      deployment_date,
-      is_coated
+      use_rope_for_tail
     } = bodyData;
     
     if (!project_number || typeof project_number !== "string") {
@@ -583,9 +550,8 @@ app.post("/api/projects", authMiddleware, adminOnly, async (req, res) => {
     const result = await runAsync(
       `INSERT INTO projects (
         project_number, project_name, vessel_tag, created_at, is_active,
-        num_cables, sections_per_cable, section_length, module_frequency, channels_per_section, use_rope_for_tail,
-        deployment_date, is_coated
-      ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        num_cables, sections_per_cable, section_length, module_frequency, channels_per_section, use_rope_for_tail
+      ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
       [
         project_number, 
         project_name || null, 
@@ -596,9 +562,7 @@ app.post("/api/projects", authMiddleware, adminOnly, async (req, res) => {
         toInt(section_length, defaultConfig.section_length),
         toInt(module_frequency, defaultConfig.module_frequency),
         toInt(channels_per_section, defaultConfig.channels_per_section),
-        use_rope_for_tail === false ? 0 : 1,
-        deployment_date || null,
-        is_coated === true ? 1 : 0
+        use_rope_for_tail === false ? 0 : 1
       ]
     );
     
@@ -607,8 +571,7 @@ app.post("/api/projects", authMiddleware, adminOnly, async (req, res) => {
       res.json({
         ...created,
         useRopeForTail: created.useRopeForTail === 1,
-        isActive: created.isActive === 1,
-        isCoated: created.isCoated === 1
+        isActive: created.isActive === 1
       });
     } else {
       res.status(500).json({ error: "Failed to fetch created project" });
@@ -654,8 +617,7 @@ app.put("/api/projects/:id/activate", authMiddleware, adminOnly, async (req, res
       res.json({
         ...project,
         useRopeForTail: project.useRopeForTail === 1,
-        isActive: project.isActive === 1,
-        isCoated: project.isCoated === 1
+        isActive: project.isActive === 1
       });
     } else {
       res.status(404).json({ error: "Project not found" });
@@ -681,9 +643,7 @@ app.put("/api/projects/:id", authMiddleware, adminOnly, async (req, res) => {
       section_length,
       module_frequency,
       channels_per_section,
-      use_rope_for_tail,
-      deployment_date,
-      is_coated
+      use_rope_for_tail
     } = bodyData;
     
     await runAsync(
@@ -695,9 +655,7 @@ app.put("/api/projects/:id", authMiddleware, adminOnly, async (req, res) => {
         section_length = ?,
         module_frequency = ?,
         channels_per_section = ?,
-        use_rope_for_tail = ?,
-        deployment_date = ?,
-        is_coated = ?
+        use_rope_for_tail = ?
       WHERE id = ?`,
       [
         project_name || null,
@@ -708,8 +666,6 @@ app.put("/api/projects/:id", authMiddleware, adminOnly, async (req, res) => {
         toInt(module_frequency, defaultConfig.module_frequency),
         toInt(channels_per_section, defaultConfig.channels_per_section),
         use_rope_for_tail === false ? 0 : 1,
-        deployment_date || null,
-        is_coated === true ? 1 : 0,
         id
       ]
     );
@@ -733,8 +689,7 @@ app.put("/api/projects/:id", authMiddleware, adminOnly, async (req, res) => {
       res.json({
         ...updated,
         useRopeForTail: updated.useRopeForTail === 1,
-        isActive: updated.isActive === 1,
-        isCoated: updated.isCoated === 1
+        isActive: updated.isActive === 1
       });
     } else {
       res.status(404).json({ error: "Project not found" });
@@ -785,6 +740,100 @@ app.delete("/api/projects/:id", authMiddleware, adminOnly, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete project" });
+  }
+});
+
+// ============================================
+// Streamer Deployment Configuration Endpoints
+// ============================================
+
+/**
+ * GET /api/projects/:id/streamer-deployments
+ * Get per-streamer deployment configurations for a project
+ * Returns: { "1": { deploymentDate: "2026-01-15", isCoated: true }, "2": { ... }, ... }
+ */
+app.get('/api/projects/:id/streamer-deployments', authMiddleware, async (req, res) => {
+  try {
+    const id = requireValidId(req, res);
+    if (id === null) return;
+
+    const rows = await getAllCamelized(
+      'SELECT streamer_number, deployment_date, is_coated FROM streamer_deployments WHERE project_id = ?',
+      [id]
+    );
+
+    const result = {};
+    for (const row of rows) {
+      result[row.streamerNumber] = {
+        deploymentDate: row.deploymentDate || null,
+        isCoated: row.isCoated === 1
+      };
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch streamer deployments' });
+  }
+});
+
+/**
+ * PUT /api/projects/:id/streamer-deployments
+ * Save per-streamer deployment configurations
+ * Body: { "1": { deploymentDate: "2026-01-15", isCoated: true }, "2": { ... }, ... }
+ */
+app.put('/api/projects/:id/streamer-deployments', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const id = requireValidId(req, res);
+    if (id === null) return;
+
+    const bodyData = humps.decamelizeKeys(req.body);
+
+    // Upsert each streamer configuration
+    for (const [streamerNum, data] of Object.entries(bodyData)) {
+      const streamerNumber = parseInt(streamerNum, 10);
+      const deploymentDate = data.deployment_date || null;
+      const isCoated = data.is_coated ? 1 : 0;
+
+      await runAsync(
+        `INSERT INTO streamer_deployments (project_id, streamer_number, deployment_date, is_coated)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(project_id, streamer_number)
+         DO UPDATE SET deployment_date = excluded.deployment_date, is_coated = excluded.is_coated`,
+        [id, streamerNumber, deploymentDate, isCoated]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to save streamer deployments' });
+  }
+});
+
+/**
+ * DELETE /api/projects/:id/streamer-deployments/:streamerNumber
+ * Clear deployment configuration for a specific streamer
+ */
+app.delete('/api/projects/:id/streamer-deployments/:streamerNumber', authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const id = requireValidId(req, res);
+    if (id === null) return;
+
+    const streamerNumber = toInt(req.params.streamerNumber, NaN);
+    if (Number.isNaN(streamerNumber)) {
+      return res.status(400).json({ error: 'Invalid streamer number' });
+    }
+
+    await runAsync(
+      'DELETE FROM streamer_deployments WHERE project_id = ? AND streamer_number = ?',
+      [id, streamerNumber]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to delete streamer deployment' });
   }
 });
 

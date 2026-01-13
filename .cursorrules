@@ -1,0 +1,691 @@
+# Streamer Cleaning App - Cursor Rules
+
+## Project Overview
+Web application for tracking seismic streamer cable maintenance with interactive heatmap visualization, project management, and data persistence.
+
+## Tech Stack
+- **Backend**: Node.js, Express.js, SQLite3
+- **Frontend**: Vanilla JavaScript (no frameworks), HTML5, CSS3
+- **Database**: SQLite with WAL mode
+- **Libraries**: 
+  - bcryptjs (authentication)
+  - helmet (security)
+  - cors (cross-origin)
+  - humps (case conversion)
+  - jsPDF (PDF generation)
+  - node-cron (scheduled tasks)
+
+## Architecture Principles
+
+### 1. Simplicity First
+- Prefer functions over classes
+- Avoid complex inheritance hierarchies
+- Write "the dumbest possible thing that will work"
+- No clever hacks or overly abstracted code
+- Keep code flat and easy to follow
+
+### 2. No Build Tools
+- Pure vanilla JavaScript (no bundlers, transpilers, or frameworks)
+- Direct `<script>` tag imports
+- Standard ES6+ features only
+- No JSX, TypeScript, or preprocessors
+
+### 3. File Structure
+```
+project/
+├── backend/
+│   ├── server.js       # Express app, routes, middleware
+│   ├── db.js           # Database connection, migrations, backups
+│   └── schema.sql      # Initial schema definition
+├── public/
+│   ├── index.html      # Single-page app shell
+│   ├── styles.css      # All styles (no CSS modules)
+│   ├── app.js          # Main frontend logic
+│   ├── pdf-generator.js # PDF report generation
+│   └── libs/           # Third-party libraries
+├── backup/             # Automated database backups
+├── package.json
+└── .env                # Environment configuration
+```
+
+## Naming Conventions
+
+### JavaScript (camelCase)
+- Variables: `const userName = 'admin'`
+- Functions: `function loadConfig() {}`
+- Async functions: `async function fetchData() {}`
+- Constants: `const MAX_RETRIES = 3` (SCREAMING_SNAKE_CASE for true constants)
+
+### Database (snake_case)
+- Tables: `cleaning_events`, `app_config`, `projects`
+- Columns: `cable_id`, `section_index_start`, `created_at`
+- Use `humps.camelizeKeys()` when reading from DB
+- Use `humps.decamelizeKeys()` when writing to DB
+
+### CSS (kebab-case)
+- Classes: `.streamer-card`, `.modal-overlay`, `.btn-primary`
+- IDs: `#heatmap-container`, `#login-form`
+- CSS variables: `--bg`, `--primary`, `--heat-fresh`
+- BEM-inspired for complex components: `.modal-header-delete`
+
+### API Endpoints (kebab-case)
+- Resources: `/api/events`, `/api/projects`, `/api/config`
+- Actions: `/api/login`, `/api/logout`, `/api/backups`
+- Nested: `/api/projects/:id/activate`
+- Query params: `?project=PRJ-001&start=2024-01-01`
+
+## Code Style Guidelines
+
+### Backend Patterns
+
+#### Database Helpers
+Always use promisified wrappers:
+```javascript
+async function runAsync(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function (err) {
+      if (err) reject(err);
+      else resolve({ lastID: this.lastID, changes: this.changes });
+    });
+  });
+}
+
+async function getAllCamelized(sql, params = []) {
+  const rows = await allAsync(sql, params);
+  return rows.map(row => humps.camelizeKeys(row));
+}
+```
+
+#### Authentication Middleware
+```javascript
+function authMiddleware(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const token = authHeader.slice(7);
+  const session = sessions.get(token);
+  if (!session) {
+    return res.status(401).json({ error: "Invalid or expired session" });
+  }
+  req.user = session;
+  next();
+}
+
+function adminOnly(req, res, next) {
+  if (req.user?.role !== "admin") {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+  next();
+}
+```
+
+#### Route Pattern
+```javascript
+app.get("/api/resource", authMiddleware, async (req, res) => {
+  try {
+    const data = await getAllCamelized("SELECT * FROM table");
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch data" });
+  }
+});
+
+app.post("/api/resource", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const bodyData = humps.decamelizeKeys(req.body);
+    // ... validation and processing
+    const result = await runAsync("INSERT ...", params);
+    res.json({ success: true, id: result.lastID });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to create" });
+  }
+});
+```
+
+#### Error Handling
+- Always use try-catch in async functions
+- Log errors to console: `console.error(err)`
+- Return user-friendly JSON errors: `{ error: "Description" }`
+- Use appropriate HTTP status codes: 400, 401, 403, 404, 500
+
+#### Validation Pattern
+```javascript
+function validateInput(value, min, max) {
+  const parsed = parseInt(value, 10);
+  if (Number.isNaN(parsed) || parsed < min || parsed > max) {
+    return { valid: false, message: `Value must be between ${min} and ${max}` };
+  }
+  return { valid: true, value: parsed };
+}
+```
+
+### Frontend Patterns
+
+#### State Management
+Global variables at top of file:
+```javascript
+let config = null;
+let events = [];
+let authToken = null;
+let currentUser = null;
+let dragState = { active: false, cableId: null, start: null, end: null };
+```
+
+#### DOM Helpers
+```javascript
+function safeGet(id) {
+  const el = document.getElementById(id);
+  if (!el) console.warn(`UI Element '${id}' not found`);
+  return el;
+}
+
+function setStatus(el, msg, isError = false) {
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = isError ? '#ef4444' : '#2563eb';
+  if (msg) setTimeout(() => (el.textContent = ''), 4000);
+}
+```
+
+#### API Calls Pattern
+```javascript
+async function fetchData() {
+  try {
+    const res = await fetch('/api/endpoint', {
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error('Failed');
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    console.error(err);
+    showErrorToast('Failed', 'Unable to fetch data');
+  }
+}
+
+async function saveData(payload) {
+  if (!isAdmin()) {
+    showAccessDeniedToast('save data');
+    return;
+  }
+  try {
+    const res = await fetch('/api/endpoint', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (res.status === 401 || res.status === 403) {
+      showAccessDeniedToast('save data');
+      return;
+    }
+    if (!res.ok) throw new Error('Failed');
+    showSuccessToast('Saved', 'Data saved successfully');
+  } catch (err) {
+    console.error(err);
+    showErrorToast('Save Failed', 'Unable to save data');
+  }
+}
+```
+
+#### Event Listeners
+```javascript
+function setupEventListeners() {
+  safeGet('btn-save')?.addEventListener('click', handleSave);
+  safeGet('modal-close')?.addEventListener('click', closeModal);
+
+  document.querySelectorAll('.sortable').forEach(th => {
+    th.addEventListener('click', () => sortTable(th.dataset.sort));
+  });
+}
+```
+
+#### Toast Notifications (Preferred User Feedback)
+```javascript
+showSuccessToast('Title', 'Success message');
+showErrorToast('Title', 'Error message');
+showWarningToast('Title', 'Warning message');
+showAccessDeniedToast('perform action'); // For auth failures
+```
+
+#### Modal Pattern
+```javascript
+function openModal(modalId) {
+  safeGet(modalId)?.classList.add('show');
+}
+
+function closeModal(modalId) {
+  safeGet(modalId)?.classList.remove('show');
+}
+
+// Setup
+safeGet('modal-overlay')?.addEventListener('click', () => closeModal('my-modal'));
+```
+
+### CSS Patterns
+
+#### CSS Custom Properties
+Define in `:root`:
+```css
+:root {
+  --bg: #f3f4f6;
+  --primary: #2563eb;
+  --danger: #ef4444;
+  --heat-fresh: #22c55e;
+  --heat-14plus: #ef4444;
+}
+```
+
+#### Component Structure
+```css
+/* Component base */
+.modal {
+  display: none;
+  position: fixed;
+  /* ... */
+}
+
+/* Modifiers */
+.modal.show {
+  display: flex;
+}
+
+/* Nested elements */
+.modal-content {
+  background: #fff;
+}
+
+.modal-header {
+  border-bottom: 1px solid var(--border);
+}
+```
+
+#### Responsive Design
+Mobile-first approach:
+```css
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .grid-3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+```
+
+## Database Patterns
+
+### Schema Design
+- Use `INTEGER PRIMARY KEY AUTOINCREMENT` for IDs
+- Use `TEXT` for strings (SQLite best practice)
+- Use `INTEGER` for booleans (0/1)
+- Use ISO 8601 text for dates: `TEXT NOT NULL` with `new Date().toISOString()`
+- Add indexes for frequently queried columns
+
+### Migrations
+Add migrations in `db.js`:
+```javascript
+function migrateDatabase() {
+  db.all("PRAGMA table_info(table_name)", (err, columns) => {
+    const columnNames = columns.map(c => c.name);
+
+    if (!columnNames.includes('new_column')) {
+      db.run("ALTER TABLE table_name ADD COLUMN new_column TEXT", (err) => {
+        if (err) console.error('Migration failed:', err);
+        else console.log('Added new_column to table_name');
+      });
+    }
+  });
+}
+```
+
+### Query Patterns
+```javascript
+// SELECT with params
+const events = await getAllCamelized(
+  "SELECT * FROM cleaning_events WHERE cable_id = ? ORDER BY cleaned_at DESC",
+  [cableId]
+);
+
+// INSERT with conflict handling
+await runAsync(
+  "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+  [key, value]
+);
+
+// DELETE with validation
+const count = await getAsync("SELECT COUNT(*) as count FROM events WHERE project_number = ?", [projectNum]);
+if (count.count > 0) {
+  return res.status(400).json({ error: 'Cannot delete: has associated events' });
+}
+```
+
+## Security Best Practices
+
+### Authentication
+- Use Bearer token authentication
+- Store tokens in localStorage
+- Clear tokens on logout
+- Validate session on page load
+- Check role for admin actions (both frontend and backend)
+
+### Input Validation
+- Validate on both client and server
+- Parse and sanitize all inputs
+- Use parameterized queries (never string concatenation)
+- Validate file uploads (CSV imports)
+- Check ranges and types
+
+### API Security
+- Use helmet middleware
+- Configure CORS properly
+- Rate limiting for production (future enhancement)
+- CSRF protection for production (future enhancement)
+
+## Testing Approach
+
+### Manual Testing Checklist
+- Test all CRUD operations
+- Test authentication flows (login, logout, session expiry)
+- Test role-based access (admin vs viewer)
+- Test with invalid inputs
+- Test CSV import/export
+- Test backup/restore
+- Test project switching
+- Test heatmap drag-to-select
+
+```
+
+## Common Patterns & Utilities
+
+### Date Formatting
+```javascript
+function formatDateTime(iso) {
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? iso : d.toLocaleString();
+}
+
+// Current timestamp
+const now = new Date().toISOString();
+```
+
+### Number Parsing
+```javascript
+function toInt(n, fallback) {
+  const v = Number.parseInt(n, 10);
+  return Number.isFinite(v) ? v : fallback;
+}
+```
+
+### Array Filtering
+```javascript
+// Filter events by project
+const projectEvents = events.filter(e => e.projectNumber === projectNum);
+
+// Filter by date range
+const filtered = events.filter(e => {
+  const date = new Date(e.cleanedAt).toISOString().split('T')[0];
+  return date >= startDate && date <= endDate;
+});
+```
+
+## UI/UX Guidelines
+
+### User Feedback
+- Always provide feedback for user actions
+- Use toast notifications for success/error
+- Use modals for confirmations
+- Show loading states for async operations
+- Disable buttons during processing
+
+### Form Handling
+- Pre-fill forms with current values
+- Validate before submission
+- Clear forms after successful submission
+- Show inline validation errors
+- Use semantic HTML5 input types
+
+### Accessibility
+- Use semantic HTML elements
+- Add ARIA labels where needed
+- Ensure keyboard navigation works
+- Use appropriate focus management
+- Provide clear error messages
+
+## Environment Configuration
+
+### .env Structure
+```env
+PORT=3000
+DB_FILE=backend/streamer.db
+ALLOWED_ORIGINS=http://localhost:3000,https://yourdomain.com
+AUTH_USERS=admin:password:admin,viewer:password:viewer
+```
+
+### Configuration Loading
+```javascript
+require('dotenv').config();
+const PORT = process.env.PORT || 3000;
+```
+
+## Performance Considerations
+
+### Database
+- Use WAL mode for better concurrency
+- Add indexes for frequently queried columns
+- Batch operations when possible
+- Use transactions for multiple writes
+
+### Frontend
+- Minimize DOM manipulations
+- Use event delegation for dynamic elements
+- Debounce scroll/resize handlers
+- Cache DOM queries when reused
+
+### API
+- Filter data on backend, not frontend
+- Paginate large result sets (future enhancement)
+- Use appropriate HTTP caching headers
+
+## Documentation Standards
+
+### Code Comments
+Focus on **WHY**, not **what**:
+```javascript
+// GOOD: Explains reasoning
+// Use rope sections instead of 5 tail sections for this project type
+const useTailSections = !config.useRopeForTail;
+
+// BAD: States the obvious
+// Set useTailSections to not config.useRopeForTail
+const useTailSections = !config.useRopeForTail;
+```
+
+### Function Documentation
+```javascript
+/**
+ * Calculate EB (Equipment Box) range for a section range.
+ * Finds the closest module AT OR BEFORE startSection and AT OR AFTER endSection.
+ * 
+ * @param {number} startSection - Starting section index (0-based)
+ * @param {number} endSection - Ending section index (0-based)
+ * @param {Object} config - Streamer configuration object
+ * @returns {string} Formatted EB range (e.g., "EB05 - EB02")
+ */
+async function getEBRange(startSection, endSection, config) {
+  // Implementation
+}
+```
+
+## Git Commit Messages
+
+Follow conventional commits:
+- `feat: Add project management functionality`
+- `fix: Resolve heatmap rendering bug on mobile`
+- `refactor: Simplify authentication middleware`
+- `docs: Update API documentation`
+- `style: Fix CSS formatting in modal components`
+- `test: Add validation tests for event creation`
+
+## Feature Development Workflow
+
+1. **Understand Requirements**: What problem does this solve?
+2. **Design Simple Solution**: Avoid over-engineering
+3. **Backend First**: Create API endpoint with validation
+4. **Frontend Integration**: Connect UI to API
+5. **Error Handling**: Handle all failure cases
+6. **User Feedback**: Add toasts/status messages
+7. **Manual Testing**: Test all scenarios
+8. **Documentation**: Update relevant docs
+
+## Common Gotchas
+
+### SQLite Booleans
+SQLite doesn't have native booleans. Use 0/1:
+```javascript
+// Writing
+const isActive = true;
+await runAsync("INSERT ... VALUES (?)", [isActive ? 1 : 0]);
+
+// Reading - convert back to boolean
+const project = await getOneCamelized("SELECT * FROM projects WHERE id = ?", [id]);
+return { ...project, isActive: project.isActive === 1 };
+```
+
+### Case Conversion
+Always convert between camelCase (JS) and snake_case (DB):
+```javascript
+// To DB
+const bodyData = humps.decamelizeKeys(req.body);
+
+// From DB
+const data = await getAllCamelized("SELECT * FROM table");
+```
+
+### Async/Await
+Always await database operations:
+```javascript
+// WRONG
+function loadData() {
+  getAllCamelized("SELECT * FROM table"); // Returns Promise, not data!
+}
+
+// CORRECT
+async function loadData() {
+  const data = await getAllCamelized("SELECT * FROM table");
+  return data;
+}
+```
+
+### Admin Checks
+Always check on both frontend AND backend:
+```javascript
+// Frontend: Disable UI
+if (!isAdmin()) {
+  button.style.display = 'none';
+}
+
+// Backend: Enforce permission
+app.post('/api/resource', authMiddleware, adminOnly, async (req, res) => {
+  // Safe to proceed
+});
+```
+
+## Domain-Specific Rules
+
+### Seismic Streamer Concepts
+- **Cable/Streamer**: Numbered 1-12 (or configured amount)
+- **Section**: Numbered 1-107 (or configured), 0-indexed in DB
+- **Tail Section**: Optional 5 additional sections after main sections
+- **EB (Equipment Box)**: Modules placed every N sections
+- **Channel**: 6 per section (configurable)
+- **Distance**: Calculated as sections × section_length (default 75m)
+
+### Section Numbering
+```javascript
+// Display (1-indexed)
+const displayNumber = sectionIndex + 1; // "AS01", "AS02"
+
+// Storage (0-indexed)
+const dbIndex = displayNumber - 1;
+```
+
+### EB Calculation
+- First EB after section 0 (AS01)
+- Regular EBs every moduleFrequency sections
+- Last EB after final active section
+- Tail sections reference "Tail Adaptor"
+
+## Debugging Tips
+
+### Console Logging
+```javascript
+// Log with context
+console.log('Loading events for project:', projectNumber);
+console.error('Failed to save event:', err);
+
+// Log objects clearly
+console.log('Event data:', JSON.stringify(event, null, 2));
+```
+
+### Network Debugging
+- Check browser DevTools Network tab
+- Verify request/response payloads
+- Check authentication headers
+- Verify HTTP status codes
+
+### Database Debugging
+```javascript
+// Log SQL queries during development
+console.log('Executing:', sql, params);
+const result = await runAsync(sql, params);
+console.log('Result:', result);
+```
+
+## When to Refactor
+
+Refactor when:
+- A function exceeds 50 lines
+- Logic is duplicated in 3+ places
+- Code becomes hard to understand
+- Adding features requires touching many files
+
+Don't refactor:
+- Just for "style" preferences
+- When functionality is working and clear
+- To use a "cooler" pattern
+- Before understanding the full requirements
+
+## Project-Specific Commands
+
+```bash
+# Development
+npm run dev          # Start with nodemon (auto-restart)
+
+# Production
+npm start            # Start server
+
+# Database
+# Backups: Automatic every 12 hours in ./backup/
+# Manual: Use UI "Create Backup Now" button
+
+# Environment
+cp .env.example .env  # Create environment config
+```
+
+## Priority Order for AI Assistance
+
+1. **Functionality**: Does it work correctly?
+2. **Simplicity**: Is it easy to understand?
+3. **Consistency**: Does it follow existing patterns?
+4. **Security**: Is user input validated?
+5. **User Experience**: Is feedback provided?
+6. **Performance**: Is it reasonably fast?
+7. **Style**: Does it match conventions?
+
+Remember: Working, simple code is better than clever, complex code.

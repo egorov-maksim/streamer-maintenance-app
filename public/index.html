@@ -17,7 +17,7 @@
         <p class="login-subtitle">Sign in to access the maintenance dashboard</p>
       </div>
       
-      <form id="login-form" class="login-form">
+      <form id="login-form" class="login-form" onsubmit="return false;">
         <div class="form-group">
           <label for="login-username">Username</label>
           <div class="input-wrapper">
@@ -151,13 +151,6 @@
                       <option value="false">Add 5 Tail Sections</option>
                     </select>
                   </label>
-                  <label>Deployment Date <input type="date" id="cfg-deploymentDate"></label>
-                  <label>Coating Status
-                    <select id="cfg-isCoated">
-                      <option value="true">Yes</option>
-                      <option value="false">No</option>
-                    </select>
-                  </label>
                 </div>
                 <div class="actions mt-12">
                   <button class="btn btn-primary admin-only" id="btn-save-config">💾 Save Configuration</button>
@@ -168,6 +161,41 @@
                 </p>
               </div>
               
+              <!-- Per-Streamer Deployment Configuration -->
+              <div class="streamer-deployment-section section-divider" id="streamer-deployment-section" style="display: none;">
+                <h3 class="section-heading">
+                  🔧 Per-Streamer Deployment Configuration
+                  <span id="streamer-config-project-label" class="text-muted font-normal"></span>
+                </h3>
+                <p class="info-text-sm">
+                  Configure individual deployment dates and coating status for each streamer. 
+                  Streamers without specific configuration will show as "Not Configured".
+                </p>
+
+                <div class="actions mb-12">
+                  <button class="btn btn-outline btn-sm admin-only" id="btn-set-all-date">
+                    📅 Set All Deployment Dates
+                  </button>
+                  <button class="btn btn-outline btn-sm admin-only" id="btn-set-all-coating">
+                    🛡️ Set All Coating Status
+                  </button>
+                  <button class="btn btn-outline btn-sm admin-only" id="btn-clear-all-streamers">
+                    🗑️ Clear All Configurations
+                  </button>
+                  <button class="btn btn-primary admin-only" id="btn-save-streamer-deployments">
+                    💾 Save Streamer Configurations
+                  </button>
+                </div>
+
+                <div id="streamer-deployment-grid" class="streamer-deployment-grid">
+                  <!-- Dynamically generated -->
+                </div>
+
+                <div class="mt-12">
+                  <span id="streamer-deployment-status" class="status"></span>
+                </div>
+              </div>
+              
               <!-- Create New Project -->
               <div class="project-create-section admin-only section-divider">
                 <h3 class="section-heading">➕ Create New Project</h3>
@@ -175,13 +203,6 @@
                   <label>Project Number <input type="text" id="new-project-number" placeholder="e.g., PRJ-2026-001"></label>
                   <label>Project Name <input type="text" id="new-project-name" placeholder="e.g., North Sea Survey"></label>
                   <label>Vessel Tag <input type="text" id="new-project-vessel" value="TTN" placeholder="e.g., TTN"></label>
-                  <label>Deployment Date <input type="date" id="new-deployment-date"></label>
-                  <label>Coating Status
-                    <select id="new-is-coated">
-                      <option value="true">Yes</option>
-                      <option value="false">No</option>
-                    </select>
-                  </label>
                 </div>
                 <p class="info-text-sm">
                   New projects inherit the current streamer configuration. You can modify it after creation.
@@ -363,13 +384,9 @@
             <div class="kpi-value text-sm" id="kpi-last">—</div>
             <div class="kpi-sub" id="kpi-last-sub">No events</div>
           </div>
-          <div class="kpi">
-            <div class="kpi-title">Days to First Clean</div>
-            <div class="kpi-value" id="kpi-deploy-days">—</div>
-            <div class="kpi-sub" id="kpi-deploy-sub">Not available</div>
-          </div>
         </div>
         
+        <div id="deploy-days-breakdown" class="method-breakdown"></div>
         <div id="method-breakdown" class="method-breakdown"></div>
       </section>
 

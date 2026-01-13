@@ -1,0 +1,7 @@
+
+node_modules/
+backend/streamer.db
+.env
+npm-debug.log*
+backup/
+public/libs/
