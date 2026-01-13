@@ -1,7 +1,16 @@
 
 node_modules/
-backend/streamer.db
 .env
 npm-debug.log*
 backup/
 public/libs/
+.gitignore
+.cursorrules
+package-lock.json
+.DS_Store
+backend/streamer.db-shm
+backend/streamer.db-wal
+backend/streamer.db
+backend/DS_Store
+public/DS_Store
+
