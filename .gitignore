@@ -3,7 +3,6 @@ node_modules/
 .env
 npm-debug.log*
 backup/
-public/libs/
 .gitignore
 .cursorrules
 package-lock.json
