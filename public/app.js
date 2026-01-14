@@ -1559,6 +1559,7 @@ async function addEvent() {
       cleaningMethod: method,
       cleanedAt: datetimeIso,
       cleaningCount: 1,
+      vesselTag: config.vesselTag || 'TTN'
     };
 
     await apiCall('api/events', {
@@ -2555,7 +2556,8 @@ async function confirmCleaning() {
       cleaningMethod: method,              
       cleanedAt: now,                      
       cleaningCount: 1,                    
-      projectNumber: projectNumber         
+      projectNumber: projectNumber,
+      vesselTag: config.vesselTag || 'TTN'
     };
     
     await apiCall('/api/events', {
