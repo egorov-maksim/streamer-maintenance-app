@@ -129,7 +129,6 @@ function migrateProjectsTable() {
     
     const columnNames = columns.map(c => c.name);
     
-    // Removed: deployment_date and is_coated now stored per-streamer in streamer_deployments table
     const configColumns = [
       { name: 'num_cables', sql: 'ALTER TABLE projects ADD COLUMN num_cables INTEGER DEFAULT 12' },
       { name: 'sections_per_cable', sql: 'ALTER TABLE projects ADD COLUMN sections_per_cable INTEGER DEFAULT 107' },
@@ -137,9 +136,7 @@ function migrateProjectsTable() {
       { name: 'module_frequency', sql: 'ALTER TABLE projects ADD COLUMN module_frequency INTEGER DEFAULT 4' },
       { name: 'channels_per_section', sql: 'ALTER TABLE projects ADD COLUMN channels_per_section INTEGER DEFAULT 6' },
       { name: 'use_rope_for_tail', sql: 'ALTER TABLE projects ADD COLUMN use_rope_for_tail INTEGER DEFAULT 1' },
-      // Legacy columns removed - deployment_date and is_coated are now per-streamer in streamer_deployments table
-      // { name: 'deployment_date', sql: 'ALTER TABLE projects ADD COLUMN deployment_date TEXT' },
-      // { name: 'is_coated', sql: 'ALTER TABLE projects ADD COLUMN is_coated INTEGER DEFAULT 0' },
+      
     ];
     
     for (const col of configColumns) {
