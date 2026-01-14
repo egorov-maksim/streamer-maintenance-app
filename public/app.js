@@ -924,7 +924,7 @@ async function activateProject(projectId) {
       config.useRopeForTail = project.useRopeForTail;
       config.vesselTag = project.vesselTag;
       config.activeProjectNumber = project.projectNumber;
-      selectedProjectFilter = project.projectNumber;
+      selectedProjectFilter = String(project.projectNumber);
       
       // Update CSS variable and form
       document.documentElement.style.setProperty('--sections', config.sectionsPerCable);
@@ -1114,7 +1114,7 @@ function updateActiveProjectBanner() {
 }
 
 function setProjectFilter(projectNumber) {
-  selectedProjectFilter = projectNumber || null;
+  selectedProjectFilter = projectNumber ? String(projectNumber) : null;
   refreshEverything();
   renderHeatmap();
   refreshStatsFiltered();
@@ -2676,7 +2676,7 @@ async function refreshStatsFiltered() {
           // Get filtered events for calculation
           let filteredEvents = events;
           if (selectedProjectFilter) {
-            filteredEvents = filteredEvents.filter(e => e.projectNumber === selectedProjectFilter);
+            filteredEvents = filteredEvents.filter(e => String(e.projectNumber) === selectedProjectFilter);
           }
           if (startDate || endDate) {
             filteredEvents = filteredEvents.filter(e => {
