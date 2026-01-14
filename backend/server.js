@@ -859,6 +859,9 @@ app.get("/api/events", async (req, res) => {
 
 app.post("/api/events", authMiddleware, adminOnly, async (req, res) => {
   try {
+    // Load config at start of function
+    const config = await loadConfig();
+    
     const bodyData = humps.decamelizeKeys(req.body);
     const { cable_id, section_index_start, section_index_end, cleaning_method, cleaned_at, cleaning_count, project_number, vessel_tag } = bodyData;
 
@@ -875,12 +878,12 @@ app.post("/api/events", authMiddleware, adminOnly, async (req, res) => {
     
     // Get active project if not specified
     let finalProjectNumber = project_number;
-    let finalVesselTag = vessel_tag || defaultConfig.vessel_tag;
+    // Ensure finalVesselTag defaults to config.vesselTag before the projectnumber check
+    let finalVesselTag = vessel_tag !== undefined && vessel_tag !== null ? vessel_tag : config.vesselTag;
     
     if (!finalProjectNumber) {
-      const config = await loadConfig();
       finalProjectNumber = config.activeProjectNumber || null;
-      finalVesselTag = config.vesselTag;
+      // If no project number and vessel_tag was not provided, use config.vesselTag (already set above)
     }
     
     const result = await runAsync(

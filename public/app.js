@@ -767,8 +767,8 @@ async function saveProjectConfig(projectId) {
     const activeProject = projects.find(p => p.id === projectId);
     
     const body = {
-      projectName: activeProject?.projectName || null,
-      vesselTag: activeProject?.vesselTag || 'TTN',
+      projectName: activeProject?.projectName,
+      vesselTag: activeProject?.vesselTag,
       ...formConfig
     };
 
@@ -866,7 +866,7 @@ async function createProject() {
   
   const projectNumber = safeGet('new-project-number').value.trim();
   const projectName = safeGet('new-project-name').value.trim();
-  const vesselTag = safeGet('new-project-vessel').value.trim() || 'TTN';
+  const vesselTag = safeGet('new-project-vessel').value.trim();
   
   if (!projectNumber) {
     setStatus(statusEl, 'Project number is required', true);
@@ -892,7 +892,7 @@ async function createProject() {
     // Clear inputs
     safeGet('new-project-number').value = '';
     safeGet('new-project-name').value = '';
-    safeGet('new-project-vessel').value = 'TTN';
+    safeGet('new-project-vessel').value = '';
     
     setStatus(statusEl, '✅ Project created with current configuration');
     await loadProjects();
@@ -1047,7 +1047,7 @@ function renderProjectList() {
         <div class="project-item-info">
           <span class="project-number">${p.projectNumber}</span>
           ${p.projectName ? `<span class="project-name">${p.projectName}</span>` : ''}
-          <span class="project-vessel">${p.vesselTag || 'TTN'}</span>
+          <span class="project-vessel">${p.vesselTag ? p.vesselTag : 'TTN'}</span>
           ${eventCountBadge}
           ${activeBadge}
         </div>
@@ -1102,7 +1102,7 @@ function updateActiveProjectBanner() {
     nameEl.textContent = activeProject.projectName 
       ? `${activeProject.projectNumber} - ${activeProject.projectName}`
       : activeProject.projectNumber;
-    vesselEl.textContent = `[${activeProject.vesselTag || 'TTN'}]`;
+    vesselEl.textContent = `[${activeProject.vesselTag}]`;
     banner.classList.add('has-project');
     if (clearBtn && isAdmin()) clearBtn.classList.remove('hidden');
   } else {
@@ -1552,6 +1552,9 @@ async function addEvent() {
     const datetimeIso = new Date(`${dateVal}T${timeVal}`).toISOString();
     const cableId = `cable-${streamerNum - 1}`;
 
+    // Get active project for vesselTag
+    const activeProject = projects.find(p => p.isActive);
+
     const body = {
       cableId: cableId,
       sectionIndexStart: actualStart,
@@ -1559,6 +1562,7 @@ async function addEvent() {
       cleaningMethod: method,
       cleanedAt: datetimeIso,
       cleaningCount: 1,
+      vesselTag: activeProject ? activeProject.vesselTag : null
     };
 
     await apiCall('api/events', {
@@ -1636,8 +1640,8 @@ function editEventPrompt(id) {
   safeGet('edit-start').value = evt.sectionIndexStart + 1;
   safeGet('edit-end').value = evt.sectionIndexEnd + 1;
   safeGet('edit-method').value = evt.cleaningMethod;
-  safeGet("edit-project-number").value = evt.projectNumber || "";
-  safeGet("edit-vessel-tag").value = evt.vesselTag || "TTN";
+  safeGet("edit-project-number").value = evt.projectNumber;
+  safeGet("edit-vessel-tag").value = evt.vesselTag;
 
   const dateObj = new Date(evt.cleanedAt);
   safeGet('edit-date').value = dateObj.toISOString().split('T')[0];
@@ -1659,7 +1663,7 @@ async function saveEditedEvent() {
   const dateVal = safeGet('edit-date').value;
   const timeVal = safeGet('edit-time').value;
   const projectNumber = safeGet("edit-project-number").value || null;
-  const vesselTag = safeGet("edit-vessel-tag").value || "TTN";
+  const vesselTag = safeGet("edit-vessel-tag").value;
   // ✅ ADD VALIDATION WITH PROJECT AWARENESS
   const validation = validateStreamerAndSections(
     streamerNum, 
@@ -1819,7 +1823,7 @@ function exportCsv() {
     const endSection = evt.sectionIndexEnd + 1;
     const dateStr = new Date(evt.cleanedAt).toISOString();
     const projectNum = evt.projectNumber || '';
-    const vesselTag = evt.vesselTag || 'TTN';
+    const vesselTag = evt.vesselTag;
     rows.push(`${streamerNum},${startSection},${endSection},${evt.cleaningMethod},"${dateStr}","${projectNum}","${vesselTag}"`);
   });
 
@@ -1983,7 +1987,7 @@ async function renderLog() {
     const ebRange = ebRanges[idx];
     const distance = eventDistance(evt);
     const projectDisplay = evt.projectNumber || '<span style="color:#9ca3af">—</span>';
-    const vesselDisplay = evt.vesselTag || 'TTN';
+    const vesselDisplay = evt.vesselTag;
 
     const actionButtons = isAdminUser 
       ? `<button class="btn btn-outline btn-edit" data-id="${evt.id}">✏️</button>
@@ -2555,7 +2559,8 @@ async function confirmCleaning() {
       cleaningMethod: method,              
       cleanedAt: now,                      
       cleaningCount: 1,                    
-      projectNumber: projectNumber         
+      projectNumber: projectNumber,
+      vesselTag: activeProject ? activeProject.vesselTag : null
     };
     
     await apiCall('/api/events', {
@@ -2676,7 +2681,7 @@ async function refreshStatsFiltered() {
           // Get filtered events for calculation
           let filteredEvents = events;
           if (selectedProjectFilter) {
-            filteredEvents = filteredEvents.filter(e => e.projectNumber === selectedProjectFilter);
+            filteredEvents = filteredEvents.filter(e => e.projectNumber == selectedProjectFilter);
           }
           if (startDate || endDate) {
             filteredEvents = filteredEvents.filter(e => {
