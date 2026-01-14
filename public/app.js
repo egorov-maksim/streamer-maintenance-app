@@ -3007,7 +3007,7 @@ function setupProjectCollapse() {
 async function initApp() {
   await loadConfig();
   if (config.activeProjectNumber) {
-    selectedProjectFilter = config.activeProjectNumber;
+    selectedProjectFilter = String(config.activeProjectNumber);
   }
   await loadProjects();
   updateActiveProjectBanner();
