@@ -918,7 +918,7 @@ app.put("/api/events/:id", authMiddleware, adminOnly, async (req, res) => {
 
     const existing = await getOneCamelized("SELECT * FROM cleaning_events WHERE id = ?", [id]);
     const finalProjectNumber = project_number !== undefined ? project_number : (existing?.projectNumber || null);
-    const finalVesselTag = vessel_tag !== undefined ? vessel_tag : (existing?.vesselTag || defaultConfig.vessel_tag);
+    const finalVesselTag = vessel_tag !== undefined ? vessel_tag : (existing?.vesselTag || config.vesselTag ||  defaultConfig.vesselTag);
 
     await runAsync(
       `UPDATE cleaning_events
