@@ -2103,6 +2103,23 @@
 .font-normal { font-weight: 400; }
 .text-sm { font-size: 14px; }
 
+/* Section title without top margin */
+.section-title {
+  margin-top: 0;
+}
+
+/* Info text medium size */
+.info-text-md {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+/* Error text medium size */
+.error-text-md {
+  color: #ef4444;
+  font-size: 14px;
+}
+
 /* Width utilities */
 .w-full { width: 100%; }
 

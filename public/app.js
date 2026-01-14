@@ -1282,7 +1282,7 @@ async function saveStreamerDeployments() {
     // Refresh grid to show updated badges
     await renderStreamerDeploymentGrid();
 
-    // Refresh stats to update "Days to First Clean"
+    // Refresh stats to update "Days to First Scraping"
     await refreshStatsFiltered();
   } catch (err) {
     console.error(err);
@@ -2662,15 +2662,15 @@ async function refreshStatsFiltered() {
       safeGet('kpi-last-sub').textContent = 'No events';
     }
 
-    // Calculate Days to First Clean per-streamer breakdown
+    // Calculate Days to First Scraping per-streamer breakdown
     const deployDaysBreakdownDiv = safeGet('deploy-days-breakdown');
     if (deployDaysBreakdownDiv) {
       const activeProject = projects.find(p => p.isActive === true);
       
       if (!activeProject) {
-        deployDaysBreakdownDiv.innerHTML = '<h3 style="margin-top: 0">Days to First Clean per Streamer</h3><p style="color: #6b7280; font-size: 14px;">Requires active project with deployment dates</p>';
+        deployDaysBreakdownDiv.innerHTML = '<h3 class="section-title">Days to First Scraping per Streamer</h3><p class="info-text-md">Requires active project with deployment dates</p>';
       } else if (data.events === 0) {
-        deployDaysBreakdownDiv.innerHTML = '<h3 style="margin-top: 0">Days to First Clean per Streamer</h3><p style="color: #6b7280; font-size: 14px;">No cleaning events yet</p>';
+        deployDaysBreakdownDiv.innerHTML = '<h3 class="section-title">Days to First Scraping per Streamer</h3><p class="info-text-md">No cleaning events yet</p>';
       } else {
         try {
           // Get filtered events for calculation
@@ -2727,9 +2727,9 @@ async function refreshStatsFiltered() {
 
           // Generate breakdown HTML
           if (streamerDays.length === 0) {
-            deployDaysBreakdownDiv.innerHTML = '<h3 style="margin-top: 0">Days to First Clean per Streamer</h3><p style="color: #6b7280; font-size: 14px;">No deployment dates configured</p>';
+            deployDaysBreakdownDiv.innerHTML = '<h3 class="section-title">Days to First Scraping per Streamer</h3><p class="info-text-md">No deployment dates configured</p>';
           } else {
-            deployDaysBreakdownDiv.innerHTML = '<h3 style="margin-top: 0">Days to First Clean per Streamer</h3>';
+            deployDaysBreakdownDiv.innerHTML = '<h3 class="section-title">Days to First Scraping per Streamer</h3>';
             
             // Sort by streamer number for consistent display
             streamerDays.sort((a, b) => a.streamerNum - b.streamerNum);
@@ -2750,8 +2750,8 @@ async function refreshStatsFiltered() {
             });
           }
         } catch (err) {
-          console.error('Failed to calculate days to first clean', err);
-          deployDaysBreakdownDiv.innerHTML = '<h3 style="margin-top: 0">Days to First Clean per Streamer</h3><p style="color: #ef4444; font-size: 14px;">Calculation error</p>';
+          console.error('Failed to calculate days to first scraping', err);
+          deployDaysBreakdownDiv.innerHTML = '<h3 class="section-title">Days to First Scraping per Streamer</h3><p class="error-text-md">Calculation error</p>';
         }
       }
     }

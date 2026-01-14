@@ -480,18 +480,6 @@ app.put("/api/config", authMiddleware, adminOnly, async (req, res) => {
   }
 });
 
-// ---- Project Management Endpoints ----
-
-// Helper to format project response with proper boolean conversion
-function formatProjectResponse(project) {
-  if (!project) return null;
-  const camelized = humps.camelizeKeys(project);
-  return {
-    ...camelized,
-    useRopeForTail: project.use_rope_for_tail === 1,
-    isActive: project.is_active === 1
-  };
-}
 
 // Get all projects
 app.get("/api/projects", async (_req, res) => {
