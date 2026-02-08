@@ -55,8 +55,20 @@ async function apiCall(url, options = {}) {
   }
 }
 
+function isSuperUser() {
+  return currentUser?.role === 'superuser';
+}
+
+function isAdminOrAbove() {
+  return currentUser?.role === 'admin' || currentUser?.role === 'superuser';
+}
+
 function isAdmin() {
   return currentUser?.role === 'admin';
+}
+
+function isViewer() {
+  return currentUser?.role === 'viewer';
 }
 
 // Save session to localStorage
@@ -114,7 +126,7 @@ async function validateSession() {
 /* Shared drag state */
 let dragState = {
   active: false,
-  cableId: null,
+  streamerId: null,
   start: null,
   end: null,
   cells: null,
@@ -221,9 +233,7 @@ function eventDistance(evt) {
   return sectionCount(evt) * (config.sectionLength || 1);
 }
 
-function toStreamerNum(cableId) {
-  return parseInt(cableId.split("-")[1] || "0", 10) + 1;
-}
+// Removed toStreamerNum - events now have streamerId directly (1-12)
 
 function ageBucket(days) {
   if (days === null) return "never";
@@ -337,9 +347,9 @@ function createTooltip() {
   return tooltip;
 }
 
-function showSectionTooltip(e, cableId, sectionIndex) {
+function showSectionTooltip(e, streamerId, sectionIndex) {
   const tooltip = createTooltip();
-  const streamerNum = toStreamerNum(cableId);
+  const streamerNum = streamerId;
   const N = config.sectionsPerCable;
 
   // Determine if it's a tail section
@@ -348,7 +358,7 @@ function showSectionTooltip(e, cableId, sectionIndex) {
 
   // Get cleaning history for this specific section
   const sectionEvents = events.filter(evt =>
-    evt.cableId === cableId &&
+    evt.streamerId === streamerId &&
     sectionIndex >= evt.sectionIndexStart &&
     sectionIndex <= evt.sectionIndexEnd
   );
@@ -454,20 +464,20 @@ function attachTooltipListeners() {
   cells.forEach(cell => {
     cell.addEventListener('mouseenter', (e) => {
       if (!dragState.active) {
-        const cableId = cell.dataset.cable;
+        const streamerId = parseInt(cell.dataset.streamer);
         const section = parseInt(cell.dataset.section, 10);
-        if (cableId && !isNaN(section)) {
-          showSectionTooltip(e, cableId, section);
+        if (streamerId && !isNaN(section)) {
+          showSectionTooltip(e, streamerId, section);
         }
       }
     });
 
     cell.addEventListener('mousemove', (e) => {
       if (!dragState.active) {
-        const cableId = cell.dataset.cable;
+        const streamerId = parseInt(cell.dataset.streamer);
         const section = parseInt(cell.dataset.section, 10);
-        if (cableId && !isNaN(section)) {
-          showSectionTooltip(e, cableId, section);
+        if (streamerId && !isNaN(section)) {
+          showSectionTooltip(e, streamerId, section);
         }
       }
     });
@@ -609,55 +619,61 @@ function showApp() {
 }
 
 function updateUIForRole() {
-  const isAdminUser = isAdmin();
+  const isSuperUserRole = isSuperUser();
+  const isAdminRole = isAdminOrAbove();
   
-  // Hide/show admin-only elements
+  // SuperUser-only: Project management, config, backups, deployments
+  document.querySelectorAll('.superuser-only').forEach(el => 
+    el.classList.toggle('hidden', !isSuperUserRole)
+  );
+
+  // Admin+: Event editing (both admin and superuser)
   const adminOnlyElements = document.querySelectorAll('.admin-only');
   adminOnlyElements.forEach(el => {
-    el.classList.toggle('hidden', !isAdminUser);
+    el.classList.toggle('hidden', !isAdminRole);
   });
   
-  // Disable buttons for viewers
+  // Disable buttons for non-admins
   const editDeleteBtns = document.querySelectorAll('.btn-edit, .btn-delete');
   editDeleteBtns.forEach(btn => {
-    btn.classList.toggle('hidden', !isAdminUser);
+    btn.classList.toggle('hidden', !isAdminRole);
   });
   
   // Hide action column header for viewers
   const actionHeaders = document.querySelectorAll('th:last-child');
   // We'll handle this in renderLog instead
   
-  // Show/hide manual entry section, clear all button, etc.
+  // Clear All button (global clear - SuperUser only)
   const btnClearAll = safeGet('btn-clear-all');
-  if (btnClearAll) btnClearAll.classList.toggle('hidden', !isAdminUser);
+  if (btnClearAll) btnClearAll.classList.toggle('hidden', !isSuperUserRole);
   
   const btnSaveConfig = safeGet('btn-save-config');
-  if (btnSaveConfig) btnSaveConfig.classList.toggle('hidden', !isAdminUser);
+  if (btnSaveConfig) btnSaveConfig.classList.toggle('hidden', !isSuperUserRole);
   
   const btnAddEvent = safeGet('btn-add-event');
-  if (btnAddEvent) btnAddEvent.classList.toggle('hidden', !isAdminUser);
+  if (btnAddEvent) btnAddEvent.classList.toggle('hidden', !isAdminRole);
   
-  // Disable config inputs for viewers
+  // Disable config inputs for non-superusers
   const configInputs = document.querySelectorAll('#cfg-numCables, #cfg-sectionsPerCable, #cfg-sectionLength, #cfg-moduleFrequency, #cfg-channelsPerSection, #cfg-useRopeForTail');
   configInputs.forEach(input => {
-    input.disabled = !isAdminUser;
+    input.disabled = !isSuperUserRole;
   });
   
-  // Disable manual entry inputs for viewers
+  // Disable manual entry inputs for non-admins
   const manualEntryInputs = document.querySelectorAll('#evt-streamer, #evt-start, #evt-end, #evt-method, #evt-date, #evt-time');
   manualEntryInputs.forEach(input => {
-    input.disabled = !isAdminUser;
+    input.disabled = !isAdminRole;
   });
   
-  // Project management buttons and inputs
+  // Project management buttons and inputs (SuperUser only)
   const btnCreateProject = safeGet('btn-create-project');
-  if (btnCreateProject) btnCreateProject.classList.toggle('hidden', !isAdminUser);
+  if (btnCreateProject) btnCreateProject.classList.toggle('hidden', !isSuperUserRole);
   
   const btnActivateProject = safeGet('btn-activate-project');
-  if (btnActivateProject) btnActivateProject.classList.toggle('hidden', !isAdminUser);
+  if (btnActivateProject) btnActivateProject.classList.toggle('hidden', !isSuperUserRole);
   
   const btnClearProject = safeGet('btn-clear-project');
-  if (btnClearProject && isAdminUser) {
+  if (btnClearProject && isSuperUserRole) {
     // Only show if there's an active project
     const activeProject = projects.find(p => p.isActive === true);
     btnClearProject.classList.toggle('hidden', !activeProject);
@@ -665,11 +681,32 @@ function updateUIForRole() {
     btnClearProject.classList.add('hidden');
   }
   
-  // Disable project creation inputs for viewers
+  // Disable project creation inputs for non-superusers
   const projectInputs = document.querySelectorAll('#new-project-number, #new-project-name, #new-project-vessel');
   projectInputs.forEach(input => {
-    input.disabled = !isAdminUser;
+    input.disabled = !isSuperUserRole;
   });
+
+  // Deployment inputs (SuperUser only)
+  const deploymentInputs = document.querySelectorAll('.streamer-deploy-date, .streamer-coating-status');
+  deploymentInputs.forEach(input => 
+    input.disabled = !isSuperUserRole
+  );
+
+  // Update role badge
+  const roleBadge = safeGet('user-role-badge');
+  if (roleBadge) {
+    if (isSuperUserRole) {
+      roleBadge.textContent = 'Super User';
+      roleBadge.className = 'user-role-badge superuser';
+    } else if (isAdminRole) {
+      roleBadge.textContent = 'Administrator';
+      roleBadge.className = 'user-role-badge admin';
+    } else {
+      roleBadge.textContent = 'Viewer';
+      roleBadge.className = 'user-role-badge viewer';
+    }
+  }
 }
 
 function setupPasswordToggle() {
@@ -741,8 +778,8 @@ function getConfigFromForm() {
 async function saveConfig() {
   const statusEl = safeGet('config-status');
   
-  if (!isAdmin()) {
-    setStatus(statusEl, 'Admin access required', true);
+  if (!isSuperUser()) {
+    setStatus(statusEl, 'SuperUser access required', true);
     return;
   }
   
@@ -859,8 +896,8 @@ async function loadProjects() {
 async function createProject() {
   const statusEl = safeGet('project-status');
   
-  if (!isAdmin()) {
-    setStatus(statusEl, 'Admin access required', true);
+  if (!isSuperUser()) {
+    setStatus(statusEl, 'SuperUser access required', true);
     return;
   }
   
@@ -1000,7 +1037,7 @@ async function clearActiveProject() {
 }
 
 async function deleteProject(projectId) {
-  if (!isAdmin()) {
+  if (!isSuperUser()) {
     showAccessDeniedToast('delete project');
     return;
   }
@@ -1032,7 +1069,7 @@ function renderProjectList() {
     return;
   }
   
-  const isAdminUser = isAdmin();
+  const isAdminUser = isAdminOrAbove();
   
   container.innerHTML = projects.map(p => {
     const isActive = p.isActive === true;
@@ -1550,10 +1587,10 @@ async function addEvent() {
     const actualStart = Math.min(startSection, endSection) - 1;
     const actualEnd = Math.max(startSection, endSection) - 1;
     const datetimeIso = new Date(`${dateVal}T${timeVal}`).toISOString();
-    const cableId = `cable-${streamerNum - 1}`;
+    const streamerId = streamerNum;
 
     const body = {
-      cableId: cableId,
+      streamerId: streamerId,
       sectionIndexStart: actualStart,
       sectionIndexEnd: actualEnd,
       cleaningMethod: method,
@@ -1583,8 +1620,7 @@ async function deleteEvent(id) {
   if (!evt) return;
 
   // Populate delete modal
-  const cableIndex = parseInt(evt.cableId.split('-')[1], 10);
-  const streamerNum = cableIndex + 1;
+  const streamerNum = evt.streamerId;
 
   safeGet('delete-event-id').value = evt.id;
   safeGet('delete-streamer-display').textContent = streamerNum;
@@ -1602,7 +1638,7 @@ function closeDeleteModal() {
 }
 
 async function confirmDeleteEvent() {
-  if (!isAdmin()) {
+  if (!isAdminOrAbove()) {
     showAccessDeniedToast('delete events');
     return;
   }
@@ -1629,8 +1665,7 @@ function editEventPrompt(id) {
   const evt = events.find(e => e.id === id);
   if (!evt) return;
 
-  const cableIndex = parseInt(evt.cableId.split('-')[1] || 0, 10);
-  const streamerNum = cableIndex + 1;
+  const streamerNum = evt.streamerId;
 
   safeGet('edit-event-id').value = evt.id;
   safeGet('edit-streamer').value = streamerNum;
@@ -1676,11 +1711,11 @@ async function saveEditedEvent() {
 
   const actualStart = Math.min(startSection, endSection) - 1;
   const actualEnd = Math.max(startSection, endSection) - 1;
-  const cableId = `cable-${streamerNum - 1}`;
+  const streamerId = streamerNum;
   const datetimeIso = new Date(`${dateVal}T${timeVal}`).toISOString();
 
   const body = {
-    cableId: cableId,
+    streamerId: streamerId,
     sectionIndexStart: actualStart,
     sectionIndexEnd: actualEnd,
     cleaningMethod: method,
@@ -1695,7 +1730,7 @@ async function saveEditedEvent() {
 }
 
 async function updateEvent(id, body) {
-  if (!isAdmin()) {
+  if (!isAdminOrAbove()) {
     showAccessDeniedToast('edit events');
     return;
   }
@@ -1815,7 +1850,7 @@ function exportCsv() {
   const rows = [header];
 
   events.forEach(evt => {
-    const streamerNum = toStreamerNum(evt.cableId);
+    const streamerNum = evt.streamerId;
     const startSection = evt.sectionIndexStart + 1;
     const endSection = evt.sectionIndexEnd + 1;
     const dateStr = new Date(evt.cleanedAt).toISOString();
@@ -1864,7 +1899,7 @@ function parseCsvLine(line) {
 }
 
 async function handleCsvFile(file) {
-  if (!isAdmin()) {
+  if (!isAdminOrAbove()) {
     showAccessDeniedToast('import CSV data');
     return;
   }
@@ -1922,10 +1957,9 @@ async function handleCsvFile(file) {
 
       const actualStart = Math.min(startSection, endSection) - 1;
       const actualEnd = Math.max(startSection, endSection) - 1;
-      const cableId = `cable-${streamerNum - 1}`;
 
       const body = {
-        cableId: cableId,
+        streamerId: streamerNum,
         sectionIndexStart: actualStart,
         sectionIndexEnd: actualEnd,
         cleaningMethod: method,
@@ -1969,7 +2003,7 @@ async function renderLog() {
 
   tbody.innerHTML = '';
   
-  const isAdminUser = isAdmin();
+  const isAdminUser = isAdminOrAbove();
 
   // Fetch all EB ranges in parallel for performance
   const ebRangePromises = events.map(evt => 
@@ -1979,7 +2013,7 @@ async function renderLog() {
 
   events.forEach((evt, idx) => {
     const tr = document.createElement('tr');
-    const streamerNum = toStreamerNum(evt.cableId);
+    const streamerNum = evt.streamerId;
     const rangeLabel = `${formatAS(evt.sectionIndexEnd)}–${formatAS(evt.sectionIndexStart)}`;
     const ebRange = ebRanges[idx];
     const distance = eventDistance(evt);
@@ -2046,8 +2080,8 @@ async function renderAlerts() {
     let warning = 0;
     let uncleaned = 0;
 
-    Object.keys(lastCleaned).forEach(cableId => {
-      const sections = lastCleaned[cableId];
+    Object.keys(lastCleaned).forEach(streamerId => {
+      const sections = lastCleaned[streamerId];
       sections.forEach(date => {
         if (!date) {
           uncleaned++;
@@ -2124,12 +2158,11 @@ async function renderStreamerCards(startDate = null, endDate = null) {
     const tailSections = config.useRopeForTail ? 0 : 5;
     const totalPerCable = N + tailSections;
 
-    for (let c = 0; c < cableCount; c++) {
-      const cableId = `cable-${c}`;
-      const sections = lastCleaned[cableId] || [];
+    for (let streamerId = 1; streamerId <= cableCount; streamerId++) {
+      const sections = lastCleaned[streamerId] || [];
 
       // Filter events by date range if provided
-      let filteredEvents = events.filter(evt => evt.cableId === cableId);
+      let filteredEvents = events.filter(evt => evt.streamerId === streamerId);
 
       if (startDate || endDate) {
         filteredEvents = filteredEvents.filter(evt => {
@@ -2177,7 +2210,7 @@ async function renderStreamerCards(startDate = null, endDate = null) {
       card.className = 'streamer-card';
       card.innerHTML = `
         <div class="streamer-card-header">
-          <div class="streamer-card-title">Streamer ${c + 1}</div>
+          <div class="streamer-card-title">Streamer ${streamerId}</div>
           <div class="streamer-card-percent">${coverage}%</div>
         </div>
         <div class="streamer-card-detail">
@@ -2274,9 +2307,8 @@ async function renderHeatmap() {
     wrapper.appendChild(channelCol);
 
     // Render each streamer column
-    for (let c = cableCount - 1; c >= 0; c--) {
-      const cableId = `cable-${c}`;
-      const sections = lastCleaned[cableId] || [];
+    for (let streamerId = cableCount; streamerId >= 1; streamerId--) {
+      const sections = lastCleaned[streamerId] || [];
 
       const col = document.createElement('div');
       col.className = 'hm-col';
@@ -2285,8 +2317,8 @@ async function renderHeatmap() {
       // Streamer header
       const label = document.createElement('div');
       label.className = 'hm-col-label';
-      label.textContent = `S${c + 1}`;
-      label.title = `Streamer ${c + 1}`;
+      label.textContent = `S${streamerId}`;
+      label.title = `Streamer ${streamerId}`;
       col.appendChild(label);
 
       rowIndex = 0;
@@ -2296,7 +2328,7 @@ async function renderHeatmap() {
         // Active section cell
         const cell = document.createElement('div');
         cell.className = 'hm-vcell hm-active-section';
-        cell.dataset.cable = cableId;
+        cell.dataset.streamer = streamerId;
         cell.dataset.section = s;
         cell.textContent = s + 1;
 
@@ -2333,7 +2365,7 @@ async function renderHeatmap() {
         const tailIdx = N + t;
         const tailCell = document.createElement('div');
         tailCell.className = 'hm-vcell hm-tail-section';
-        tailCell.dataset.cable = cableId;
+        tailCell.dataset.streamer = streamerId;
         tailCell.dataset.section = tailIdx;
         tailCell.dataset.isTail = 'true';
         tailCell.textContent = `T${t + 1}`;
@@ -2385,13 +2417,13 @@ function attachDragListeners() {
     cell.addEventListener('mousedown', (e) => {
       e.preventDefault();
       hideSectionTooltip();
-      const cableId = cell.dataset.cable;
+      const streamerId = parseInt(cell.dataset.streamer);
       const section = parseInt(cell.dataset.section, 10);
 
-      if (!cableId || isNaN(section)) return;
+      if (!streamerId || isNaN(section)) return;
 
       dragState.active = true;
-      dragState.cableId = cableId;
+      dragState.streamerId = streamerId;
       dragState.start = section;
       dragState.end = section;
       dragState.cells = Array.from(cells);
@@ -2401,10 +2433,10 @@ function attachDragListeners() {
     cell.addEventListener('mouseenter', () => {
       if (!dragState.active) return;
 
-      const cableId = cell.dataset.cable;
+      const streamerId = parseInt(cell.dataset.streamer);
       const section = parseInt(cell.dataset.section, 10);
 
-      if (cableId === dragState.cableId && !isNaN(section)) {
+      if (streamerId === dragState.streamerId && !isNaN(section)) {
         dragState.end = section;
         updateDragHighlight();
       }
@@ -2421,14 +2453,14 @@ function attachDragListeners() {
 function updateDragHighlight() {
   if (!dragState.cells) return;
 
-  const { cableId, start, end } = dragState;
+  const { streamerId, start, end } = dragState;
   const min = Math.min(start, end);
   const max = Math.max(start, end);
 
   dragState.cells.forEach(cell => {
-    const cellCable = cell.dataset.cable;
+    const cellStreamer = parseInt(cell.dataset.streamer);
     const cellSection = parseInt(cell.dataset.section, 10);
-    const inRange = cellCable === cableId && cellSection >= min && cellSection <= max;
+    const inRange = cellStreamer === streamerId && cellSection >= min && cellSection <= max;
     cell.classList.toggle('dragging', inRange);
   });
 }
@@ -2443,7 +2475,7 @@ function clearDragState() {
 
   dragState = {
     active: false,
-    cableId: null,
+    streamerId: null,
     start: null,
     end: null,
     cells: null,
@@ -2456,10 +2488,10 @@ function showConfirmationModal() {
   if (!dragState.active || isFinalizing) return;
   dragState.active = false;
   
-  const { cableId, start, end } = dragState;
+  const { streamerId, start, end } = dragState;
   const min = Math.min(start, end);
   const max = Math.max(start, end);
-  const streamerNum = toStreamerNum(cableId);
+  const streamerNum = streamerId;
     const streamerInput = safeGet('modal-streamer');
   const startInput = safeGet('modal-start');
   const endInput = safeGet('modal-end');
@@ -2545,12 +2577,12 @@ async function confirmCleaning() {
   // Convert to 0-based indices
   const actualStart = Math.min(startSection, endSection) - 1;
   const actualEnd = Math.max(startSection, endSection) - 1;
-  const cableId = `cable-${streamerNum - 1}`;
+  const streamerId = streamerNum;
   
   try {
     const now = new Date().toISOString();
     const body = {
-      cableId: cableId,                    
+      streamerId: streamerId,                    
       sectionIndexStart: actualStart,     
       sectionIndexEnd: actualEnd,         
       cleaningMethod: method,              
@@ -2701,8 +2733,8 @@ async function refreshStatsFiltered() {
           let maxDays = 0;
 
           for (let streamerNum = 1; streamerNum <= config.numCables; streamerNum++) {
-            const cableId = `cable-${streamerNum - 1}`;
-            const streamerEvents = filteredEvents.filter(e => e.cableId === cableId);
+            const streamerId = streamerNum;
+            const streamerEvents = filteredEvents.filter(e => e.streamerId === streamerId);
 
             // Get deployment date for this streamer
             const deployment = streamerDeployments[streamerNum];
@@ -2830,8 +2862,8 @@ async function sortTable(column) {
         valB = b.projectNumber || '';
         break;
       case 'streamer':
-        valA = toStreamerNum(a.cableId);
-        valB = toStreamerNum(b.cableId);
+        valA = a.streamerId;
+        valB = b.streamerId;
         break;
       case 'section':
         valA = a.sectionIndexStart;
