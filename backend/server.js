@@ -61,7 +61,30 @@ function authMiddleware(req, res, next) {
   next();
 }
 
-// Admin-only middleware
+// Role constants
+const ROLES = {
+  SUPER_USER: 'superuser',
+  ADMIN: 'admin',
+  VIEWER: 'viewer'
+};
+
+// SuperUser-only middleware
+function superUserOnly(req, res, next) {
+  if (req.user?.role !== ROLES.SUPER_USER) {
+    return res.status(403).json({ error: "SuperUser access required" });
+  }
+  next();
+}
+
+// Admin or above middleware (admin or superuser)
+function adminOrAbove(req, res, next) {
+  if (req.user?.role !== ROLES.ADMIN && req.user?.role !== ROLES.SUPER_USER) {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+  next();
+}
+
+// Legacy admin-only middleware - kept for backward compatibility during migration
 function adminOnly(req, res, next) {
   if (req.user?.role !== "admin") {
     return res.status(403).json({ error: "Admin access required" });
@@ -251,7 +274,7 @@ function calculateEBRange(startSection, endSection, config) {
 // ---- Backup Management Endpoints ----
 
 // List available backups
-app.get("/api/backups", authMiddleware, adminOnly, async (_req, res) => {
+app.get("/api/backups", authMiddleware, superUserOnly, async (_req, res) => {
   try {
     const fs = require("fs");
     const backupDir = path.join(__dirname, "..", "backup");
@@ -281,7 +304,7 @@ app.get("/api/backups", authMiddleware, adminOnly, async (_req, res) => {
 });
 
 // Create a manual backup
-app.post("/api/backups", authMiddleware, adminOnly, async (_req, res) => {
+app.post("/api/backups", authMiddleware, superUserOnly, async (_req, res) => {
   try {
     const { createBackup } = require("./db");
     const backupPath = await createBackup();
@@ -293,7 +316,7 @@ app.post("/api/backups", authMiddleware, adminOnly, async (_req, res) => {
 });
 
 // Restore from backup
-app.post("/api/backups/:filename/restore", authMiddleware, adminOnly, async (req, res) => {
+app.post("/api/backups/:filename/restore", authMiddleware, superUserOnly, async (req, res) => {
   try {
     const fs = require("fs");
     const { filename } = req.params;
@@ -425,7 +448,7 @@ app.get("/api/config", async (_req, res) => {
   }
 });
 
-app.put("/api/config", authMiddleware, adminOnly, async (req, res) => {
+app.put("/api/config", authMiddleware, superUserOnly, async (req, res) => {
   try {
     const bodyData = humps.decamelizeKeys(req.body);
     const partial = {
@@ -515,7 +538,7 @@ app.get("/api/projects/active", async (_req, res) => {
 });
 
 // Create new project with streamer configuration
-app.post("/api/projects", authMiddleware, adminOnly, async (req, res) => {
+app.post("/api/projects", authMiddleware, superUserOnly, async (req, res) => {
   try {
     const bodyData = humps.decamelizeKeys(req.body);
     const { 
@@ -575,7 +598,7 @@ app.post("/api/projects", authMiddleware, adminOnly, async (req, res) => {
 });
 
 // Set active project - also syncs global config with project's streamer config
-app.put("/api/projects/:id/activate", authMiddleware, adminOnly, async (req, res) => {
+app.put("/api/projects/:id/activate", authMiddleware, superUserOnly, async (req, res) => {
   try {
     const id = requireValidId(req, res);
     if (id === null) return;
@@ -617,7 +640,7 @@ app.put("/api/projects/:id/activate", authMiddleware, adminOnly, async (req, res
 });
 
 // Update project configuration
-app.put("/api/projects/:id", authMiddleware, adminOnly, async (req, res) => {
+app.put("/api/projects/:id", authMiddleware, superUserOnly, async (req, res) => {
   try {
     const id = requireValidId(req, res);
     if (id === null) return;
@@ -689,7 +712,7 @@ app.put("/api/projects/:id", authMiddleware, adminOnly, async (req, res) => {
 });
 
 // Deactivate all projects (clear active project)
-app.post("/api/projects/deactivate", authMiddleware, adminOnly, async (_req, res) => {
+app.post("/api/projects/deactivate", authMiddleware, superUserOnly, async (_req, res) => {
   try {
     await runAsync("UPDATE projects SET is_active = 0");
     await saveConfig({ activeProjectNumber: null });
@@ -701,7 +724,7 @@ app.post("/api/projects/deactivate", authMiddleware, adminOnly, async (_req, res
 });
 
 // Delete project (only if no events associated)
-app.delete("/api/projects/:id", authMiddleware, adminOnly, async (req, res) => {
+app.delete("/api/projects/:id", authMiddleware, superUserOnly, async (req, res) => {
   try {
     const id = requireValidId(req, res);
     if (id === null) return;
@@ -746,13 +769,13 @@ app.get('/api/projects/:id/streamer-deployments', authMiddleware, async (req, re
     if (id === null) return;
 
     const rows = await getAllCamelized(
-      'SELECT streamer_number, deployment_date, is_coated FROM streamer_deployments WHERE project_id = ?',
+      'SELECT streamer_id, deployment_date, is_coated FROM streamer_deployments WHERE project_id = ?',
       [id]
     );
 
     const result = {};
     for (const row of rows) {
-      result[row.streamerNumber] = {
+      result[row.streamerId] = {
         deploymentDate: row.deploymentDate || null,
         isCoated: row.isCoated === 1
       };
@@ -770,7 +793,7 @@ app.get('/api/projects/:id/streamer-deployments', authMiddleware, async (req, re
  * Save per-streamer deployment configurations
  * Body: { "1": { deploymentDate: "2026-01-15", isCoated: true }, "2": { ... }, ... }
  */
-app.put('/api/projects/:id/streamer-deployments', authMiddleware, adminOnly, async (req, res) => {
+app.put('/api/projects/:id/streamer-deployments', authMiddleware, superUserOnly, async (req, res) => {
   try {
     const id = requireValidId(req, res);
     if (id === null) return;
@@ -779,16 +802,16 @@ app.put('/api/projects/:id/streamer-deployments', authMiddleware, adminOnly, asy
 
     // Upsert each streamer configuration
     for (const [streamerNum, data] of Object.entries(bodyData)) {
-      const streamerNumber = parseInt(streamerNum, 10);
+      const streamerId = parseInt(streamerNum, 10);
       const deploymentDate = data.deployment_date || null;
       const isCoated = data.is_coated ? 1 : 0;
 
       await runAsync(
-        `INSERT INTO streamer_deployments (project_id, streamer_number, deployment_date, is_coated)
+        `INSERT INTO streamer_deployments (project_id, streamer_id, deployment_date, is_coated)
          VALUES (?, ?, ?, ?)
-         ON CONFLICT(project_id, streamer_number)
+         ON CONFLICT(project_id, streamer_id)
          DO UPDATE SET deployment_date = excluded.deployment_date, is_coated = excluded.is_coated`,
-        [id, streamerNumber, deploymentDate, isCoated]
+        [id, streamerId, deploymentDate, isCoated]
       );
     }
 
@@ -800,22 +823,22 @@ app.put('/api/projects/:id/streamer-deployments', authMiddleware, adminOnly, asy
 });
 
 /**
- * DELETE /api/projects/:id/streamer-deployments/:streamerNumber
+ * DELETE /api/projects/:id/streamer-deployments/:streamerId
  * Clear deployment configuration for a specific streamer
  */
-app.delete('/api/projects/:id/streamer-deployments/:streamerNumber', authMiddleware, adminOnly, async (req, res) => {
+app.delete('/api/projects/:id/streamer-deployments/:streamerId', authMiddleware, superUserOnly, async (req, res) => {
   try {
     const id = requireValidId(req, res);
     if (id === null) return;
 
-    const streamerNumber = toInt(req.params.streamerNumber, NaN);
-    if (Number.isNaN(streamerNumber)) {
-      return res.status(400).json({ error: 'Invalid streamer number' });
+    const streamerId = toInt(req.params.streamerId, NaN);
+    if (Number.isNaN(streamerId)) {
+      return res.status(400).json({ error: 'Invalid streamer ID' });
     }
 
     await runAsync(
-      'DELETE FROM streamer_deployments WHERE project_id = ? AND streamer_number = ?',
-      [id, streamerNumber]
+      'DELETE FROM streamer_deployments WHERE project_id = ? AND streamer_id = ?',
+      [id, streamerId]
     );
 
     res.json({ success: true });
@@ -845,14 +868,14 @@ app.get("/api/events", async (req, res) => {
   }
 });
 
-app.post("/api/events", authMiddleware, adminOnly, async (req, res) => {
+app.post("/api/events", authMiddleware, adminOrAbove, async (req, res) => {
   try {
     const bodyData = humps.decamelizeKeys(req.body);
-    const { cable_id, section_index_start, section_index_end, cleaning_method, cleaned_at, cleaning_count, project_number, vessel_tag } = bodyData;
+    const { streamer_id, section_index_start, section_index_end, cleaning_method, cleaned_at, cleaning_count, project_number, vessel_tag } = bodyData;
 
     
     if (
-      typeof cable_id !== "string" ||
+      !Number.isFinite(streamer_id) ||
       !Number.isFinite(section_index_start) ||
       !Number.isFinite(section_index_end) ||
       typeof cleaning_method !== "string" ||
@@ -872,9 +895,9 @@ app.post("/api/events", authMiddleware, adminOnly, async (req, res) => {
     }
     
     const result = await runAsync(
-      `INSERT INTO cleaning_events (cable_id, section_index_start, section_index_end, cleaning_method, cleaned_at, cleaning_count, project_number, vessel_tag)
+      `INSERT INTO cleaning_events (streamer_id, section_index_start, section_index_end, cleaning_method, cleaned_at, cleaning_count, project_number, vessel_tag)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [cable_id, section_index_start, section_index_end, cleaning_method, cleaned_at, Number.isFinite(cleaning_count) ? cleaning_count : 1, finalProjectNumber, finalVesselTag]
+      [streamer_id, section_index_start, section_index_end, cleaning_method, cleaned_at, Number.isFinite(cleaning_count) ? cleaning_count : 1, finalProjectNumber, finalVesselTag]
     );
     const created = await getOneCamelized("SELECT * FROM cleaning_events WHERE id = ?", [result.lastID]);
     res.json(created);
@@ -884,15 +907,15 @@ app.post("/api/events", authMiddleware, adminOnly, async (req, res) => {
   }
 });
 
-app.put("/api/events/:id", authMiddleware, adminOnly, async (req, res) => {
+app.put("/api/events/:id", authMiddleware, adminOrAbove, async (req, res) => {
   try {
     const id = requireValidId(req, res);
     if (id === null) return;
 
     const bodyData = humps.decamelizeKeys(req.body);
-    const { cable_id, section_index_start, section_index_end, cleaning_method, cleaned_at, cleaning_count, project_number, vessel_tag } = bodyData;
+    const { streamer_id, section_index_start, section_index_end, cleaning_method, cleaned_at, cleaning_count, project_number, vessel_tag } = bodyData;
     if (
-      typeof cable_id !== "string" ||
+      !Number.isFinite(streamer_id) ||
       !Number.isFinite(section_index_start) ||
       !Number.isFinite(section_index_end) ||
       typeof cleaning_method !== "string" ||
@@ -907,9 +930,9 @@ app.put("/api/events/:id", authMiddleware, adminOnly, async (req, res) => {
 
     await runAsync(
       `UPDATE cleaning_events
-       SET cable_id = ?, section_index_start = ?, section_index_end = ?, cleaning_method = ?, cleaned_at = ?, cleaning_count = ?, project_number = ?, vessel_tag = ?
+       SET streamer_id = ?, section_index_start = ?, section_index_end = ?, cleaning_method = ?, cleaned_at = ?, cleaning_count = ?, project_number = ?, vessel_tag = ?
        WHERE id = ?`,
-      [cable_id, section_index_start, section_index_end, cleaning_method, cleaned_at, Number.isFinite(cleaning_count) ? cleaning_count : 1, finalProjectNumber, finalVesselTag, id]
+      [streamer_id, section_index_start, section_index_end, cleaning_method, cleaned_at, Number.isFinite(cleaning_count) ? cleaning_count : 1, finalProjectNumber, finalVesselTag, id]
     );
     const updated = await getOneCamelized("SELECT * FROM cleaning_events WHERE id = ?", [id]);
       res.json(updated);
@@ -919,7 +942,7 @@ app.put("/api/events/:id", authMiddleware, adminOnly, async (req, res) => {
   }
 });
 
-app.delete("/api/events/:id", authMiddleware, adminOnly, async (req, res) => {
+app.delete("/api/events/:id", authMiddleware, adminOrAbove, async (req, res) => {
   try {
     const id = requireValidId(req, res);
     if (id === null) return;
@@ -931,18 +954,21 @@ app.delete("/api/events/:id", authMiddleware, adminOnly, async (req, res) => {
   }
 });
 
-app.delete("/api/events", authMiddleware, adminOnly, async (req, res) => {
+app.delete("/api/events", authMiddleware, adminOrAbove, async (req, res) => {
   try {
     const project = req.query.project;
     
     if (project) {
-      // Delete only events for this project
+      // Delete only events for this project (Admin+)
       await runAsync(
         "DELETE FROM cleaning_events WHERE project_number = ?",
         [project]
       );
     } else {
-      // Delete ALL events (global clear when no project specified)
+      // Delete ALL events (SuperUser only for global clear)
+      if (req.user?.role !== ROLES.SUPER_USER) {
+        return res.status(403).json({ error: 'SuperUser access required for global clear' });
+      }
       await runAsync("DELETE FROM cleaning_events");
     }
     
@@ -978,18 +1004,18 @@ app.get("/api/stats", async (req, res) => {
     const totalDistance = totalSectionsCleaned * sectionLength;
 
     // Calculate unique sections cleaned with active/tail breakdown
-    const allEvents = await getAllCamelized(`SELECT cable_id, section_index_start, section_index_end FROM cleaning_events${whereClause}`, params);
+    const allEvents = await getAllCamelized(`SELECT streamer_id, section_index_start, section_index_end FROM cleaning_events${whereClause}`, params);
     const uniqueSections = new Set();
     const uniqueActiveSections = new Set();
     const uniqueTailSections = new Set();
 
     for (const evt of allEvents) {
       for (let s = evt.sectionIndexStart; s <= evt.sectionIndexEnd; s++) {
-        uniqueSections.add(`${evt.cableId}-${s}`);
+        uniqueSections.add(`${evt.streamerId}-${s}`);
         if (s < N) {
-          uniqueActiveSections.add(`${evt.cableId}-${s}`);
+          uniqueActiveSections.add(`${evt.streamerId}-${s}`);
         } else {
-          uniqueTailSections.add(`${evt.cableId}-${s}`);
+          uniqueTailSections.add(`${evt.streamerId}-${s}`);
         }
       }
     }
@@ -1030,8 +1056,8 @@ app.get("/api/last-cleaned", async (req, res) => {
     const tailSections = config.useRopeForTail ? 0 : 5;
     const totalSections = N + tailSections;
 
-    let sql = `SELECT cable_id, section_index_start, section_index_end, cleaned_at
-       FROM cleaning_events`;
+    let sql = `SELECT streamer_id, section_index_start, section_index_end, cleaned_at
+      FROM cleaning_events`;
     const params = [];
     
     if (project) {
@@ -1043,12 +1069,12 @@ app.get("/api/last-cleaned", async (req, res) => {
     const rows = await getAllCamelized(sql, params);
 
     const map = {};
-    for (let c = 0; c < cableCount; c++) {
-      map[`cable-${c}`] = Array(totalSections).fill(null);
+    for (let streamerId = 1; streamerId <= cableCount; streamerId++) {
+      map[streamerId] = Array(totalSections).fill(null);
     }
 
     for (const r of rows) {
-      const arr = map[r.cableId];
+      const arr = map[r.streamerId];
       if (!arr) continue;
       for (let s = r.sectionIndexStart; s <= r.sectionIndexEnd && s < totalSections; s++) {
         if (!arr[s]) arr[s] = r.cleanedAt;   // keep latest per section
@@ -1074,7 +1100,7 @@ app.get('/api/last-cleaned-filtered', async (req, res) => {
 
     // Build query with date and project filters
     let sql = `
-      SELECT cable_id, section_index_start, section_index_end, cleaned_at 
+      SELECT streamer_id, section_index_start, section_index_end, cleaned_at
       FROM cleaning_events
     `;
     const params = [];
@@ -1106,13 +1132,13 @@ app.get('/api/last-cleaned-filtered', async (req, res) => {
 
     // Initialize map with nulls
     const map = {};
-    for (let c = 0; c < cableCount; c++) {
-      map[`cable-${c}`] = Array(totalSections).fill(null);
+    for (let streamerId = 1; streamerId <= cableCount; streamerId++) {
+      map[streamerId] = Array(totalSections).fill(null);
     }
 
     // Fill with last cleaned date per section (within filter period only)
     for (const r of rows) {
-      const arr = map[r.cableId];
+      const arr = map[r.streamerId];
       if (!arr) continue;
       for (let s = r.sectionIndexStart; s <= r.sectionIndexEnd && s < totalSections; s++) {
         if (!arr[s]) {
@@ -1180,11 +1206,11 @@ app.get("/api/stats/filter", async (req, res) => {
       byMethod[r.cleaningMethod] = (byMethod[r.cleaningMethod] || 0) + len;
 
       for (let s = r.sectionIndexStart; s <= r.sectionIndexEnd; s++) {
-        uniqueSections.add(`${r.cableId}-${s}`);
+        uniqueSections.add(`${r.streamerId}-${s}`);
         if (s < N) {
-          uniqueActiveSections.add(`${r.cableId}-${s}`);
+          uniqueActiveSections.add(`${r.streamerId}-${s}`);
         } else {
-          uniqueTailSections.add(`${r.cableId}-${s}`);
+          uniqueTailSections.add(`${r.streamerId}-${s}`);
         }
       }
     }

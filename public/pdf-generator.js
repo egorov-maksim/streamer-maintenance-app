@@ -281,11 +281,10 @@ async function addHeatmapPage(doc, lastCleaned, title) {
 
     // Draw cells for each cable - RIGHT TO LEFT ordering
     for (let c = 0; c < numCables; c++) {
-      // Display cables in reverse: column 0 shows cable-(numCables-1), column 11 shows cable-0
-      const cableIndex = numCables - 1 - c;
-      const cableId = `cable-${cableIndex}`;
-      const cableData = lastCleaned[cableId];
-      const lastCleanedDate = cableData?.[s];
+      // Display cables in reverse: column 0 shows streamerId=numCables, column 11 shows streamerId=1
+      const streamerId = numCables - c;
+      const streamerData = lastCleaned[streamerId];
+      const lastCleanedDate = streamerData?.[s];
 
       let days = null;
       if (lastCleanedDate) {
@@ -400,7 +399,7 @@ async function addAllEventsSection(doc) {
     }
 
     const date = new Date(evt.cleanedAt).toLocaleDateString();
-    const streamer = `S${toStreamerNum(evt.cableId)}`;
+    const streamer = `S${evt.streamerId}`;
     const sections = `${formatAS(evt.sectionIndexStart)} - ${formatAS(evt.sectionIndexEnd)}`;
     const ebRange = ebRanges[i];
     const distance = `${eventDistance(evt)}m`;

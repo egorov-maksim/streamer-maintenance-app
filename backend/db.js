@@ -34,124 +34,14 @@ function initDb() {
       if (err) {
         console.error("Error applying schema:", err);
       } else {
-        console.log("Database schema ensured.");
-        // Run migrations for existing databases
-        migrateDatabase();
+        console.log("Database schema applied.");
+        startBackupScheduler();
       }
     });
   });
-
-  // Start automated backup scheduler
-  startBackupScheduler();
 }
 
-/**
- * Migrate existing database to add new columns if they don't exist
- */
-function migrateDatabase() {
-  // Migrate cleaning_events table
-  migrateCleaningEvents();
-  
-  // Migrate projects table to add streamer config columns
-  migrateProjectsTable();
-}
-
-/**
- * Migrate cleaning_events table
- */
-function migrateCleaningEvents() {
-  db.all("PRAGMA table_info(cleaning_events)", (err, columns) => {
-    if (err) {
-      console.error("Error checking cleaning_events table info:", err);
-      return;
-    }
-    
-    const columnNames = columns.map(c => c.name);
-    let migrationsNeeded = 0;
-    let migrationsComplete = 0;
-    
-    const checkAndCreateIndex = () => {
-      migrationsComplete++;
-      if (migrationsComplete >= migrationsNeeded) {
-        db.run("CREATE INDEX IF NOT EXISTS idx_cleaning_events_project ON cleaning_events (project_number)", (err) => {
-          if (err && !err.message.includes('already exists')) {
-            console.error("Failed to create project index:", err);
-          } else {
-            console.log("Project index ensured on cleaning_events");
-          }
-        });
-      }
-    };
-    
-    if (!columnNames.includes('project_number')) {
-      migrationsNeeded++;
-      db.run("ALTER TABLE cleaning_events ADD COLUMN project_number TEXT", (err) => {
-        if (err) {
-          console.error("Failed to add project_number column:", err);
-        } else {
-          console.log("Added project_number column to cleaning_events");
-        }
-        checkAndCreateIndex();
-      });
-    }
-    
-    if (!columnNames.includes('vessel_tag')) {
-      migrationsNeeded++;
-      db.run("ALTER TABLE cleaning_events ADD COLUMN vessel_tag TEXT DEFAULT 'TTN'", (err) => {
-        if (err) {
-          console.error("Failed to add vessel_tag column:", err);
-        } else {
-          console.log("Added vessel_tag column to cleaning_events");
-        }
-        checkAndCreateIndex();
-      });
-    }
-    
-    if (columnNames.includes('project_number')) {
-      db.run("CREATE INDEX IF NOT EXISTS idx_cleaning_events_project ON cleaning_events (project_number)", (err) => {
-        if (err && !err.message.includes('already exists')) {
-          console.error("Failed to create project index:", err);
-        }
-      });
-    }
-  });
-}
-
-/**
- * Migrate projects table to add streamer configuration columns
- */
-function migrateProjectsTable() {
-  db.all("PRAGMA table_info(projects)", (err, columns) => {
-    if (err) {
-      console.error("Error checking projects table info:", err);
-      return;
-    }
-    
-    const columnNames = columns.map(c => c.name);
-    
-    const configColumns = [
-      { name: 'num_cables', sql: 'ALTER TABLE projects ADD COLUMN num_cables INTEGER DEFAULT 12' },
-      { name: 'sections_per_cable', sql: 'ALTER TABLE projects ADD COLUMN sections_per_cable INTEGER DEFAULT 107' },
-      { name: 'section_length', sql: 'ALTER TABLE projects ADD COLUMN section_length INTEGER DEFAULT 75' },
-      { name: 'module_frequency', sql: 'ALTER TABLE projects ADD COLUMN module_frequency INTEGER DEFAULT 4' },
-      { name: 'channels_per_section', sql: 'ALTER TABLE projects ADD COLUMN channels_per_section INTEGER DEFAULT 6' },
-      { name: 'use_rope_for_tail', sql: 'ALTER TABLE projects ADD COLUMN use_rope_for_tail INTEGER DEFAULT 1' },
-      
-    ];
-    
-    for (const col of configColumns) {
-      if (!columnNames.includes(col.name)) {
-        db.run(col.sql, (err) => {
-          if (err) {
-            console.error(`Failed to add ${col.name} column to projects:`, err);
-          } else {
-            console.log(`Added ${col.name} column to projects table`);
-          }
-        });
-      }
-    }
-  });
-}
+// No migration functions - fresh install only
 
 /**
  * Creates a backup of the database file with timestamp
