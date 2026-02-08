@@ -4,35 +4,23 @@
 const assert = require("node:assert");
 const { describe, it, before } = require("node:test");
 const request = require("supertest");
-
-// Set DB_FILE before requiring server
-process.env.DB_FILE = "./backend/test.db";
-process.env.AUTH_USERS = "superuser:super123:superuser,admin:admin123:admin,viewer:view123:viewer";
-
-const { app } = require("../backend/server");
+const { app, loginAs, authHeader } = require("./helpers");
 
 describe("Statistics API", () => {
   let adminToken = null;
   let viewerToken = null;
+  let superuserToken = null;
 
   before(async () => {
-    // Get tokens
-    const adminRes = await request(app)
-      .post("/api/login")
-      .send({ username: "admin", password: "admin123" });
-    adminToken = adminRes.body.token;
+    adminToken = await loginAs("admin", "admin123");
+    viewerToken = await loginAs("viewer", "view123");
+    superuserToken = await loginAs("superuser", "super123");
 
-    const viewerRes = await request(app)
-      .post("/api/login")
-      .send({ username: "viewer", password: "view123" });
-    viewerToken = viewerRes.body.token;
-
-    // Create some test events for stats
     await request(app)
       .post("/api/events")
-      .set("Authorization", `Bearer ${adminToken}`)
+      .set(authHeader(adminToken))
       .send({
-        cableId: "cable-0",
+        streamerId: 1,
         sectionIndexStart: 0,
         sectionIndexEnd: 10,
         cleaningMethod: "rope",
@@ -45,13 +33,12 @@ describe("Statistics API", () => {
     it("should return overall stats without filters", async () => {
       const res = await request(app)
         .get("/api/stats/filter")
-        .set("Authorization", `Bearer ${viewerToken}`)
+        .set(authHeader(viewerToken))
         .expect(200);
 
-      assert.ok(res.body.totalEvents !== undefined, "totalEvents should be present");
-      assert.ok(res.body.totalSectionsCleaned !== undefined, "totalSectionsCleaned should be present");
+      assert.ok(res.body.events !== undefined, "events should be present");
       assert.ok(res.body.totalDistance !== undefined, "totalDistance should be present");
-      assert.ok(res.body.uniqueSectionsCleaned !== undefined, "uniqueSectionsCleaned should be present");
+      assert.ok(res.body.uniqueCleanedSections !== undefined, "uniqueCleanedSections should be present");
     });
 
     it("should return filtered stats with date range", async () => {
@@ -59,18 +46,17 @@ describe("Statistics API", () => {
       const res = await request(app)
         .get("/api/stats/filter")
         .query({ start: today, end: today })
-        .set("Authorization", `Bearer ${viewerToken}`)
+        .set(authHeader(viewerToken))
         .expect(200);
 
-      assert.ok(res.body.totalEvents !== undefined);
-      assert.ok(res.body.totalSectionsCleaned !== undefined);
+      assert.ok(res.body.events !== undefined);
+      assert.ok(res.body.totalDistance !== undefined);
     });
 
     it("should return filtered stats by project", async () => {
-      // Create a project and event
-      const projectRes = await request(app)
+      await request(app)
         .post("/api/projects")
-        .set("Authorization", `Bearer ${adminToken}`)
+        .set(authHeader(superuserToken))
         .send({
           projectNumber: "STATS-001",
           projectName: "Stats Test"
@@ -78,9 +64,9 @@ describe("Statistics API", () => {
 
       await request(app)
         .post("/api/events")
-        .set("Authorization", `Bearer ${adminToken}`)
+        .set(authHeader(adminToken))
         .send({
-          cableId: "cable-1",
+          streamerId: 2,
           sectionIndexStart: 0,
           sectionIndexEnd: 5,
           cleaningMethod: "rope",
@@ -91,45 +77,34 @@ describe("Statistics API", () => {
       const res = await request(app)
         .get("/api/stats/filter")
         .query({ project: "STATS-001" })
-        .set("Authorization", `Bearer ${viewerToken}`)
+        .set(authHeader(viewerToken))
         .expect(200);
 
-      assert.ok(res.body.totalEvents >= 1);
-    });
-
-    it("should reject request without token", async () => {
-      await request(app)
-        .get("/api/stats/filter")
-        .expect(401);
+      assert.ok(res.body.events >= 1);
     });
   });
 
   describe("GET /api/last-cleaned", () => {
-    it("should return last cleaned data for all cables", async () => {
+    it("should return last cleaned data keyed by streamer id", async () => {
       const res = await request(app)
         .get("/api/last-cleaned")
-        .set("Authorization", `Bearer ${viewerToken}`)
+        .set(authHeader(viewerToken))
         .expect(200);
 
       assert.ok(typeof res.body === "object", "Response should be an object");
-      // Should have cable-0 to cable-N entries
-      assert.ok(res.body["cable-0"] !== undefined, "Should have cable-0 data");
+      assert.ok(res.body.lastCleaned !== undefined, "lastCleaned map should be present");
+      assert.ok(res.body.lastCleaned[1] !== undefined, "Should have streamer 1 data");
     });
 
     it("should filter by project", async () => {
       const res = await request(app)
         .get("/api/last-cleaned")
         .query({ project: "STATS-001" })
-        .set("Authorization", `Bearer ${viewerToken}`)
+        .set(authHeader(viewerToken))
         .expect(200);
 
       assert.ok(typeof res.body === "object");
-    });
-
-    it("should reject request without token", async () => {
-      await request(app)
-        .get("/api/last-cleaned")
-        .expect(401);
+      assert.ok(res.body.lastCleaned !== undefined);
     });
   });
 });

@@ -35,7 +35,9 @@ function initDb() {
         console.error("Error applying schema:", err);
       } else {
         console.log("Database schema applied.");
-        startBackupScheduler();
+        if (process.env.NODE_ENV !== "test") {
+          startBackupScheduler();
+        }
       }
     });
   });

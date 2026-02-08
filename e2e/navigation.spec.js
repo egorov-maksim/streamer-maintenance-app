@@ -15,9 +15,9 @@ test.describe('Navigation and Layout', () => {
 
   test('should display main layout elements', async ({ page }) => {
     // Check main containers are visible
-    await expect(page.locator('.app-header')).toBeVisible();
-    await expect(page.locator('.sidebar')).toBeVisible();
-    await expect(page.locator('.main-content')).toBeVisible();
+    await expect(page.locator('.user-header')).toBeVisible();
+    await expect(page.locator('.sidebar-nav')).toBeVisible();
+    await expect(page.locator('.main-wrapper')).toBeVisible();
 
     // Check user info
     await expect(page.locator('#user-display-name')).toBeVisible();
@@ -74,7 +74,7 @@ test.describe('Navigation and Layout', () => {
   });
 
   test('should collapse/expand project section', async ({ page }) => {
-    const projectHeader = page.locator('#project-config-section .card-header');
+    const projectHeader = page.locator('#project-config-section .project-header.clickable');
     const projectContent = page.locator('#project-content');
     const collapseIcon = page.locator('#project-collapse-icon');
 

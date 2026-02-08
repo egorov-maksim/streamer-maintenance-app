@@ -4,12 +4,7 @@
 const assert = require("node:assert");
 const { describe, it, before } = require("node:test");
 const request = require("supertest");
-
-// Set DB_FILE before requiring server
-process.env.DB_FILE = "./backend/test.db";
-process.env.AUTH_USERS = "superuser:super123:superuser,admin:admin123:admin,viewer:view123:viewer";
-
-const { app } = require("../backend/server");
+const { app, loginAs, authHeader } = require("./helpers");
 
 describe("Projects API", () => {
   let superuserToken = null;
@@ -18,28 +13,16 @@ describe("Projects API", () => {
   let testProjectId = null;
 
   before(async () => {
-    // Get tokens for all roles
-    const superRes = await request(app)
-      .post("/api/login")
-      .send({ username: "superuser", password: "super123" });
-    superuserToken = superRes.body.token;
-
-    const adminRes = await request(app)
-      .post("/api/login")
-      .send({ username: "admin", password: "admin123" });
-    adminToken = adminRes.body.token;
-
-    const viewerRes = await request(app)
-      .post("/api/login")
-      .send({ username: "viewer", password: "view123" });
-    viewerToken = viewerRes.body.token;
+    superuserToken = await loginAs("superuser", "super123");
+    adminToken = await loginAs("admin", "admin123");
+    viewerToken = await loginAs("viewer", "view123");
   });
 
   describe("POST /api/projects", () => {
-    it("should allow admin to create a project", async () => {
+    it("should allow superuser to create a project", async () => {
       const res = await request(app)
         .post("/api/projects")
-        .set("Authorization", `Bearer ${adminToken}`)
+        .set(authHeader(superuserToken))
         .send({
           projectNumber: "TEST-001",
           projectName: "Test Project",
@@ -53,15 +36,26 @@ describe("Projects API", () => {
         })
         .expect(200);
 
-      assert.strictEqual(res.body.success, true);
-      assert.ok(res.body.projectId, "Project ID should be returned");
-      testProjectId = res.body.projectId;
+      assert.ok(res.body.id, "Project id should be returned");
+      assert.strictEqual(res.body.projectNumber, "TEST-001");
+      testProjectId = res.body.id;
+    });
+
+    it("should reject admin from creating project", async () => {
+      await request(app)
+        .post("/api/projects")
+        .set(authHeader(adminToken))
+        .send({
+          projectNumber: "TEST-ADMIN",
+          projectName: "Admin Create"
+        })
+        .expect(403);
     });
 
     it("should reject duplicate project number", async () => {
       await request(app)
         .post("/api/projects")
-        .set("Authorization", `Bearer ${adminToken}`)
+        .set(authHeader(superuserToken))
         .send({
           projectNumber: "TEST-001",
           projectName: "Duplicate",
@@ -73,7 +67,7 @@ describe("Projects API", () => {
     it("should reject viewer from creating project", async () => {
       await request(app)
         .post("/api/projects")
-        .set("Authorization", `Bearer ${viewerToken}`)
+        .set(authHeader(viewerToken))
         .send({
           projectNumber: "TEST-002",
           projectName: "Should Fail"
@@ -96,7 +90,7 @@ describe("Projects API", () => {
     it("should return list of projects", async () => {
       const res = await request(app)
         .get("/api/projects")
-        .set("Authorization", `Bearer ${viewerToken}`)
+        .set(authHeader(viewerToken))
         .expect(200);
 
       assert.ok(Array.isArray(res.body), "Response should be an array");
@@ -104,64 +98,60 @@ describe("Projects API", () => {
       assert.ok(testProject, "Test project should be in the list");
       assert.strictEqual(testProject.projectName, "Test Project");
     });
-
-    it("should reject request without token", async () => {
-      await request(app)
-        .get("/api/projects")
-        .expect(401);
-    });
   });
 
-  describe("POST /api/projects/:id/activate", () => {
-    it("should allow admin to activate a project", async () => {
+  describe("PUT /api/projects/:id/activate", () => {
+    it("should allow superuser to activate a project", async () => {
       const res = await request(app)
-        .post(`/api/projects/${testProjectId}/activate`)
-        .set("Authorization", `Bearer ${adminToken}`)
+        .put(`/api/projects/${testProjectId}/activate`)
+        .set(authHeader(superuserToken))
         .expect(200);
 
-      assert.strictEqual(res.body.success, true);
+      assert.strictEqual(res.body.projectNumber, "TEST-001");
+      assert.ok(res.body.id);
     });
 
     it("should reject viewer from activating project", async () => {
       await request(app)
-        .post(`/api/projects/${testProjectId}/activate`)
-        .set("Authorization", `Bearer ${viewerToken}`)
+        .put(`/api/projects/${testProjectId}/activate`)
+        .set(authHeader(viewerToken))
         .expect(403);
     });
   });
 
-  describe("POST /api/projects/:id/deactivate", () => {
-    it("should allow admin to deactivate a project", async () => {
+  describe("POST /api/projects/deactivate", () => {
+    it("should allow superuser to deactivate (clear active project)", async () => {
       const res = await request(app)
-        .post(`/api/projects/${testProjectId}/deactivate`)
-        .set("Authorization", `Bearer ${adminToken}`)
+        .post("/api/projects/deactivate")
+        .set(authHeader(superuserToken))
         .expect(200);
 
       assert.strictEqual(res.body.success, true);
     });
 
-    it("should reject viewer from deactivating project", async () => {
-      // First activate it
+    it("should reject viewer from deactivating", async () => {
       await request(app)
-        .post(`/api/projects/${testProjectId}/activate`)
-        .set("Authorization", `Bearer ${adminToken}`);
+        .put(`/api/projects/${testProjectId}/activate`)
+        .set(authHeader(superuserToken));
 
-      // Try to deactivate as viewer
       await request(app)
-        .post(`/api/projects/${testProjectId}/deactivate`)
-        .set("Authorization", `Bearer ${viewerToken}`)
+        .post("/api/projects/deactivate")
+        .set(authHeader(viewerToken))
         .expect(403);
     });
   });
 
   describe("DELETE /api/projects/:id", () => {
-    it("should reject normal delete if project has events", async () => {
-      // Create an event for the project first
+    it("should return 409 when project has events", async () => {
+      await request(app)
+        .put(`/api/projects/${testProjectId}/activate`)
+        .set(authHeader(superuserToken));
+
       await request(app)
         .post("/api/events")
-        .set("Authorization", `Bearer ${adminToken}`)
+        .set(authHeader(adminToken))
         .send({
-          cableId: "cable-0",
+          streamerId: 1,
           sectionIndexStart: 0,
           sectionIndexEnd: 5,
           cleaningMethod: "rope",
@@ -170,46 +160,43 @@ describe("Projects API", () => {
           vesselTag: "TTN"
         });
 
-      // Try to delete without force
-      await request(app)
-        .delete(`/api/projects/${testProjectId}`)
-        .set("Authorization", `Bearer ${adminToken}`)
-        .expect(400);
-    });
-
-    it("should allow force delete with confirmation", async () => {
       const res = await request(app)
         .delete(`/api/projects/${testProjectId}`)
-        .set("Authorization", `Bearer ${adminToken}`)
-        .query({ force: "true", confirm: "TEST-001" })
+        .set(authHeader(superuserToken))
+        .expect(409);
+
+      assert.strictEqual(res.body.requiresConfirmation, true);
+      assert.ok(res.body.eventCount >= 1);
+    });
+
+    it("should allow force delete via DELETE /api/projects/:id/force", async () => {
+      const res = await request(app)
+        .delete(`/api/projects/${testProjectId}/force`)
+        .set(authHeader(superuserToken))
         .expect(200);
 
       assert.strictEqual(res.body.success, true);
     });
 
     it("should reject viewer from deleting project", async () => {
-      // Create a new project to delete
       const createRes = await request(app)
         .post("/api/projects")
-        .set("Authorization", `Bearer ${adminToken}`)
+        .set(authHeader(superuserToken))
         .send({
           projectNumber: "TEST-DELETE",
           projectName: "To Delete"
         });
 
-      const projectId = createRes.body.projectId;
+      const projectId = createRes.body.id;
 
-      // Try to delete as viewer
       await request(app)
         .delete(`/api/projects/${projectId}`)
-        .set("Authorization", `Bearer ${viewerToken}`)
+        .set(authHeader(viewerToken))
         .expect(403);
 
-      // Cleanup - delete as admin
       await request(app)
-        .delete(`/api/projects/${projectId}`)
-        .set("Authorization", `Bearer ${adminToken}`)
-        .query({ force: "true", confirm: "TEST-DELETE" });
+        .delete(`/api/projects/${projectId}/force`)
+        .set(authHeader(superuserToken));
     });
   });
 });

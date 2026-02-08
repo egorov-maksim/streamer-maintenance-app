@@ -5,10 +5,10 @@ const { test, expect } = require('@playwright/test');
 
 test.describe('Project Management', () => {
   test.beforeEach(async ({ page }) => {
-    // Login as admin
+    // Login as superuser (project create/activate/delete are SuperUser-only)
     await page.goto('/');
-    await page.fill('#login-username', 'admin');
-    await page.fill('#login-password', 'admin123');
+    await page.fill('#login-username', 'superuser');
+    await page.fill('#login-password', 'super123');
     await page.click('#login-submit');
     await expect(page.locator('#app-container')).toBeVisible({ timeout: 10000 });
   });

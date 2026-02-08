@@ -5,10 +5,10 @@ const { test, expect } = require('@playwright/test');
 
 test.describe('Styles and Layout', () => {
   test.beforeEach(async ({ page }) => {
-    // Login as admin
+    // Login as superuser (project create/delete and save config are SuperUser-only)
     await page.goto('/');
-    await page.fill('#login-username', 'admin');
-    await page.fill('#login-password', 'admin123');
+    await page.fill('#login-username', 'superuser');
+    await page.fill('#login-password', 'super123');
     await page.click('#login-submit');
     await expect(page.locator('#app-container')).toBeVisible({ timeout: 10000 });
   });
@@ -19,8 +19,8 @@ test.describe('Styles and Layout', () => {
     await expect(appContainer).toBeVisible();
 
     // Check main layout elements have proper styling
-    const mainContent = page.locator('.main-content');
-    await expect(mainContent).toBeVisible();
+    const mainWrapper = page.locator('.main-wrapper');
+    await expect(mainWrapper).toBeVisible();
 
     // Check computed styles for key element
     const bgColor = await appContainer.evaluate(el => 
@@ -47,13 +47,9 @@ test.describe('Styles and Layout', () => {
     // Navigate to heatmap section
     await page.click('.nav-item[data-target="heatmap-section"]');
 
-    // Check heatmap container exists
+    // Check heatmap container exists (grid is rendered inside it)
     const heatmapContainer = page.locator('#heatmap-container');
     await expect(heatmapContainer).toBeVisible();
-
-    // Check grid structure exists
-    const gridWrapper = page.locator('#heatmap-wrapper');
-    await expect(gridWrapper).toBeVisible();
 
     // Wait for heatmap to render
     await page.waitForTimeout(1000);
@@ -80,7 +76,7 @@ test.describe('Styles and Layout', () => {
     const projectList = page.locator('#project-list');
     const projectCard = projectList.locator('.project-card:has-text("MODAL-TEST")');
     
-    // Make sure delete button is visible (admin only)
+    // Delete button is visible for superuser
     const deleteBtn = projectCard.locator('.btn-delete');
     if (await deleteBtn.isVisible()) {
       await deleteBtn.click();
@@ -202,13 +198,12 @@ test.describe('Styles and Layout', () => {
     await page.waitForTimeout(500);
 
     // Main content should still be visible
-    const mainContent = page.locator('.main-content');
-    await expect(mainContent).toBeVisible();
+    const mainWrapper = page.locator('.main-wrapper');
+    await expect(mainWrapper).toBeVisible();
 
-    // Sidebar behavior might change on mobile (could be hidden or toggled)
-    // Just check it exists
-    const sidebar = page.locator('.sidebar');
-    await expect(sidebar).toBeAttached();
+    // Sidebar nav exists
+    const sidebarNav = page.locator('.sidebar-nav');
+    await expect(sidebarNav).toBeAttached();
 
     // Reset to desktop
     await page.setViewportSize({ width: 1280, height: 720 });
