@@ -12,4 +12,18 @@ backend/streamer.db-wal
 backend/streamer.db
 backend/DS_Store
 public/DS_Store
+/testing-results.md
+/verification-results.md
+/TESTING_GUIDE.md
+/TEST_SUMMARY.md
+/TEST_STATUS.md
+/INSTALL.md
+/README.md
+/LICENSE
+/CONTRIBUTING.md
+/CODE_OF_CONDUCT.md
+/SECURITY.md    /TEST_STATUS.md
+/INSTALL.md
+/README.md
+/LICENSE
 

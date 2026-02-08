@@ -723,34 +723,61 @@ app.post("/api/projects/deactivate", authMiddleware, superUserOnly, async (_req,
   }
 });
 
-// Delete project (only if no events associated)
+// Delete project. If it has events/deployments, return 409 with requiresConfirmation.
 app.delete("/api/projects/:id", authMiddleware, superUserOnly, async (req, res) => {
   try {
     const id = requireValidId(req, res);
     if (id === null) return;
-    
+
     const project = await getAsync("SELECT * FROM projects WHERE id = ?", [id]);
     if (!project) {
       return res.status(404).json({ error: "Project not found" });
     }
-    
-    // Check if any events are associated with this project
+
     const eventCount = await getAsync(
       "SELECT COUNT(*) as count FROM cleaning_events WHERE project_number = ?",
       [project.project_number]
     );
-    
-    if (eventCount.count > 0) {
-      return res.status(400).json({ 
-        error: `Cannot delete project with ${eventCount.count} associated events. Archive or reassign events first.` 
+    const deploymentCount = await getAsync(
+      "SELECT COUNT(*) as count FROM streamer_deployments WHERE project_id = ?",
+      [id]
+    );
+
+    if (eventCount.count > 0 || deploymentCount.count > 0) {
+      return res.status(409).json({
+        requiresConfirmation: true,
+        eventCount: eventCount.count,
+        deploymentCount: deploymentCount.count
       });
     }
-    
+
     await runAsync("DELETE FROM projects WHERE id = ?", [id]);
     res.json({ success: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete project" });
+  }
+});
+
+// Force delete project and all its events/deployments (CASCADE). SuperUser only.
+app.delete("/api/projects/:id/force", authMiddleware, superUserOnly, async (req, res) => {
+  try {
+    const id = requireValidId(req, res);
+    if (id === null) return;
+
+    const project = await getAsync("SELECT * FROM projects WHERE id = ?", [id]);
+    if (!project) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+
+    await runAsync("DELETE FROM cleaning_events WHERE project_number = ?", [project.project_number]);
+    await runAsync("DELETE FROM streamer_deployments WHERE project_id = ?", [id]);
+    await runAsync("DELETE FROM projects WHERE id = ?", [id]);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to force delete project" });
   }
 });
 
@@ -775,9 +802,10 @@ app.get('/api/projects/:id/streamer-deployments', authMiddleware, async (req, re
 
     const result = {};
     for (const row of rows) {
+      const isCoated = row.isCoated === 1 ? true : row.isCoated === 0 ? false : null;
       result[row.streamerId] = {
         deploymentDate: row.deploymentDate || null,
-        isCoated: row.isCoated === 1
+        isCoated
       };
     }
 
@@ -800,18 +828,20 @@ app.put('/api/projects/:id/streamer-deployments', authMiddleware, superUserOnly,
 
     const bodyData = humps.decamelizeKeys(req.body);
 
-    // Upsert each streamer configuration
+    // Upsert each streamer configuration (is_coated: true=1, false=0, null=unknown)
     for (const [streamerNum, data] of Object.entries(bodyData)) {
       const streamerId = parseInt(streamerNum, 10);
       const deploymentDate = data.deployment_date || null;
-      const isCoated = data.is_coated ? 1 : 0;
+      const isCoatedVal = data.is_coated === true || data.is_coated === 1 ? 1
+        : data.is_coated === false || data.is_coated === 0 ? 0
+        : null;
 
       await runAsync(
         `INSERT INTO streamer_deployments (project_id, streamer_id, deployment_date, is_coated)
          VALUES (?, ?, ?, ?)
          ON CONFLICT(project_id, streamer_id)
          DO UPDATE SET deployment_date = excluded.deployment_date, is_coated = excluded.is_coated`,
-        [id, streamerId, deploymentDate, isCoated]
+        [id, streamerId, deploymentDate, isCoatedVal]
       );
     }
 
@@ -845,6 +875,39 @@ app.delete('/api/projects/:id/streamer-deployments/:streamerId', authMiddleware,
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to delete streamer deployment' });
+  }
+});
+
+/**
+ * POST /api/cleanup-streamers
+ * SuperUser only. Delete events and deployments where streamer_id > maxStreamerId.
+ * Body: { maxStreamerId: number }
+ */
+app.post('/api/cleanup-streamers', authMiddleware, superUserOnly, async (req, res) => {
+  try {
+    const { maxStreamerId } = req.body;
+    const id = typeof maxStreamerId === 'number' ? maxStreamerId : parseInt(maxStreamerId, 10);
+    if (Number.isNaN(id) || id < 1) {
+      return res.status(400).json({ error: 'Invalid maxStreamerId' });
+    }
+
+    const eventsResult = await runAsync(
+      'DELETE FROM cleaning_events WHERE streamer_id > ?',
+      [id]
+    );
+    const deploymentsResult = await runAsync(
+      'DELETE FROM streamer_deployments WHERE streamer_id > ?',
+      [id]
+    );
+
+    res.json({
+      success: true,
+      deletedEvents: eventsResult.changes,
+      deletedDeployments: deploymentsResult.changes
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to cleanup streamers' });
   }
 });
 
@@ -957,22 +1020,20 @@ app.delete("/api/events/:id", authMiddleware, adminOrAbove, async (req, res) => 
 app.delete("/api/events", authMiddleware, adminOrAbove, async (req, res) => {
   try {
     const project = req.query.project;
-    
+
     if (project) {
-      // Delete only events for this project (Admin+)
-      await runAsync(
+      const result = await runAsync(
         "DELETE FROM cleaning_events WHERE project_number = ?",
         [project]
       );
-    } else {
-      // Delete ALL events (SuperUser only for global clear)
-      if (req.user?.role !== ROLES.SUPER_USER) {
-        return res.status(403).json({ error: 'SuperUser access required for global clear' });
-      }
-      await runAsync("DELETE FROM cleaning_events");
+      return res.json({ success: true, deletedCount: result.changes });
     }
-    
-    res.json({ success: true });
+
+    if (req.user?.role !== ROLES.SUPER_USER) {
+      return res.status(403).json({ error: 'SuperUser access required for global clear' });
+    }
+    const result = await runAsync("DELETE FROM cleaning_events");
+    res.json({ success: true, deletedCount: result.changes });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to clear events" });

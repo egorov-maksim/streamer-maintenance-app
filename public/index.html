@@ -153,7 +153,8 @@
                   </label>
                 </div>
                 <div class="actions mt-12">
-                  <button class="btn btn-primary admin-only" id="btn-save-config">💾 Save Configuration</button>
+                  <button class="btn btn-primary superuser-only" id="btn-save-config">💾 Save Configuration</button>
+                  <button type="button" class="btn btn-outline superuser-only" id="btn-cleanup-streamers" title="Remove events and deployments for streamers above current count">🧹 Cleanup orphaned streamers</button>
                   <span id="config-status" class="status"></span>
                 </div>
                 <p class="info-text-sm">
@@ -172,17 +173,17 @@
                   Streamers without specific configuration will show as "Not Configured".
                 </p>
 
-                <div class="actions mb-12">
-                  <button class="btn btn-outline btn-sm admin-only" id="btn-set-all-date">
+                <div class="actions mb-12 superuser-only">
+                  <button class="btn btn-outline btn-sm" id="btn-set-all-date">
                     📅 Set All Deployment Dates
                   </button>
-                  <button class="btn btn-outline btn-sm admin-only" id="btn-set-all-coating">
+                  <button class="btn btn-outline btn-sm" id="btn-set-all-coating">
                     🛡️ Set All Coating Status
                   </button>
-                  <button class="btn btn-outline btn-sm admin-only" id="btn-clear-all-streamers">
+                  <button class="btn btn-outline btn-sm" id="btn-clear-all-streamers">
                     🗑️ Clear All Configurations
                   </button>
-                  <button class="btn btn-primary admin-only" id="btn-save-streamer-deployments">
+                  <button class="btn btn-primary" id="btn-save-streamer-deployments">
                     💾 Save Streamer Configurations
                   </button>
                 </div>
@@ -532,6 +533,34 @@
       <div class="modal-footer modal-footer-delete">
         <button class="btn btn-secondary" id="btn-delete-cancel">Cancel</button>
         <button class="btn btn-danger" id="btn-delete-confirm">🗑️ Delete Event</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Force Delete Project Modal (type DELETE to confirm) -->
+  <div id="force-delete-project-modal" class="modal">
+    <div class="modal-overlay"></div>
+    <div class="modal-content modal-delete">
+      <div class="modal-header modal-header-delete">
+        <h3>⚠️ Force Delete Project</h3>
+        <button class="modal-close" id="btn-force-delete-project-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="delete-warning">
+          <div class="warning-icon">🚨</div>
+          <div class="warning-text">
+            <strong>This project has data.</strong>
+            <span id="force-delete-project-message">Events and/or deployment configs will be permanently deleted.</span>
+          </div>
+        </div>
+        <div class="form-group mt-12">
+          <label for="force-delete-project-input">Type <strong>DELETE</strong> to confirm:</label>
+          <input type="text" id="force-delete-project-input" class="input-full" placeholder="DELETE" autocomplete="off" />
+        </div>
+      </div>
+      <div class="modal-footer modal-footer-delete">
+        <button class="btn btn-secondary" id="btn-force-delete-project-cancel">Cancel</button>
+        <button class="btn btn-danger" id="btn-force-delete-project-confirm" disabled>🗑️ Delete Project & All Data</button>
       </div>
     </div>
   </div>
