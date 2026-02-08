@@ -233,8 +233,6 @@ function eventDistance(evt) {
   return sectionCount(evt) * (config.sectionLength || 1);
 }
 
-// Removed toStreamerNum - events now have streamerId directly (1-12)
-
 function ageBucket(days) {
   if (days === null) return "never";
   if (days <= 0) return "fresh";
@@ -798,11 +796,12 @@ async function saveConfig() {
 // Save configuration to a specific project
 async function saveProjectConfig(projectId) {
   const statusEl = safeGet('config-status');
-  
+  const previousNumCables = config.numCables;
+
   try {
     const formConfig = getConfigFromForm();
     const activeProject = projects.find(p => p.id === projectId);
-    
+
     const body = {
       projectName: activeProject?.projectName || null,
       vesselTag: activeProject?.vesselTag || 'TTN',
@@ -814,7 +813,7 @@ async function saveProjectConfig(projectId) {
       body: JSON.stringify(body),
       action: 'save project configuration'
     });
-    
+
     // Update local config to reflect changes
     config.numCables = updated.numCables;
     config.sectionsPerCable = updated.sectionsPerCable;
@@ -822,11 +821,12 @@ async function saveProjectConfig(projectId) {
     config.moduleFrequency = updated.moduleFrequency;
     config.channelsPerSection = updated.channelsPerSection;
     config.useRopeForTail = updated.useRopeForTail;
-    
+
     document.documentElement.style.setProperty('--sections', config.sectionsPerCable);
     setStatus(statusEl, `✅ Configuration saved for ${updated.projectNumber}`);
-    
-    // Refresh projects list to update stored config
+
+    await handleStreamerCountChange(previousNumCables, config.numCables);
+
     await loadProjects();
     await refreshEverything();
     await renderHeatmap();
@@ -840,7 +840,8 @@ async function saveProjectConfig(projectId) {
 // Save to global config (when no project is active)
 async function saveGlobalConfig() {
   const statusEl = safeGet('config-status');
-  
+  const previousNumCables = config.numCables;
+
   try {
     const body = {
       numCables: parseInt(safeGet('cfg-numCables').value, 10),
@@ -860,12 +861,66 @@ async function saveGlobalConfig() {
     document.documentElement.style.setProperty('--sections', config.sectionsPerCable);
     setStatus(statusEl, '✅ Global configuration updated');
 
+    await handleStreamerCountChange(previousNumCables, config.numCables);
+
     await refreshEverything();
     await renderHeatmap();
     await refreshStatsFiltered();
   } catch (err) {
     console.error(err);
     setStatus(statusEl, 'Failed to save config', true);
+  }
+}
+
+/**
+ * When streamer count changes (e.g. reduced), refresh deployment grid and heatmap.
+ * If count decreased, show warning about hidden data and offer cleanup.
+ */
+async function handleStreamerCountChange(previousNumCables, newNumCables) {
+  if (previousNumCables === newNumCables) return;
+
+  if (newNumCables < previousNumCables && isSuperUser()) {
+    showWarningToast(
+      'Streamer count reduced',
+      `Streamers ${newNumCables + 1}-${previousNumCables} are now hidden. Events and deployment data for those streamers still exist. Use "Cleanup orphaned streamers" to remove them.`
+    );
+  }
+
+  await renderStreamerDeploymentGrid();
+  await renderHeatmap();
+}
+
+/**
+ * Cleanup events and deployments for streamers above current max (SuperUser only).
+ */
+async function cleanupOrphanedStreamers() {
+  if (!isSuperUser()) {
+    showAccessDeniedToast('cleanup orphaned streamers');
+    return;
+  }
+
+  const maxId = config.numCables;
+  const confirmed = confirm(
+    `This will permanently delete all events and deployment configurations for streamers ${maxId + 1}-12.\n\nThis cannot be undone. Continue?`
+  );
+  if (!confirmed) return;
+
+  try {
+    const data = await apiCall('api/cleanup-streamers', {
+      method: 'POST',
+      body: JSON.stringify({ maxStreamerId: maxId }),
+      action: 'cleanup orphaned streamers'
+    });
+    showSuccessToast(
+      'Cleanup complete',
+      `Removed ${data.deletedEvents || 0} events and ${data.deletedDeployments || 0} deployment configs.`
+    );
+    await refreshEverything();
+    await renderHeatmap();
+    await renderStreamerDeploymentGrid();
+  } catch (err) {
+    console.error(err);
+    showErrorToast('Cleanup failed', err.message || 'Failed to cleanup streamers');
   }
 }
 
@@ -1041,23 +1096,59 @@ async function deleteProject(projectId) {
     showAccessDeniedToast('delete project');
     return;
   }
-  
-  if (!confirm('Are you sure you want to delete this project? This cannot be undone.')) {
-    return;
-  }
-  
+
   try {
-    await apiCall(`api/projects/${projectId}`, {
+    const res = await fetch(`api/projects/${projectId}`, {
       method: 'DELETE',
-      action: 'delete project'
+      headers: getAuthHeaders()
     });
-    
-    showSuccessToast('Project Deleted', 'The project has been removed.');
-    await loadProjects();
+    const data = await res.json();
+
+    if (res.ok) {
+      showSuccessToast('Project Deleted', 'The project has been removed.');
+      await loadProjects();
+      return;
+    }
+
+    if (res.status === 409 && data.requiresConfirmation) {
+      showForceDeleteProjectModal(projectId, data.eventCount || 0, data.deploymentCount || 0);
+      return;
+    }
+
+    showErrorToast('Delete Failed', data.error || 'Failed to delete project.');
   } catch (err) {
     console.error(err);
     showErrorToast('Delete Failed', 'Failed to delete project.');
   }
+}
+
+let forceDeletePendingProjectId = null;
+
+function showForceDeleteProjectModal(projectId, eventCount, deploymentCount) {
+  const modal = safeGet('force-delete-project-modal');
+  const messageEl = safeGet('force-delete-project-message');
+  const input = safeGet('force-delete-project-input');
+  const confirmBtn = safeGet('btn-force-delete-project-confirm');
+
+  if (!modal || !messageEl || !input || !confirmBtn) return;
+
+  const parts = [];
+  if (eventCount > 0) parts.push(`${eventCount} event(s)`);
+  if (deploymentCount > 0) parts.push(`${deploymentCount} deployment config(s)`);
+  messageEl.textContent = `This project has ${parts.join(' and ')}. All will be permanently deleted. Type DELETE to confirm.`;
+
+  input.value = '';
+  confirmBtn.disabled = true;
+  forceDeletePendingProjectId = projectId;
+
+  modal.classList.add('show');
+  input.focus();
+}
+
+function closeForceDeleteProjectModal() {
+  forceDeletePendingProjectId = null;
+  const modal = safeGet('force-delete-project-modal');
+  if (modal) modal.classList.remove('show');
 }
 
 function renderProjectList() {
@@ -1076,8 +1167,8 @@ function renderProjectList() {
     const eventCount = projectEventCounts[p.projectNumber] || 0;
     const eventCountBadge = `<span class="project-event-count" title="Events in this project">${eventCount} events</span>`;
     const activeBadge = isActive ? '<span class="badge badge-active">Active</span>' : '';
-    const deleteBtn = isAdminUser && !isActive && eventCount === 0 ? 
-      `<button class="btn btn-outline btn-sm btn-delete-project" data-id="${p.id}" title="Delete project">🗑️</button>` : '';
+    const deleteBtn = isSuperUser() && !isActive
+      ? `<button class="btn btn-outline btn-sm btn-delete-project" data-id="${p.id}" title="Delete project">🗑️</button>` : '';
     
     return `
       <div class="project-item ${isActive ? 'active' : ''}">
@@ -1201,61 +1292,60 @@ async function renderStreamerDeploymentGrid() {
     const hasConfig = deployment.deploymentDate || (deployment.isCoated !== null && deployment.isCoated !== undefined);
 
     const card = document.createElement('div');
-    card.className = `streamer-deployment-card ${hasConfig ? 'has-config' : ''}`;
+    card.className = `streamer-deployment-card modern ${hasConfig ? 'has-config' : ''}`;
     card.dataset.streamer = streamerNum;
 
-    const deployDateValue = deployment.deploymentDate 
-      ? new Date(deployment.deploymentDate).toISOString().split('T')[0] 
+    const deployDateValue = deployment.deploymentDate
+      ? new Date(deployment.deploymentDate).toISOString().split('T')[0]
       : '';
 
-    let coatingValue = '';
-    if (deployment.isCoated === true) coatingValue = 'true';
-    else if (deployment.isCoated === false) coatingValue = 'false';
+    const coatingActive = deployment.isCoated === true ? 'true' : deployment.isCoated === false ? 'false' : '';
 
     card.innerHTML = `
       <div class="streamer-card-header">
-        <span class="streamer-card-title">
-          🔧 Streamer ${streamerNum}
-        </span>
-        <span class="streamer-card-badge ${hasConfig ? 'configured' : ''}">
-          ${hasConfig ? '✓ Configured' : 'Default'}
+        <span class="streamer-card-title">🔧 Streamer ${streamerNum}</span>
+        <span class="streamer-status">
+          <span class="status-badge ${hasConfig ? 'configured' : ''}">${hasConfig ? '✓ Configured' : 'Default'}</span>
+          ${deployment.isCoated === true ? '<span class="coating-badge coated">Coated</span>' : ''}
+          ${deployment.isCoated === false ? '<span class="coating-badge uncoated">Uncoated</span>' : ''}
+          ${deployment.isCoated === null || deployment.isCoated === undefined ? '<span class="coating-badge unknown">Unknown</span>' : ''}
         </span>
       </div>
       <div class="streamer-deployment-inputs">
         <div class="streamer-input-group">
           <label>📅 Deployment Date</label>
-          <input 
-            type="date" 
-            class="streamer-deploy-date"
-            data-streamer="${streamerNum}"
-            value="${deployDateValue}"
-            ${!isSuperUser() ? 'disabled' : ''}
-          />
+          <input type="date" class="streamer-deploy-date" data-streamer="${streamerNum}" value="${deployDateValue}" ${!isSuperUser() ? 'disabled' : ''} />
         </div>
         <div class="streamer-input-group">
-          <label>🛡️ Coating Status</label>
-          <select 
-            class="streamer-coating-status"
-            data-streamer="${streamerNum}"
-            ${!isSuperUser() ? 'disabled' : ''}
-          >
-            <option value="">Not specified</option>
-            <option value="true" ${coatingValue === 'true' ? 'selected' : ''}>Yes - Coated</option>
-            <option value="false" ${coatingValue === 'false' ? 'selected' : ''}>No - Uncoated</option>
-          </select>
+          <label>🛡️ Coating</label>
+          <div class="coating-toggle" data-streamer="${streamerNum}">
+            <button type="button" class="coating-option ${coatingActive === 'true' ? 'active' : ''}" data-value="true" ${!isSuperUser() ? 'disabled' : ''}>Coated</button>
+            <button type="button" class="coating-option ${coatingActive === 'false' ? 'active' : ''}" data-value="false" ${!isSuperUser() ? 'disabled' : ''}>Uncoated</button>
+            <button type="button" class="coating-option ${coatingActive === '' ? 'active' : ''}" data-value="" ${!isSuperUser() ? 'disabled' : ''}>Unknown</button>
+          </div>
         </div>
       </div>
       ${isSuperUser() && hasConfig ? `
         <div class="streamer-card-actions">
-          <button class="streamer-card-clear" data-streamer="${streamerNum}">
-            🗑️ Clear Config
-          </button>
+          <button type="button" class="btn-icon btn-clear streamer-card-clear" data-streamer="${streamerNum}" title="Clear configuration">🗑️ Clear</button>
         </div>
       ` : ''}
     `;
 
     container.appendChild(card);
   }
+
+  // Coating toggle: clicking an option sets it active and removes active from siblings
+  container.querySelectorAll('.coating-toggle').forEach(toggle => {
+    const streamerId = toggle.dataset.streamer;
+    toggle.querySelectorAll('.coating-option').forEach(btn => {
+      if (btn.disabled) return;
+      btn.addEventListener('click', () => {
+        toggle.querySelectorAll('.coating-option').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
+  });
 
   // Attach event listeners for clear buttons
   if (isSuperUser()) {
@@ -1287,21 +1377,20 @@ async function saveStreamerDeployments() {
 
   const deployments = {};
 
-  // Collect all streamer configurations
-  const dateInputs = document.querySelectorAll('.streamer-deploy-date');
-  const coatingInputs = document.querySelectorAll('.streamer-coating-status');
-
-  dateInputs.forEach(input => {
+  // Collect date from inputs
+  document.querySelectorAll('.streamer-deploy-date').forEach(input => {
     const streamerNum = input.dataset.streamer;
     if (!deployments[streamerNum]) deployments[streamerNum] = {};
     deployments[streamerNum].deploymentDate = input.value || null;
   });
 
-  coatingInputs.forEach(input => {
-    const streamerNum = input.dataset.streamer;
+  // Collect coating from three-state toggle (Coated / Uncoated / Unknown)
+  document.querySelectorAll('.coating-toggle').forEach(toggle => {
+    const streamerNum = toggle.dataset.streamer;
     if (!deployments[streamerNum]) deployments[streamerNum] = {};
-    const value = input.value;
-    deployments[streamerNum].isCoated = value === '' ? null : value === 'true';
+    const activeBtn = toggle.querySelector('.coating-option.active');
+    const value = activeBtn ? activeBtn.dataset.value : '';
+    deployments[streamerNum].isCoated = value === 'true' ? true : value === 'false' ? false : null;
   });
 
   try {
@@ -1391,8 +1480,10 @@ async function setAllCoatingStatus() {
   const coating = confirm('Set coating status for ALL streamers:\n\nOK = Coated\nCancel = Uncoated');
   const value = coating ? 'true' : 'false';
 
-  document.querySelectorAll('.streamer-coating-status').forEach(input => {
-    input.value = value;
+  document.querySelectorAll('.coating-toggle').forEach(toggle => {
+    toggle.querySelectorAll('.coating-option').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.value === value);
+    });
   });
 
   showSuccessToast('Applied', `All streamers set to ${coating ? 'Coated' : 'Uncoated'}. Click Save to apply.`);
@@ -1414,8 +1505,10 @@ async function clearAllStreamerDeployments() {
     input.value = '';
   });
 
-  document.querySelectorAll('.streamer-coating-status').forEach(input => {
-    input.value = '';
+  document.querySelectorAll('.coating-toggle').forEach(toggle => {
+    toggle.querySelectorAll('.coating-option').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.value === '');
+    });
   });
 
   showSuccessToast('Cleared', 'All configurations cleared. Click Save to apply.');
@@ -2243,6 +2336,14 @@ async function renderHeatmap() {
     const data = await apiCall(url);
     const lastCleaned = data.lastCleaned;
 
+    let deployments = {};
+    const activeProject = projects.find(p => p.isActive);
+    if (activeProject) {
+      try {
+        deployments = await apiCall(`/api/projects/${activeProject.id}/streamer-deployments`);
+      } catch (_) {}
+    }
+
     const N = config.sectionsPerCable;
     const cableCount = config.numCables;
     const moduleFreq = config.moduleFrequency;
@@ -2309,16 +2410,20 @@ async function renderHeatmap() {
     // Render each streamer column
     for (let streamerId = cableCount; streamerId >= 1; streamerId--) {
       const sections = lastCleaned[streamerId] || [];
+      const deployment = deployments[streamerId] || {};
 
       const col = document.createElement('div');
       col.className = 'hm-col';
       col.style.gridTemplateRows = `36px repeat(${totalRows}, 32px)`;
 
-      // Streamer header
+      // Streamer header (with deployment data for tooltip)
       const label = document.createElement('div');
-      label.className = 'hm-col-label';
+      label.className = 'hm-col-label hm-header';
       label.textContent = `S${streamerId}`;
       label.title = `Streamer ${streamerId}`;
+      label.dataset.streamerId = streamerId;
+      label.dataset.deploymentDate = deployment.deploymentDate || '';
+      label.dataset.isCoated = deployment.isCoated === true ? 'true' : deployment.isCoated === false ? 'false' : 'unknown';
       col.appendChild(label);
 
       rowIndex = 0;
@@ -2403,9 +2508,81 @@ async function renderHeatmap() {
     container.appendChild(wrapper);
     attachDragListeners();
     attachTooltipListeners();
+    attachStreamerHeaderTooltips(wrapper, lastCleaned, deployments);
   } catch (err) {
     console.error(err);
   }
+}
+
+/**
+ * Single floating tooltip for heatmap streamer column headers.
+ * Shows deployment date, days in water, coating, total cleanings, last cleaned.
+ */
+function attachStreamerHeaderTooltips(wrapper, lastCleaned, deployments) {
+  let tooltipEl = document.getElementById('streamer-header-tooltip');
+  if (!tooltipEl) {
+    tooltipEl = document.createElement('div');
+    tooltipEl.id = 'streamer-header-tooltip';
+    tooltipEl.className = 'streamer-header-tooltip';
+    tooltipEl.style.display = 'none';
+    document.body.appendChild(tooltipEl);
+  }
+
+  const labels = wrapper.querySelectorAll('.hm-col-label.hm-header[data-streamer-id]');
+  labels.forEach(label => {
+    const streamerId = parseInt(label.dataset.streamerId, 10);
+    if (!streamerId) return;
+
+    const show = (e) => {
+      const deployment = deployments[streamerId] || {};
+      const sectionDates = lastCleaned[streamerId] || [];
+      const streamerEvents = events.filter(ev => ev.streamerId === streamerId);
+      const lastCleanedDate = sectionDates.length
+        ? sectionDates.reduce((max, d) => (d && (!max || new Date(d) > new Date(max)) ? d : max), null)
+        : null;
+      const daysInWater = deployment.deploymentDate
+        ? Math.floor((Date.now() - new Date(deployment.deploymentDate)) / (1000 * 60 * 60 * 24))
+        : null;
+      const coatingLabel = deployment.isCoated === true ? 'Coated' : deployment.isCoated === false ? 'Uncoated' : 'Unknown';
+
+      let html = `<div class="streamer-tooltip-title">Streamer ${streamerId}</div>`;
+      if (deployment.deploymentDate) {
+        html += `<div class="streamer-tooltip-row">📅 Deployed: ${new Date(deployment.deploymentDate).toLocaleDateString()}</div>`;
+        if (daysInWater !== null) {
+          html += `<div class="streamer-tooltip-row">🌊 Days in water: ${daysInWater}</div>`;
+        }
+      } else {
+        html += `<div class="streamer-tooltip-row">📅 No deployment date</div>`;
+      }
+      html += `<div class="streamer-tooltip-row">🛡️ Coating: ${coatingLabel}</div>`;
+      html += `<div class="streamer-tooltip-row">🧹 Total cleanings: ${streamerEvents.length}</div>`;
+      if (lastCleanedDate) {
+        html += `<div class="streamer-tooltip-row">✅ Last cleaned: ${new Date(lastCleanedDate).toLocaleDateString()}</div>`;
+      } else {
+        html += `<div class="streamer-tooltip-row">✅ Last cleaned: Never</div>`;
+      }
+
+      tooltipEl.innerHTML = html;
+      tooltipEl.style.display = 'block';
+      tooltipEl.style.left = `${e.pageX + 12}px`;
+      tooltipEl.style.top = `${e.pageY + 12}px`;
+    };
+
+    const move = (e) => {
+      if (tooltipEl.style.display === 'block') {
+        tooltipEl.style.left = `${e.pageX + 12}px`;
+        tooltipEl.style.top = `${e.pageY + 12}px`;
+      }
+    };
+
+    const hide = () => {
+      tooltipEl.style.display = 'none';
+    };
+
+    label.addEventListener('mouseenter', show);
+    label.addEventListener('mousemove', move);
+    label.addEventListener('mouseleave', hide);
+  });
 }
 
 /* ------------ Drag-to-select ------------ */
@@ -2928,6 +3105,7 @@ function setupSidebarNavigation() {
 function setupEventListeners() {
   // Config
   safeGet('btn-save-config')?.addEventListener('click', saveConfig);
+  safeGet('btn-cleanup-streamers')?.addEventListener('click', cleanupOrphanedStreamers);
 
   // Method tiles
   document.querySelectorAll('.method-tile').forEach(tile => {
@@ -2995,6 +3173,31 @@ function setupEventListeners() {
   safeGet('btn-delete-cancel')?.addEventListener('click', closeDeleteModal);
   safeGet('btn-delete-confirm')?.addEventListener('click', confirmDeleteEvent);
   document.querySelector('#delete-modal .modal-overlay')?.addEventListener('click', closeDeleteModal);
+
+  // Modal - Force Delete Project (single handler uses forceDeletePendingProjectId)
+  safeGet('btn-force-delete-project-close')?.addEventListener('click', closeForceDeleteProjectModal);
+  safeGet('btn-force-delete-project-cancel')?.addEventListener('click', closeForceDeleteProjectModal);
+  document.querySelector('#force-delete-project-modal .modal-overlay')?.addEventListener('click', closeForceDeleteProjectModal);
+  safeGet('force-delete-project-input')?.addEventListener('input', () => {
+    const btn = safeGet('btn-force-delete-project-confirm');
+    const inp = safeGet('force-delete-project-input');
+    if (btn && inp) btn.disabled = inp.value.trim() !== 'DELETE';
+  });
+  safeGet('btn-force-delete-project-confirm')?.addEventListener('click', async () => {
+    const id = forceDeletePendingProjectId;
+    const inp = safeGet('force-delete-project-input');
+    if (!id || !inp || inp.value.trim() !== 'DELETE') return;
+    try {
+      await apiCall(`api/projects/${id}/force`, { method: 'DELETE', action: 'force delete project' });
+      closeForceDeleteProjectModal();
+      forceDeletePendingProjectId = null;
+      showSuccessToast('Project Deleted', 'Project and all associated data have been removed.');
+      await loadProjects();
+    } catch (err) {
+      console.error(err);
+      showErrorToast('Delete Failed', err.message || 'Failed to delete project.');
+    }
+  });
 
   // Modal - Edit
   safeGet('btn-edit-close')?.addEventListener('click', closeEditModal);

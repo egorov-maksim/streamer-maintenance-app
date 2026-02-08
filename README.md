@@ -21,11 +21,12 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 
 ### 🔐 User Authentication & Access Control
 - **Multi-User Support**: Secure login system with role-based permissions
-- **Two Access Levels**:
-  - 👨‍💼 **Admin**: Full access (create projects, edit/delete events, manage configuration, view backups)
+- **Three Access Levels**:
+  - 🔑 **SuperUser**: Full access (projects, config, deployments, backups, global clear, force-delete)
+  - 👨‍💼 **Admin**: Event management only (add/edit/delete events, per-project clear)
   - 👁️ **Viewer**: Read-only access (view data, filter, export reports)
 - **Session Management**: Secure session tokens with localStorage persistence
-- **Configurable Users**: Define users and roles via environment variables
+- **Configurable Users**: Define users and roles via `AUTH_USERS` in `.env` (format: `user:pass:role` with role `superuser`, `admin`, or `viewer`)
 
 ### 📋 Project Management
 - **Multi-Project Tracking**: Create and manage multiple seismic survey projects
@@ -47,7 +48,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
   - ⚪ **Never**: Gray - Never cleaned
 - **Module Integration**: eBird module positions displayed directly on heatmap
 - **Real-Time Updates**: Heatmap refreshes immediately after logging events
-- **Hover Tooltips**: Detailed information on section hover (age, method, distance, EB range)
+- **Hover Tooltips**: Section hover shows age, method, distance, EB range; **streamer column header hover** shows deployment date, days in water, coating status, total cleanings, and last cleaned date
 
 ### 🖱️ Drag-to-Select Cleaning Interface
 - **One-Click Logging**: Click and drag across sections to mark them as cleaned
@@ -73,6 +74,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
   - Vessel tag identifier
 - **Real-Time Updates**: Configuration changes immediately update the heatmap
 - **Collapse/Expand UI**: Fold configuration section for cleaner interface
+- **Cleanup Orphaned Streamers**: When streamer count is reduced, SuperUser can remove events and deployments for hidden streamers via "Cleanup orphaned streamers"
 
 ### 📊 Comprehensive Statistics Dashboard
 - **Coverage Metrics**:
@@ -175,6 +177,18 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 - **Event Logging**: EB range included in event history
 - **Report Inclusion**: EB module details in PDF reports
 - **Configurable Frequency**: Adjust module spacing based on project needs
+
+### 🔧 Per-Streamer Deployment Configuration
+- **Deployment Date**: Set deployment date per streamer for the active project
+- **Coating Status**: Three-state toggle (Coated / Uncoated / Unknown) per streamer
+- **Modern Card UI**: One card per streamer with date input and coating buttons
+- **Heatmap Tooltip**: Hover on streamer column header to see deployment date, days in water, coating, and cleaning stats
+- **Clear Config**: SuperUser can clear individual or all streamer configurations
+
+### 🗄️ Database Schema (Fresh Install)
+- **Streamer IDs**: All streamer references use `streamer_id` (INTEGER 1–12). No migration from legacy `cable_id`.
+- **Cascade Deletes**: Deleting a project removes its events and deployment configs automatically.
+- **Tables**: `cleaning_events` (streamer_id, project_number FK CASCADE), `projects`, `streamer_deployments` (streamer_id, project_id FK CASCADE), `app_config`.
 
 ### 🔐 Data Security & Persistence
 - **SQLite Database**: Local database with WAL mode for reliability
@@ -410,11 +424,11 @@ npm start
 
 ### Issue: Cannot Import Events
 
-**Ensure CSV Format**:
+**Ensure CSV Format** (streamer_id is 1-12):
 ```
-cable_id,section_index_start,section_index_end,cleaning_method,cleaned_at,project_number,vessel_tag
-cable-0,0,5,rope,2024-01-01T10:00:00Z,PRJ-001,TTN
-cable-1,10,15,scraper,2024-01-01T11:00:00Z,PRJ-001,TTN
+streamer_id,section_index_start,section_index_end,cleaning_method,cleaned_at,project_number,vessel_tag
+1,0,5,rope,2024-01-01T10:00:00Z,PRJ-001,TTN
+2,10,15,scraper,2024-01-01T11:00:00Z,PRJ-001,TTN
 ```
 
 ### Issue: Stats Not Updating
