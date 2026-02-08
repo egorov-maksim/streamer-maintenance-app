@@ -940,7 +940,7 @@ async function createProject() {
 }
 
 async function activateProject(projectId) {
-  if (!isAdmin()) {
+  if (!isSuperUser()) {
     showAccessDeniedToast('activate project');
     return;
   }
@@ -1002,7 +1002,7 @@ async function activateSelectedProject() {
 }
 
 async function clearActiveProject() {
-  if (!isAdmin()) {
+  if (!isSuperUser()) {
     showAccessDeniedToast('clear active project');
     return;
   }
@@ -1141,7 +1141,7 @@ function updateActiveProjectBanner() {
       : activeProject.projectNumber;
     vesselEl.textContent = `[${activeProject.vesselTag || 'TTN'}]`;
     banner.classList.add('has-project');
-    if (clearBtn && isAdmin()) clearBtn.classList.remove('hidden');
+    if (clearBtn && isSuperUser()) clearBtn.classList.remove('hidden');
   } else {
     nameEl.textContent = 'No project selected';
     vesselEl.textContent = '';
@@ -1229,7 +1229,7 @@ async function renderStreamerDeploymentGrid() {
             class="streamer-deploy-date"
             data-streamer="${streamerNum}"
             value="${deployDateValue}"
-            ${!isAdmin() ? 'disabled' : ''}
+            ${!isSuperUser() ? 'disabled' : ''}
           />
         </div>
         <div class="streamer-input-group">
@@ -1237,7 +1237,7 @@ async function renderStreamerDeploymentGrid() {
           <select 
             class="streamer-coating-status"
             data-streamer="${streamerNum}"
-            ${!isAdmin() ? 'disabled' : ''}
+            ${!isSuperUser() ? 'disabled' : ''}
           >
             <option value="">Not specified</option>
             <option value="true" ${coatingValue === 'true' ? 'selected' : ''}>Yes - Coated</option>
@@ -1245,7 +1245,7 @@ async function renderStreamerDeploymentGrid() {
           </select>
         </div>
       </div>
-      ${isAdmin() && hasConfig ? `
+      ${isSuperUser() && hasConfig ? `
         <div class="streamer-card-actions">
           <button class="streamer-card-clear" data-streamer="${streamerNum}">
             🗑️ Clear Config
@@ -1258,7 +1258,7 @@ async function renderStreamerDeploymentGrid() {
   }
 
   // Attach event listeners for clear buttons
-  if (isAdmin()) {
+  if (isSuperUser()) {
     container.querySelectorAll('.streamer-card-clear').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         const streamerNum = e.target.dataset.streamer;
@@ -1274,8 +1274,8 @@ async function renderStreamerDeploymentGrid() {
 async function saveStreamerDeployments() {
   const statusEl = safeGet('streamer-deployment-status');
 
-  if (!isAdmin()) {
-    setStatus(statusEl, 'Admin access required', true);
+  if (!isSuperUser()) {
+    setStatus(statusEl, 'SuperUser access required', true);
     return;
   }
 
@@ -1332,7 +1332,7 @@ async function saveStreamerDeployments() {
  * Clear deployment config for a specific streamer
  */
 async function clearStreamerDeployment(projectId, streamerNum) {
-  if (!isAdmin()) {
+  if (!isSuperUser()) {
     showAccessDeniedToast('clear streamer configuration');
     return;
   }
@@ -1358,7 +1358,7 @@ async function clearStreamerDeployment(projectId, streamerNum) {
  * Set deployment date for all streamers
  */
 async function setAllDeploymentDates() {
-  if (!isAdmin()) {
+  if (!isSuperUser()) {
     showAccessDeniedToast('set deployment dates');
     return;
   }
@@ -1383,7 +1383,7 @@ async function setAllDeploymentDates() {
  * Set coating status for all streamers
  */
 async function setAllCoatingStatus() {
-  if (!isAdmin()) {
+  if (!isSuperUser()) {
     showAccessDeniedToast('set coating status');
     return;
   }
@@ -1402,7 +1402,7 @@ async function setAllCoatingStatus() {
  * Clear all streamer deployment configurations
  */
 async function clearAllStreamerDeployments() {
-  if (!isAdmin()) {
+  if (!isSuperUser()) {
     showAccessDeniedToast('clear streamer configurations');
     return;
   }
@@ -1427,7 +1427,7 @@ async function loadBackups() {
   const container = safeGet('backup-list');
   if (!container) return;
   
-  if (!isAdmin()) {
+  if (!isSuperUser()) {
     container.innerHTML = '';
     return;
   }
@@ -1478,7 +1478,7 @@ async function loadBackups() {
 async function createBackup() {
   const statusEl = safeGet('backup-status');
   
-  if (!isAdmin()) {
+  if (!isSuperUser()) {
     showAccessDeniedToast('create backups');
     return;
   }
@@ -1502,7 +1502,7 @@ async function createBackup() {
 }
 
 async function restoreBackup(filename) {
-  if (!isAdmin()) {
+  if (!isSuperUser()) {
     showAccessDeniedToast('restore backups');
     return;
   }
@@ -1559,7 +1559,7 @@ async function loadEvents() {
 
 async function addEvent() {
   const statusEl = safeGet("event-status");
-  if (!isAdmin()) {
+  if (!isAdminOrAbove()) {
     setStatus(statusEl, "Admin access required", true);
     return;
   }
@@ -1753,7 +1753,7 @@ async function updateEvent(id, body) {
 
 // Show the clear all modal
 function showClearAllModal() {
-  if (!isAdmin()) {
+  if (!isSuperUser()) {
     showAccessDeniedToast('clear all events');
     return;
   }
@@ -2549,7 +2549,7 @@ function closeConfirmationModal() {
 
 async function confirmCleaning() {
   if (isFinalizing) return;
-  if (!isAdmin()) {
+  if (!isAdminOrAbove()) {
     showAccessDeniedToast('add cleaning events');
     closeConfirmationModal();
     return;
