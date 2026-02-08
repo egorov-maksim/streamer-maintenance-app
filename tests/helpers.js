@@ -1,5 +1,6 @@
 // tests/helpers.js
 // Shared test helpers and utilities
+// Note: Project and config creation/updates require SuperUser; use loginAs("superuser", "super123") for those operations.
 
 const request = require("supertest");
 

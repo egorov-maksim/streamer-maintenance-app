@@ -116,11 +116,11 @@ describe("Authentication API", () => {
       assert.strictEqual(sessionRes.status, 401);
     });
 
-    it("should reject logout without token", async () => {
+    it("should accept logout without token (no-op)", async () => {
       const res = await request(app)
         .post("/api/logout");
 
-      assert.strictEqual(res.status, 401);
+      assert.strictEqual(res.status, 200);
     });
   });
 });

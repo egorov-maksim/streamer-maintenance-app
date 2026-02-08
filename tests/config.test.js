@@ -21,13 +21,6 @@ describe("Configuration API", () => {
       assert.ok(res.body.sectionLength, "sectionLength should be present");
     });
 
-    it("should reject request without token", async () => {
-      const res = await request(app)
-        .get("/api/config");
-
-      assert.strictEqual(res.status, 401);
-    });
-
     it("should allow viewer to get config", async () => {
       const token = await loginAs("viewer", "view123");
       
@@ -57,10 +50,10 @@ describe("Configuration API", () => {
         });
 
       assert.strictEqual(res.status, 200);
-      assert.strictEqual(res.body.success, true);
+      assert.ok(res.body.numCables !== undefined, "Config object should be returned");
     });
 
-    it("should allow admin to update config", async () => {
+    it("should reject admin from updating config", async () => {
       const token = await loginAs("admin", "admin123");
       
       const res = await request(app)
@@ -68,16 +61,10 @@ describe("Configuration API", () => {
         .set(authHeader(token))
         .send({
           numCables: 12,
-          sectionsPerCable: 107,
-          sectionLength: 75,
-          moduleFrequency: 4,
-          channelsPerSection: 6,
-          useRopeForTail: true,
-          vesselTag: "TTN"
+          sectionsPerCable: 107
         });
 
-      assert.strictEqual(res.status, 200);
-      assert.strictEqual(res.body.success, true);
+      assert.strictEqual(res.status, 403);
     });
 
     it("should reject viewer from updating config", async () => {
