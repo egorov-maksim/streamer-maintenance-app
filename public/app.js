@@ -3,333 +3,64 @@
    public/app.js
    ========================= */
 
-/* ------------ Global State ------------ */
+import {
+  config,
+  setConfig,
+  events,
+  setEvents,
+  projects,
+  setProjects,
+  selectedMethod,
+  setSelectedMethod,
+  selectedProjectFilter,
+  setSelectedProjectFilter,
+  dragState,
+  setDragState,
+  isFinalizing,
+  setIsFinalizing,
+  getActiveProject,
+  getFilteredEvents,
+} from "./js/state.js";
+import * as API from "./js/api.js";
+import {
+  safeGet,
+  setStatus,
+  showErrorToast,
+  showWarningToast,
+  showSuccessToast,
+  showAccessDeniedToast,
+  formatDateTime,
+} from "./js/ui.js";
+import {
+  setOnShowAppCallback,
+  loadSession,
+  validateSession,
+  showLogin,
+  showApp,
+  handleLogin,
+  handleLogout,
+  updateUIForRole,
+  setupPasswordToggle,
+  isSuperUser,
+  isAdminOrAbove,
+  isAdmin,
+} from "./js/auth.js";
+import { initModals } from "./js/modals.js";
+import * as Projects from "./js/projects.js";
+import * as StreamerUtils from "./js/streamer-utils.js";
+import { initPDFGeneration } from "./pdf-generator.js";
 
-let config = null;
-
-let events = [];
-let selectedMethod = "rope";
-let projects = [];
-let selectedProjectFilter = null; // For filtering events by project
-
-// Authentication state
-let authToken = null;
-let currentUser = null;
-
-/* ------------ Auth Helpers ------------ */
-
-function getAuthHeaders() {
-  const headers = { 'Content-Type': 'application/json' };
-  if (authToken) {
-    headers['Authorization'] = `Bearer ${authToken}`;
-  }
-  return headers;
-}
-
-async function apiCall(url, options = {}) {
-  try {
-    const res = await fetch(url, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...getAuthHeaders(),
-        ...options.headers
-      }
-    });
-
-    if (res.status === 401 || res.status === 403) {
-      const action = options.action || 'perform this action';
-      showAccessDeniedToast(action);
-      throw new Error('Unauthorized');
-    }
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.error || `Request failed: ${res.status}`);
-    }
-
-    return data;
-  } catch (err) {
-    throw err;
-  }
-}
-
-function isSuperUser() {
-  return currentUser?.role === 'superuser';
-}
-
-function isAdminOrAbove() {
-  return currentUser?.role === 'admin' || currentUser?.role === 'superuser';
-}
-
-function isAdmin() {
-  return currentUser?.role === 'admin';
-}
-
-function isViewer() {
-  return currentUser?.role === 'viewer';
-}
-
-// Save session to localStorage
-function saveSession(token, user) {
-  authToken = token;
-  currentUser = user;
-  localStorage.setItem('authToken', token);
-  localStorage.setItem('currentUser', JSON.stringify(user));
-}
-
-// Load session from localStorage
-function loadSession() {
-  const token = localStorage.getItem('authToken');
-  const userStr = localStorage.getItem('currentUser');
-  if (token && userStr) {
-    authToken = token;
-    currentUser = JSON.parse(userStr);
-    return true;
-  }
-  return false;
-}
-
-// Clear session
-function clearSession() {
-  authToken = null;
-  currentUser = null;
-  localStorage.removeItem('authToken');
-  localStorage.removeItem('currentUser');
-}
-
-// Validate session with server
-async function validateSession() {
-  if (!authToken) return false;
-  
-  try {
-    const res = await fetch('api/session', {
-      headers: getAuthHeaders()
-    });
-    
-    if (res.ok) {
-      const data = await res.json();
-      currentUser = { username: data.username, role: data.role };
-      return true;
-    } else {
-      clearSession();
-      return false;
-    }
-  } catch (err) {
-    console.error('Session validation failed:', err);
-    clearSession();
-    return false;
-  }
-}
-
-/* Shared drag state */
-let dragState = {
-  active: false,
-  streamerId: null,
-  start: null,
-  end: null,
-  cells: null,
-};
-
-let isFinalizing = false;
-
-/* ------------ Utilities ------------ */
-
-function safeGet(id) {
-  const el = document.getElementById(id);
-  if (!el) console.warn(`[UI] Element #${id} not found`);
-  return el;
-}
-
-function setStatus(el, msg, isError = false) {
-  if (!el) return;
-  el.textContent = msg;
-  el.classList.toggle('status-error', isError);
-  el.classList.toggle('status-info', !isError);
-  if (msg) setTimeout(() => { el.textContent = ""; }, 4000);
-}
-
-/* ------------ Toast Notifications ------------ */
-
-function showToast(type, title, message, duration = 5000) {
-  const container = document.getElementById('toast-container');
-  if (!container) return;
-  
-  const toast = document.createElement('div');
-  toast.className = `toast toast-${type}`;
-  
-  const icons = {
-    error: '🚫',
-    warning: '⚠️',
-    success: '✅',
-    info: 'ℹ️'
-  };
-  
-  toast.innerHTML = `
-    <div class="toast-icon">${icons[type] || icons.info}</div>
-    <div class="toast-content">
-      <div class="toast-title">${title}</div>
-      <div class="toast-message">${message}</div>
-    </div>
-    <button class="toast-close" aria-label="Close">×</button>
-    <div class="toast-progress"></div>
-  `;
-  
-  // Close button handler
-  const closeBtn = toast.querySelector('.toast-close');
-  closeBtn.addEventListener('click', () => dismissToast(toast));
-  
-  container.appendChild(toast);
-  
-  // Auto dismiss after duration
-  if (duration > 0) {
-    setTimeout(() => dismissToast(toast), duration);
-  }
-  
-  return toast;
-}
-
-function dismissToast(toast) {
-  if (!toast || toast.classList.contains('toast-exit')) return;
-  
-  toast.classList.add('toast-exit');
-  setTimeout(() => {
-    if (toast.parentNode) {
-      toast.parentNode.removeChild(toast);
-    }
-  }, 300);
-}
-
-function showErrorToast(title, message) {
-  return showToast('error', title, message);
-}
-
-function showWarningToast(title, message) {
-  return showToast('warning', title, message);
-}
-
-function showSuccessToast(title, message) {
-  return showToast('success', title, message);
-}
-
-function showAccessDeniedToast(action = 'perform this action') {
-  return showErrorToast(
-    'Access Denied',
-    `Administrator access required to ${action}. Please login with an admin account.`
-  );
-}
-
-function formatDateTime(iso) {
-  const d = new Date(iso);
-  return isNaN(d.getTime()) ? iso : d.toLocaleString();
-}
-
-function sectionCount(evt) {
-  return evt.sectionIndexEnd - evt.sectionIndexStart + 1;
-}
-
-function eventDistance(evt) {
-  return sectionCount(evt) * (config.sectionLength || 1);
-}
-
-function ageBucket(days) {
-  if (days === null) return "never";
-  if (days <= 0) return "fresh";
-  if (days >= 14) return "14plus";
-  if (days >= 10) return "10plus";
-  if (days >= 7) return "7plus";
-  if (days >= 4) return "4plus";
-  return "fresh";
-}
-
-function fmtKm(meters) {
-  return `${(meters / 1000).toFixed(1)} km`;
-}
-
-function getChannelRange(sectionIndex) {
-  const channelsPerSection = config.channelsPerSection;
-  const startChannel = sectionIndex * channelsPerSection + 1;
-  const endChannel = startChannel + channelsPerSection - 1;
-  return `Ch ${startChannel}–${endChannel}`;
-}
-
-function formatAS(sectionIndex) {
-  return `AS${String(sectionIndex + 1).padStart(2, '0')}`;
-}
-
-
-// Helper: Fetch EB range from server API
-// Finds closest module AT OR BEFORE startSection and AT OR AFTER endSection
-async function getEBRange(startSection, endSection) {
-  try {
-    const data = await apiCall(`api/eb-range?start=${startSection}&end=${endSection}`);
-    return data.ebRange || '-';
-  } catch (err) {
-    console.error('getEBRange error:', err);
-    return '-';
-  }
-}
-
-function formatEB(num) {
-  return `EB${String(num).padStart(2, '0')}`;
-}
-
-
-// Helper: Get config for a specific project (or fall back to current config)
-function getConfigForProject(projectNumber) {
-  const pn = (projectNumber || "").trim();
-  if (pn && Array.isArray(projects)) {
-    const p = projects.find(x => x.projectNumber === pn);
-    if (p) {
-      return {
-        numCables: p.numCables || config.numCables,
-        sectionsPerCable: p.sectionsPerCable || config.sectionsPerCable,
-        sectionLength: p.sectionLength || config.sectionLength,
-        moduleFrequency: p.moduleFrequency || config.moduleFrequency,
-        channelsPerSection: p.channelsPerSection || config.channelsPerSection,
-        useRopeForTail: p.useRopeForTail !== null && p.useRopeForTail !== undefined
-          ? p.useRopeForTail === true || p.useRopeForTail === 1
-          : config.useRopeForTail
-      };
-    }
-  }
-  return config;
-}
-
-// UPDATED: Now accepts a config object
-function getSectionsPerCableWithTail(cfg = config) {
-  const base = cfg.sectionsPerCable || 0;
-  const tail = cfg.useRopeForTail ? 0 : 5;
-  return base + tail;
-}
-
-// UPDATED: Now accepts a config object
-function getMaxSectionIndex(cfg = config) {
-  return getSectionsPerCableWithTail(cfg);
-}
-
-// Single validation function - uses the helpers
-function validateStreamerAndSections(streamerNum, startSection, endSection, projectNumber = null) {
-  const eventConfig = getConfigForProject(projectNumber);
-  const maxStreamer = eventConfig.numCables;
-  const maxSection = getMaxSectionIndex(eventConfig); // ← Use helper!
-
-  if (
-    Number.isNaN(streamerNum) || streamerNum < 1 || streamerNum > maxStreamer ||
-    Number.isNaN(startSection) || startSection < 1 || startSection > maxSection ||
-    Number.isNaN(endSection) || endSection < 1 || endSection > maxSection
-  ) {
-    return {
-      valid: false,
-      maxStreamer,
-      maxSection,
-      message: `Streamer must be 1-${maxStreamer}, sections must be 1-${maxSection}.`
-    };
-  }
-
-  return { valid: true, maxStreamer, maxSection };
-}
+const sectionCount = StreamerUtils.sectionCount;
+const eventDistance = StreamerUtils.eventDistance;
+const ageBucket = StreamerUtils.ageBucket;
+const fmtKm = StreamerUtils.fmtKm;
+const getChannelRange = StreamerUtils.getChannelRange;
+const formatAS = StreamerUtils.formatAS;
+const formatEB = StreamerUtils.formatEB;
+const getConfigForProject = StreamerUtils.getConfigForProject;
+const getSectionsPerCableWithTail = StreamerUtils.getSectionsPerCableWithTail;
+const getMaxSectionIndex = StreamerUtils.getMaxSectionIndex;
+const validateStreamerAndSections = StreamerUtils.validateStreamerAndSections;
 
 /* ------------ Heatmap ------------ */
 /* ============================================================================
@@ -508,1157 +239,15 @@ function getMethodIcon(method) {
   return icons[method] || '🔧';
 }
 
-/* ------------ Login/Logout UI ------------ */
+/* ------------ Project API (see js/projects.js) ------------ */
 
-async function handleLogin(event) {
-  event.preventDefault();
-  
-  const usernameInput = safeGet('login-username');
-  const passwordInput = safeGet('login-password');
-  const errorDiv = safeGet('login-error');
-  const submitBtn = safeGet('login-submit');
-  const btnText = submitBtn.querySelector('.btn-text');
-  const btnLoader = submitBtn.querySelector('.btn-loader');
-  
-  const username = usernameInput.value.trim();
-  const password = passwordInput.value;
-  
-  if (!username || !password) {
-    errorDiv.textContent = 'Please enter username and password';
-    errorDiv.classList.remove('hidden');
-    return;
-  }
-  
-  // Show loading state
-  btnText.classList.add('hidden');
-  btnLoader.classList.remove('hidden');
-  btnLoader.classList.add('inline');
-  submitBtn.disabled = true;
-  errorDiv.classList.add('hidden');
-  
-  try {
-    const res = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
-    });
-    
-    const data = await res.json();
-    
-    if (res.ok) {
-      saveSession(data.token, { username: data.username, role: data.role });
-      showApp();
-    } else {
-      errorDiv.textContent = data.error || 'Login failed';
-      errorDiv.classList.remove('hidden');
-    }
-  } catch (err) {
-    console.error('Login error:', err);
-    errorDiv.textContent = 'Connection error. Please try again.';
-    errorDiv.classList.remove('hidden');
-  } finally {
-    btnText.classList.remove('hidden');
-    btnText.classList.add('inline');
-    btnLoader.classList.add('hidden');
-    btnLoader.classList.remove('inline');
-    submitBtn.disabled = false;
-  }
-}
-
-async function handleLogout() {
-  try {
-    await apiCall('api/logout', {
-      method: 'POST'
-    });
-  } catch (err) {
-    console.error('Logout error:', err);
-  }
-  
-  clearSession();
-  showLogin();
-}
-
-function showLogin() {
-  window.scrollTo(0, 0);
-  document.body.style.overflow = 'hidden';
-  safeGet('login-page').classList.add('flex');
-  safeGet('login-page').classList.remove('hidden');
-  safeGet('app-container').classList.add('hidden');
-  
-  // Clear form
-  const usernameInput = safeGet('login-username');
-  const passwordInput = safeGet('login-password');
-  const errorDiv = safeGet('login-error');
-  
-  if (usernameInput) usernameInput.value = '';
-  if (passwordInput) passwordInput.value = '';
-  if (errorDiv) errorDiv.classList.add('hidden');
-}
-
-function showApp() {
-  window.scrollTo(0, 0);
-  document.body.style.overflow = 'auto';
-  const loginPage = safeGet('login-page');
-  if (loginPage) {
-    loginPage.classList.add('hidden');
-    loginPage.classList.remove('flex');
-  }
-  safeGet('app-container').classList.remove('hidden');
-  
-  // Update user display
-  const userDisplayName = safeGet('user-display-name');
-  const userRoleBadge = safeGet('user-role-badge');
-  
-  if (userDisplayName && currentUser) {
-    userDisplayName.textContent = currentUser.username;
-  }
-  
-  if (userRoleBadge && currentUser) {
-    userRoleBadge.textContent = currentUser.role === 'admin' ? 'Administrator' : 'Viewer';
-    userRoleBadge.className = `user-role-badge ${currentUser.role === 'admin' ? 'admin' : 'viewer'}`;
-  }
-  
-  // Update UI based on role
-  updateUIForRole();
-  
-  // Initialize app
-  initApp();
-}
-
-function updateUIForRole() {
-  const isSuperUserRole = isSuperUser();
-  const isAdminRole = isAdminOrAbove();
-  
-  // SuperUser-only: Project management, config, backups, deployments
-  document.querySelectorAll('.superuser-only').forEach(el => 
-    el.classList.toggle('hidden', !isSuperUserRole)
-  );
-
-  // Admin+: Event editing (both admin and superuser)
-  const adminOnlyElements = document.querySelectorAll('.admin-only');
-  adminOnlyElements.forEach(el => {
-    el.classList.toggle('hidden', !isAdminRole);
-  });
-  
-  // Disable buttons for non-admins
-  const editDeleteBtns = document.querySelectorAll('.btn-edit, .btn-delete');
-  editDeleteBtns.forEach(btn => {
-    btn.classList.toggle('hidden', !isAdminRole);
-  });
-  
-  // Hide action column header for viewers
-  const actionHeaders = document.querySelectorAll('th:last-child');
-  // We'll handle this in renderLog instead
-  
-  // Clear All button (global clear - SuperUser only)
-  const btnClearAll = safeGet('btn-clear-all');
-  if (btnClearAll) btnClearAll.classList.toggle('hidden', !isSuperUserRole);
-  
-  const btnSaveConfig = safeGet('btn-save-config');
-  if (btnSaveConfig) btnSaveConfig.classList.toggle('hidden', !isSuperUserRole);
-  
-  const btnAddEvent = safeGet('btn-add-event');
-  if (btnAddEvent) btnAddEvent.classList.toggle('hidden', !isAdminRole);
-  
-  // Disable config inputs for non-superusers
-  const configInputs = document.querySelectorAll('#cfg-numCables, #cfg-sectionsPerCable, #cfg-sectionLength, #cfg-moduleFrequency, #cfg-channelsPerSection, #cfg-useRopeForTail');
-  configInputs.forEach(input => {
-    input.disabled = !isSuperUserRole;
-  });
-  
-  // Disable manual entry inputs for non-admins
-  const manualEntryInputs = document.querySelectorAll('#evt-streamer, #evt-start, #evt-end, #evt-method, #evt-date, #evt-time');
-  manualEntryInputs.forEach(input => {
-    input.disabled = !isAdminRole;
-  });
-  
-  // Project management buttons and inputs (SuperUser only)
-  const btnCreateProject = safeGet('btn-create-project');
-  if (btnCreateProject) btnCreateProject.classList.toggle('hidden', !isSuperUserRole);
-  
-  const btnActivateProject = safeGet('btn-activate-project');
-  if (btnActivateProject) btnActivateProject.classList.toggle('hidden', !isSuperUserRole);
-  
-  const btnClearProject = safeGet('btn-clear-project');
-  if (btnClearProject && isSuperUserRole) {
-    // Only show if there's an active project
-    const activeProject = projects.find(p => p.isActive === true);
-    btnClearProject.classList.toggle('hidden', !activeProject);
-  } else if (btnClearProject) {
-    btnClearProject.classList.add('hidden');
-  }
-  
-  // Disable project creation inputs for non-superusers
-  const projectInputs = document.querySelectorAll('#new-project-number, #new-project-name, #new-project-vessel');
-  projectInputs.forEach(input => {
-    input.disabled = !isSuperUserRole;
-  });
-
-  // Deployment inputs (SuperUser only)
-  const deploymentInputs = document.querySelectorAll('.streamer-deploy-date, .streamer-coating-status');
-  deploymentInputs.forEach(input => 
-    input.disabled = !isSuperUserRole
-  );
-
-  // Update role badge
-  const roleBadge = safeGet('user-role-badge');
-  if (roleBadge) {
-    if (isSuperUserRole) {
-      roleBadge.textContent = 'Super User';
-      roleBadge.className = 'user-role-badge superuser';
-    } else if (isAdminRole) {
-      roleBadge.textContent = 'Administrator';
-      roleBadge.className = 'user-role-badge admin';
-    } else {
-      roleBadge.textContent = 'Viewer';
-      roleBadge.className = 'user-role-badge viewer';
-    }
-  }
-}
-
-function setupPasswordToggle() {
-  const toggle = safeGet('password-toggle');
-  const passwordInput = safeGet('login-password');
-  
-  if (toggle && passwordInput) {
-    toggle.addEventListener('click', () => {
-      if (passwordInput.type === 'password') {
-        passwordInput.type = 'text';
-        toggle.textContent = '🙈';
-      } else {
-        passwordInput.type = 'password';
-        toggle.textContent = '👁️';
-      }
-    });
-  }
-}
-
-/* ------------ Config API ------------ */
-
-async function loadConfig() {
-  try {
-    const data = await apiCall('api/config');
-    config = data;
-    document.documentElement.style.setProperty('--sections', config.sectionsPerCable);
-    populateConfigForm(config);
-    updateConfigProjectLabel();
-  } catch (err) {
-    console.error(err);
-  }
-}
-
-// Populate configuration form from config object
-function populateConfigForm(cfg) {
-  safeGet('cfg-numCables').value = cfg.numCables;
-  safeGet('cfg-sectionsPerCable').value = cfg.sectionsPerCable;
-  safeGet('cfg-sectionLength').value = cfg.sectionLength;
-  safeGet('cfg-moduleFrequency').value = cfg.moduleFrequency;
-  safeGet('cfg-channelsPerSection').value = cfg.channelsPerSection;
-  safeGet('cfg-useRopeForTail').value = cfg.useRopeForTail;
-}
-
-// Update the label showing which project the config belongs to
-function updateConfigProjectLabel() {
-  const label = safeGet('config-project-label');
-  if (!label) return;
-  
-  const activeProject = projects.find(p => p.isActive);
-  if (activeProject) {
-    label.textContent = `(for ${activeProject.projectNumber})`;
-  } else {
-    label.textContent = '(global defaults)';
-  }
-}
-
-// Get current config values from form
-function getConfigFromForm() {
-  return {
-    numCables: parseInt(safeGet('cfg-numCables').value, 10),
-    sectionsPerCable: parseInt(safeGet('cfg-sectionsPerCable').value, 10),
-    sectionLength: parseInt(safeGet('cfg-sectionLength').value, 10),
-    moduleFrequency: parseInt(safeGet('cfg-moduleFrequency').value, 10),
-    channelsPerSection: parseInt(safeGet('cfg-channelsPerSection').value, 10),
-    useRopeForTail: safeGet('cfg-useRopeForTail').value === 'true',
-  };
-}
-
-async function saveConfig() {
-  const statusEl = safeGet('config-status');
-  
-  if (!isSuperUser()) {
-    setStatus(statusEl, 'SuperUser access required', true);
-    return;
-  }
-  
-  // Find active project
-  const activeProject = projects.find(p => p.isActive);
-  
-  if (activeProject) {
-    // Save to active project
-    await saveProjectConfig(activeProject.id);
-  } else {
-    // Save to global config (legacy behavior)
-    await saveGlobalConfig();
-  }
-}
-
-// Save configuration to a specific project
-async function saveProjectConfig(projectId) {
-  const statusEl = safeGet('config-status');
-  const previousNumCables = config.numCables;
-
-  try {
-    const formConfig = getConfigFromForm();
-    const activeProject = projects.find(p => p.id === projectId);
-
-    const body = {
-      projectName: activeProject?.projectName || null,
-      vesselTag: activeProject?.vesselTag || 'TTN',
-      ...formConfig
-    };
-
-    const updated = await apiCall(`api/projects/${projectId}`, {
-      method: 'PUT',
-      body: JSON.stringify(body),
-      action: 'save project configuration'
-    });
-
-    // Update local config to reflect changes
-    config.numCables = updated.numCables;
-    config.sectionsPerCable = updated.sectionsPerCable;
-    config.sectionLength = updated.sectionLength;
-    config.moduleFrequency = updated.moduleFrequency;
-    config.channelsPerSection = updated.channelsPerSection;
-    config.useRopeForTail = updated.useRopeForTail;
-
-    document.documentElement.style.setProperty('--sections', config.sectionsPerCable);
-    setStatus(statusEl, `✅ Configuration saved for ${updated.projectNumber}`);
-
-    await handleStreamerCountChange(previousNumCables, config.numCables);
-
-    await loadProjects();
-    await refreshEverything();
-    await renderHeatmap();
-    await refreshStatsFiltered();
-  } catch (err) {
-    console.error(err);
-    setStatus(statusEl, 'Failed to save config', true);
-  }
-}
-
-// Save to global config (when no project is active)
-async function saveGlobalConfig() {
-  const statusEl = safeGet('config-status');
-  const previousNumCables = config.numCables;
-
-  try {
-    const body = {
-      numCables: parseInt(safeGet('cfg-numCables').value, 10),
-      sectionsPerCable: parseInt(safeGet('cfg-sectionsPerCable').value, 10),
-      sectionLength: parseInt(safeGet('cfg-sectionLength').value, 10),
-      moduleFrequency: parseInt(safeGet('cfg-moduleFrequency').value, 10),
-      channelsPerSection: parseInt(safeGet('cfg-channelsPerSection').value, 10),
-      useRopeForTail: safeGet('cfg-useRopeForTail').value === 'true',
-    };
-
-    const data = await apiCall('api/config', {
-      method: 'PUT',
-      body: JSON.stringify(body),
-      action: 'save global configuration'
-    });
-    config = data;
-    document.documentElement.style.setProperty('--sections', config.sectionsPerCable);
-    setStatus(statusEl, '✅ Global configuration updated');
-
-    await handleStreamerCountChange(previousNumCables, config.numCables);
-
-    await refreshEverything();
-    await renderHeatmap();
-    await refreshStatsFiltered();
-  } catch (err) {
-    console.error(err);
-    setStatus(statusEl, 'Failed to save config', true);
-  }
-}
-
-/**
- * When streamer count changes (e.g. reduced), refresh deployment grid and heatmap.
- * If count decreased, show warning about hidden data and offer cleanup.
- */
-async function handleStreamerCountChange(previousNumCables, newNumCables) {
-  if (previousNumCables === newNumCables) return;
-
-  if (newNumCables < previousNumCables && isSuperUser()) {
-    showWarningToast(
-      'Streamer count reduced',
-      `Streamers ${newNumCables + 1}-${previousNumCables} are now hidden. Events and deployment data for those streamers still exist. Use "Cleanup orphaned streamers" to remove them.`
-    );
-  }
-
-  await renderStreamerDeploymentGrid();
-  await renderHeatmap();
-}
-
-/**
- * Cleanup events and deployments for streamers above current max (SuperUser only).
- */
-async function cleanupOrphanedStreamers() {
-  if (!isSuperUser()) {
-    showAccessDeniedToast('cleanup orphaned streamers');
-    return;
-  }
-
-  const maxId = config.numCables;
-  const confirmed = confirm(
-    `This will permanently delete all events and deployment configurations for streamers ${maxId + 1}-12.\n\nThis cannot be undone. Continue?`
-  );
-  if (!confirmed) return;
-
-  try {
-    const data = await apiCall('api/cleanup-streamers', {
-      method: 'POST',
-      body: JSON.stringify({ maxStreamerId: maxId }),
-      action: 'cleanup orphaned streamers'
-    });
-    showSuccessToast(
-      'Cleanup complete',
-      `Removed ${data.deletedEvents || 0} events and ${data.deletedDeployments || 0} deployment configs.`
-    );
-    await refreshEverything();
-    await renderHeatmap();
-    await renderStreamerDeploymentGrid();
-  } catch (err) {
-    console.error(err);
-    showErrorToast('Cleanup failed', err.message || 'Failed to cleanup streamers');
-  }
-}
-
-/* ------------ Project API ------------ */
-
-let projectEventCounts = {};
-
-async function loadProjects() {
-  try {
-    // Load projects and event counts in parallel
-    const [projectsData, statsData] = await Promise.all([
-      apiCall('api/projects'),
-      apiCall('api/projects/stats')
-    ]);
-    
-    projects = projectsData;
-    projectEventCounts = statsData;
-    
-    renderProjectList();
-    populateProjectSelector();
-    updateActiveProjectBanner();
-    updateConfigProjectLabel();
-  } catch (err) {
-    console.error('Failed to load projects:', err);
-  }
-}
-
-async function createProject() {
-  const statusEl = safeGet('project-status');
-  
-  if (!isSuperUser()) {
-    setStatus(statusEl, 'SuperUser access required', true);
-    return;
-  }
-  
-  const projectNumber = safeGet('new-project-number').value.trim();
-  const projectName = safeGet('new-project-name').value.trim();
-  const vesselTag = safeGet('new-project-vessel').value.trim() || 'TTN';
-  
-  if (!projectNumber) {
-    setStatus(statusEl, 'Project number is required', true);
-    return;
-  }
-  
-  // Get current config values to use as defaults for new project
-  const currentConfig = getConfigFromForm();
-  
-  try {
-    const data = await apiCall('api/projects', {
-      method: 'POST',
-      body: JSON.stringify({
-        projectNumber: projectNumber,
-        projectName: projectName,
-        vesselTag: vesselTag,
-        // Include current streamer config as defaults for the new project
-        ...currentConfig
-      }),
-      action: 'create project'
-    });
-    
-    // Clear inputs
-    safeGet('new-project-number').value = '';
-    safeGet('new-project-name').value = '';
-    safeGet('new-project-vessel').value = 'TTN';
-    
-    setStatus(statusEl, '✅ Project created with current configuration');
-    await loadProjects();
-  } catch (err) {
-    console.error(err);
-    setStatus(statusEl, 'Failed to create project', true);
-  }
-}
-
-async function activateProject(projectId) {
-  if (!isSuperUser()) {
-    showAccessDeniedToast('activate project');
-    return;
-  }
-  
-  try {
-    const project = await apiCall(`api/projects/${projectId}/activate`, {
-      method: 'PUT',
-      action: 'activate project'
-    });
-    
-    // Update config with the project's streamer configuration
-    if (project) {
-      config.numCables = project.numCables;
-      config.sectionsPerCable = project.sectionsPerCable;
-      config.sectionLength = project.sectionLength;
-      config.moduleFrequency = project.moduleFrequency;
-      config.channelsPerSection = project.channelsPerSection;
-      config.useRopeForTail = project.useRopeForTail;
-      config.vesselTag = project.vesselTag;
-      config.activeProjectNumber = project.projectNumber;
-      selectedProjectFilter = String(project.projectNumber);
-      
-      // Update CSS variable and form
-      document.documentElement.style.setProperty('--sections', config.sectionsPerCable);
-      populateConfigForm(config);
-    }
-    
-    await loadProjects();
-    updateActiveProjectBanner();
-    updateConfigProjectLabel();
-    
-    showSuccessToast('Project Activated', `Streamer configuration loaded for ${project.projectNumber}. All new events will be associated with this project.`);
-    
-    // Refresh UI with new config
-    await refreshEverything();
-    await renderHeatmap();
-    await renderStreamerDeploymentGrid();
-    await refreshStatsFiltered();
-  } catch (err) {
-    console.error(err);
-    showErrorToast('Activation Failed', 'Failed to activate project.');
-  }
-}
-
-async function activateSelectedProject() {
-  const selector = safeGet('project-selector');
-  const projectNumber = selector.value;
-  
-  if (!projectNumber) {
-    // Clear active project
-    await clearActiveProject();
-    return;
-  }
-  
-  const project = projects.find(p => p.projectNumber === projectNumber);
-  if (project) {
-    await activateProject(project.id);
-  }
-}
-
-async function clearActiveProject() {
-  if (!isSuperUser()) {
-    showAccessDeniedToast('clear active project');
-    return;
-  }
-  
-  try {
-    await apiCall('api/projects/deactivate', {
-      method: 'POST',
-      action: 'clear active project'
-    });
-    
-    // Reset to global config
-    await loadConfig();
-    await loadProjects();
-    selectedProjectFilter = null;
-    updateActiveProjectBanner();
-    updateConfigProjectLabel();
-    
-    // Hide streamer deployment section
-    const section = safeGet('streamer-deployment-section');
-    if (section) section.style.display = 'none';
-    
-    showSuccessToast('Project Cleared', 'Using global configuration. New events will not be associated with any project.');
-    
-    // Refresh UI
-    await refreshEverything();
-    await renderHeatmap();
-    await refreshStatsFiltered();
-  } catch (err) {
-    console.error(err);
-    showErrorToast('Failed', 'Failed to clear active project.');
-  }
-}
-
-async function deleteProject(projectId) {
-  if (!isSuperUser()) {
-    showAccessDeniedToast('delete project');
-    return;
-  }
-
-  try {
-    const res = await fetch(`api/projects/${projectId}`, {
-      method: 'DELETE',
-      headers: getAuthHeaders()
-    });
-    const data = await res.json();
-
-    if (res.ok) {
-      showSuccessToast('Project Deleted', 'The project has been removed.');
-      await loadProjects();
-      return;
-    }
-
-    if (res.status === 409 && data.requiresConfirmation) {
-      showForceDeleteProjectModal(projectId, data.eventCount || 0, data.deploymentCount || 0);
-      return;
-    }
-
-    showErrorToast('Delete Failed', data.error || 'Failed to delete project.');
-  } catch (err) {
-    console.error(err);
-    showErrorToast('Delete Failed', 'Failed to delete project.');
-  }
-}
-
-/* ------------ Modals ------------ */
-
-let forceDeletePendingProjectId = null;
-
-function showForceDeleteProjectModal(projectId, eventCount, deploymentCount) {
-  const modal = safeGet('force-delete-project-modal');
-  const messageEl = safeGet('force-delete-project-message');
-  const input = safeGet('force-delete-project-input');
-  const confirmBtn = safeGet('btn-force-delete-project-confirm');
-
-  if (!modal || !messageEl || !input || !confirmBtn) return;
-
-  const parts = [];
-  if (eventCount > 0) parts.push(`${eventCount} event(s)`);
-  if (deploymentCount > 0) parts.push(`${deploymentCount} deployment config(s)`);
-  messageEl.textContent = `This project has ${parts.join(' and ')}. All will be permanently deleted. Type DELETE to confirm.`;
-
-  input.value = '';
-  confirmBtn.disabled = true;
-  forceDeletePendingProjectId = projectId;
-
-  modal.classList.add('show');
-  input.focus();
-}
-
-function closeForceDeleteProjectModal() {
-  forceDeletePendingProjectId = null;
-  const modal = safeGet('force-delete-project-modal');
-  if (modal) modal.classList.remove('show');
-}
-
-function renderProjectList() {
-  const container = safeGet('project-list');
-  if (!container) return;
-  
-  if (projects.length === 0) {
-    container.innerHTML = '<p style="color: #6b7280; font-size: 13px;">No projects created yet.</p>';
-    return;
-  }
-  
-  const isAdminUser = isAdminOrAbove();
-  
-  container.innerHTML = projects.map(p => {
-    const isActive = p.isActive === true;
-    const eventCount = projectEventCounts[p.projectNumber] || 0;
-    const eventCountBadge = `<span class="project-event-count" title="Events in this project">${eventCount} events</span>`;
-    const activeBadge = isActive ? '<span class="badge badge-active">Active</span>' : '';
-    const deleteBtn = isSuperUser() && !isActive
-      ? `<button class="btn btn-outline btn-sm btn-delete-project" data-id="${p.id}" title="Delete project">🗑️</button>` : '';
-    
-    return `
-      <div class="project-item ${isActive ? 'active' : ''}">
-        <div class="project-item-info">
-          <span class="project-number">${p.projectNumber}</span>
-          ${p.projectName ? `<span class="project-name">${p.projectName}</span>` : ''}
-          <span class="project-vessel">${p.vesselTag || 'TTN'}</span>
-          ${eventCountBadge}
-          ${activeBadge}
-        </div>
-        <div class="project-item-actions">
-          ${deleteBtn}
-        </div>
-      </div>
-    `;
-  }).join('');
-  
-  // Attach delete listeners
-  container.querySelectorAll('.btn-delete-project').forEach(btn => {
-    btn.addEventListener('click', () => deleteProject(parseInt(btn.dataset.id)));
-  });
-}
-
-function populateProjectSelector() {
-  const selector = safeGet('project-selector');
-  if (!selector) return;
-  
-  // Keep the first option (All Projects)
-  selector.innerHTML = '<option value="">-- All Projects (No Filter) --</option>';
-  
-  projects.forEach(p => {
-    const option = document.createElement('option');
-    option.value = p.projectNumber;
-    option.textContent = p.projectName ? `${p.projectNumber} - ${p.projectName}` : p.projectNumber;
-    if (p.isActive === true) {
-      option.textContent += ' (Active)';
-    }
-    selector.appendChild(option);
-  });
-  
-  // Set current selection to active project
-  const activeProject = projects.find(p => p.isActive === true);
-  if (activeProject) {
-    selector.value = activeProject.projectNumber;
-  }
-}
-
-function updateActiveProjectBanner() {
-  const banner = safeGet('active-project-banner');
-  const nameEl = safeGet('active-project-name');
-  const vesselEl = safeGet('active-project-vessel');
-  const clearBtn = safeGet('btn-clear-project');
-  
-  if (!banner || !nameEl) return;
-  
-  const activeProject = projects.find(p => p.isActive === true);
-  
-  if (activeProject) {
-    nameEl.textContent = activeProject.projectName 
-      ? `${activeProject.projectNumber} - ${activeProject.projectName}`
-      : activeProject.projectNumber;
-    vesselEl.textContent = `[${activeProject.vesselTag || 'TTN'}]`;
-    banner.classList.add('has-project');
-    if (clearBtn && isSuperUser()) clearBtn.classList.remove('hidden');
-  } else {
-    nameEl.textContent = 'No project selected';
-    vesselEl.textContent = '';
-    banner.classList.remove('has-project');
-    if (clearBtn) clearBtn.classList.add('hidden');
-  }
-}
-
-function setProjectFilter(projectNumber) {
-  selectedProjectFilter = projectNumber ? String(projectNumber) : null;
-  refreshEverything();
-  renderHeatmap();
-  refreshStatsFiltered();
-}
-
-// ============================================
-// Streamer Deployment Configuration
-// ============================================
-
-/**
- * Render per-streamer deployment configuration grid
- */
-async function renderStreamerDeploymentGrid() {
-  const container = safeGet('streamer-deployment-grid');
-  const section = safeGet('streamer-deployment-section');
-  if (!container || !section) return;
-
-  // Only show if there's an active project
-  const activeProject = projects.find(p => p.isActive);
-  if (!activeProject) {
-    section.style.display = 'none';
-    return;
-  }
-
-  section.style.display = 'block';
-
-  // Update label
-  const label = safeGet('streamer-config-project-label');
-  if (label) {
-    label.textContent = `for ${activeProject.projectNumber}`;
-  }
-
-  const numCables = config.numCables;
-
-  // Load existing streamer deployments
-  let deployments = {};
-  try {
-    deployments = await apiCall(`/api/projects/${activeProject.id}/streamer-deployments`);
-  } catch (err) {
-    console.error('Failed to load streamer deployments', err);
-  }
-
-  container.innerHTML = '';
-
-  for (let streamerNum = 1; streamerNum <= numCables; streamerNum++) {
-    const deployment = deployments[streamerNum] || {};
-    const hasConfig = deployment.deploymentDate || (deployment.isCoated !== null && deployment.isCoated !== undefined);
-
-    const card = document.createElement('div');
-    card.className = `streamer-deployment-card modern ${hasConfig ? 'has-config' : ''}`;
-    card.dataset.streamer = streamerNum;
-
-    const deployDateValue = deployment.deploymentDate
-      ? new Date(deployment.deploymentDate).toISOString().split('T')[0]
-      : '';
-
-    const coatingActive = deployment.isCoated === true ? 'true' : deployment.isCoated === false ? 'false' : '';
-
-    card.innerHTML = `
-      <div class="streamer-card-header">
-        <span class="streamer-card-title">🔧 Streamer ${streamerNum}</span>
-        <span class="streamer-status">
-          <span class="status-badge ${hasConfig ? 'configured' : ''}">${hasConfig ? '✓ Configured' : 'Default'}</span>
-          ${deployment.isCoated === true ? '<span class="coating-badge coated">Coated</span>' : ''}
-          ${deployment.isCoated === false ? '<span class="coating-badge uncoated">Uncoated</span>' : ''}
-          ${deployment.isCoated === null || deployment.isCoated === undefined ? '<span class="coating-badge unknown">Unknown</span>' : ''}
-        </span>
-      </div>
-      <div class="streamer-deployment-inputs">
-        <div class="streamer-input-group">
-          <label>📅 Deployment Date</label>
-          <input type="date" class="streamer-deploy-date" data-streamer="${streamerNum}" value="${deployDateValue}" ${!isSuperUser() ? 'disabled' : ''} />
-        </div>
-        <div class="streamer-input-group">
-          <label>🛡️ Coating</label>
-          <div class="coating-toggle" data-streamer="${streamerNum}">
-            <button type="button" class="coating-option ${coatingActive === 'true' ? 'active' : ''}" data-value="true" ${!isSuperUser() ? 'disabled' : ''}>Coated</button>
-            <button type="button" class="coating-option ${coatingActive === 'false' ? 'active' : ''}" data-value="false" ${!isSuperUser() ? 'disabled' : ''}>Uncoated</button>
-            <button type="button" class="coating-option ${coatingActive === '' ? 'active' : ''}" data-value="" ${!isSuperUser() ? 'disabled' : ''}>Unknown</button>
-          </div>
-        </div>
-      </div>
-      ${isSuperUser() && hasConfig ? `
-        <div class="streamer-card-actions">
-          <button type="button" class="btn-icon btn-clear streamer-card-clear" data-streamer="${streamerNum}" title="Clear configuration">🗑️ Clear</button>
-        </div>
-      ` : ''}
-    `;
-
-    container.appendChild(card);
-  }
-
-  // Coating toggle: clicking an option sets it active and removes active from siblings
-  container.querySelectorAll('.coating-toggle').forEach(toggle => {
-    const streamerId = toggle.dataset.streamer;
-    toggle.querySelectorAll('.coating-option').forEach(btn => {
-      if (btn.disabled) return;
-      btn.addEventListener('click', () => {
-        toggle.querySelectorAll('.coating-option').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-      });
-    });
-  });
-
-  // Attach event listeners for clear buttons
-  if (isSuperUser()) {
-    container.querySelectorAll('.streamer-card-clear').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        const streamerNum = e.target.dataset.streamer;
-        await clearStreamerDeployment(activeProject.id, streamerNum);
-      });
-    });
-  }
-}
-
-/**
- * Save all streamer deployment configurations
- */
-async function saveStreamerDeployments() {
-  const statusEl = safeGet('streamer-deployment-status');
-
-  if (!isSuperUser()) {
-    setStatus(statusEl, 'SuperUser access required', true);
-    return;
-  }
-
-  const activeProject = projects.find(p => p.isActive);
-  if (!activeProject) {
-    setStatus(statusEl, 'No active project', true);
-    return;
-  }
-
-  const deployments = {};
-
-  // Collect date from inputs
-  document.querySelectorAll('.streamer-deploy-date').forEach(input => {
-    const streamerNum = input.dataset.streamer;
-    if (!deployments[streamerNum]) deployments[streamerNum] = {};
-    deployments[streamerNum].deploymentDate = input.value || null;
-  });
-
-  // Collect coating from three-state toggle (Coated / Uncoated / Unknown)
-  document.querySelectorAll('.coating-toggle').forEach(toggle => {
-    const streamerNum = toggle.dataset.streamer;
-    if (!deployments[streamerNum]) deployments[streamerNum] = {};
-    const activeBtn = toggle.querySelector('.coating-option.active');
-    const value = activeBtn ? activeBtn.dataset.value : '';
-    deployments[streamerNum].isCoated = value === 'true' ? true : value === 'false' ? false : null;
-  });
-
-  try {
-    setStatus(statusEl, 'Saving configurations...', false);
-
-    await apiCall(`/api/projects/${activeProject.id}/streamer-deployments`, {
-      method: 'PUT',
-      body: JSON.stringify(deployments),
-      action: 'save streamer deployment configurations'
-    });
-
-    setStatus(statusEl, '✓ Configurations saved successfully');
-    showSuccessToast('Saved', 'Streamer deployment configurations updated');
-
-    // Refresh grid to show updated badges
-    await renderStreamerDeploymentGrid();
-
-    // Refresh stats to update "Days to First Scraping"
-    await refreshStatsFiltered();
-  } catch (err) {
-    console.error(err);
-    setStatus(statusEl, 'Failed to save configurations', true);
-    showErrorToast('Save Failed', 'Could not save streamer configurations');
-  }
-}
-
-/**
- * Clear deployment config for a specific streamer
- */
-async function clearStreamerDeployment(projectId, streamerNum) {
-  if (!isSuperUser()) {
-    showAccessDeniedToast('clear streamer configuration');
-    return;
-  }
-
-  const confirmed = confirm(`Clear configuration for Streamer ${streamerNum}?`);
-  if (!confirmed) return;
-
-  try {
-    await apiCall(`/api/projects/${projectId}/streamer-deployments/${streamerNum}`, {
-      method: 'DELETE',
-      action: 'clear streamer deployment configuration'
-    });
-
-    showSuccessToast('Cleared', `Streamer ${streamerNum} configuration cleared`);
-    await renderStreamerDeploymentGrid();
-  } catch (err) {
-    console.error(err);
-    showErrorToast('Clear Failed', 'Could not clear configuration');
-  }
-}
-
-/**
- * Set deployment date for all streamers
- */
-async function setAllDeploymentDates() {
-  if (!isSuperUser()) {
-    showAccessDeniedToast('set deployment dates');
-    return;
-  }
-
-  const date = prompt('Enter deployment date for ALL streamers (YYYY-MM-DD):');
-  if (!date) return;
-
-  // Validate date format
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    showErrorToast('Invalid Date', 'Please use format: YYYY-MM-DD');
-    return;
-  }
-
-  document.querySelectorAll('.streamer-deploy-date').forEach(input => {
-    input.value = date;
-  });
-
-  showSuccessToast('Applied', 'Date set for all streamers. Click Save to apply.');
-}
-
-/**
- * Set coating status for all streamers
- */
-async function setAllCoatingStatus() {
-  if (!isSuperUser()) {
-    showAccessDeniedToast('set coating status');
-    return;
-  }
-
-  const coating = confirm('Set coating status for ALL streamers:\n\nOK = Coated\nCancel = Uncoated');
-  const value = coating ? 'true' : 'false';
-
-  document.querySelectorAll('.coating-toggle').forEach(toggle => {
-    toggle.querySelectorAll('.coating-option').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.value === value);
-    });
-  });
-
-  showSuccessToast('Applied', `All streamers set to ${coating ? 'Coated' : 'Uncoated'}. Click Save to apply.`);
-}
-
-/**
- * Clear all streamer deployment configurations
- */
-async function clearAllStreamerDeployments() {
-  if (!isSuperUser()) {
-    showAccessDeniedToast('clear streamer configurations');
-    return;
-  }
-
-  const confirmed = confirm('Clear ALL streamer configurations?\n\nThis will reset all deployment dates and coating status.');
-  if (!confirmed) return;
-
-  document.querySelectorAll('.streamer-deploy-date').forEach(input => {
-    input.value = '';
-  });
-
-  document.querySelectorAll('.coating-toggle').forEach(toggle => {
-    toggle.querySelectorAll('.coating-option').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.value === '');
-    });
-  });
-
-  showSuccessToast('Cleared', 'All configurations cleared. Click Save to apply.');
-}
-
-/* ------------ Backup Management API ------------ */
-
-async function loadBackups() {
-  const container = safeGet('backup-list');
-  if (!container) return;
-  
-  if (!isSuperUser()) {
-    container.innerHTML = '';
-    return;
-  }
-  
-  try {
-    const data = await apiCall('api/backups');
-    const backups = data.backups || [];
-    
-    if (backups.length === 0) {
-      container.innerHTML = '<div class="backup-empty">No backups available yet. Backups are created automatically every 12 hours.</div>';
-      return;
-    }
-    
-    container.innerHTML = backups.map(backup => {
-      const date = new Date(backup.createdAt);
-      const formattedDate = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
-      const sizeKB = (backup.size / 1024).toFixed(1);
-      
-      return `
-        <div class="backup-item">
-          <div class="backup-item-info">
-            <span class="backup-filename">${backup.filename}</span>
-            <div class="backup-meta">
-              <span>📅 ${formattedDate}</span>
-              <span>📦 ${sizeKB} KB</span>
-            </div>
-          </div>
-          <div class="backup-item-actions">
-            <button class="btn btn-sm btn-restore" data-filename="${backup.filename}" title="Restore this backup">
-              🔄 Restore
-            </button>
-          </div>
-        </div>
-      `;
-    }).join('');
-    
-    // Attach restore listeners
-    container.querySelectorAll('.btn-restore').forEach(btn => {
-      btn.addEventListener('click', () => restoreBackup(btn.dataset.filename));
-    });
-    
-  } catch (err) {
-    console.error('Failed to load backups:', err);
-    container.innerHTML = '<div class="backup-empty">Error loading backups</div>';
-  }
-}
-
-async function createBackup() {
-  const statusEl = safeGet('backup-status');
-  
-  if (!isSuperUser()) {
-    showAccessDeniedToast('create backups');
-    return;
-  }
-  
-  try {
-    setStatus(statusEl, 'Creating backup...', false);
-    
-    await apiCall('api/backups', {
-      method: 'POST',
-      action: 'create backups'
-    });
-    
-    setStatus(statusEl, '✅ Backup created successfully');
-    showSuccessToast('Backup Created', 'Database backup has been created successfully.');
-    await loadBackups();
-  } catch (err) {
-    console.error(err);
-    setStatus(statusEl, 'Failed to create backup', true);
-    showErrorToast('Backup Failed', 'Failed to create backup. Please try again.');
-  }
-}
-
-async function restoreBackup(filename) {
-  if (!isSuperUser()) {
-    showAccessDeniedToast('restore backups');
-    return;
-  }
-  
-  const confirmed = confirm(
-    `⚠️ WARNING: Restoring from backup will replace ALL current data!\n\n` +
-    `This will:\n` +
-    `• Create a backup of the current database first\n` +
-    `• Replace the database with the selected backup\n` +
-    `• Require a server restart to take effect\n\n` +
-    `Are you sure you want to restore from:\n${filename}?`
-  );
-  
-  if (!confirmed) return;
-  
-  const statusEl = safeGet('backup-status');
-  
-  try {
-    setStatus(statusEl, 'Restoring backup...', false);
-    
-    await apiCall(`api/backups/${encodeURIComponent(filename)}/restore`, {
-      method: 'POST',
-      action: 'restore backups'
-    });
-    
-    setStatus(statusEl, '✅ Backup restored');
-    showSuccessToast(
-      'Restore Successful', 
-      'Database has been restored. Please restart the server for changes to take full effect.'
-    );
-    
-    // Reload backups and refresh data
-    await loadBackups();
-    await refreshEverything();
-    await renderHeatmap();
-    await refreshStatsFiltered();
-    
-  } catch (err) {
-    console.error(err);
-    setStatus(statusEl, 'Failed to restore backup', true);
-    showErrorToast('Restore Failed', err.message || 'Failed to restore backup. Please try again.');
-  }
-}
-
-/* ------------ Events API ------------ */
 
 async function loadEvents() {
   let url = 'api/events';
   if (selectedProjectFilter) {
     url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
   }
-  events = await apiCall(url);
+  setEvents(await API.apiCall(url));
 }
 
 async function addEvent() {
@@ -1703,7 +292,7 @@ async function addEvent() {
       vesselTag: config.vesselTag || 'TTN'
     };
 
-    await apiCall('api/events', {
+    await API.apiCall('api/events', {
       method: 'POST',
       body: JSON.stringify(body),
       action: 'add events'
@@ -1729,7 +318,7 @@ async function deleteEvent(id) {
   safeGet('delete-event-id').value = evt.id;
   safeGet('delete-streamer-display').textContent = streamerNum;
   safeGet('delete-range-display').textContent = `${formatAS(evt.sectionIndexStart)} – ${formatAS(evt.sectionIndexEnd)}`;
-  safeGet('delete-eb-display').textContent = await getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd);
+  safeGet('delete-eb-display').textContent = await API.getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd);
   safeGet('delete-method-display').textContent = evt.cleaningMethod;
   safeGet('delete-date-display').textContent = formatDateTime(evt.cleanedAt);
   safeGet('delete-distance-display').textContent = `${eventDistance(evt)} m`;
@@ -1750,7 +339,7 @@ async function confirmDeleteEvent() {
   const id = parseInt(safeGet('delete-event-id').value);
   
   try {
-    await apiCall(`api/events/${id}`, {
+    await API.apiCall(`api/events/${id}`, {
       method: 'DELETE',
       action: 'delete events'
     });
@@ -1840,7 +429,7 @@ async function updateEvent(id, body) {
   }
   
   try {
-    await apiCall(`api/events/${id}`, {
+    await API.apiCall(`api/events/${id}`, {
       method: 'PUT',
       body: JSON.stringify(body),
       action: 'edit events'
@@ -1920,7 +509,7 @@ async function confirmClearAllEvents() {
       url += `?project=${encodeURIComponent(activeProject.projectNumber)}`;
     }
     
-    await apiCall(url, {
+    await API.apiCall(url, {
       method: 'DELETE',
       action: 'clear all events'
     });
@@ -2074,7 +663,7 @@ async function handleCsvFile(file) {
       };
 
       try {
-        await apiCall('api/events', {
+        await API.apiCall('api/events', {
           method: 'POST',
           body: JSON.stringify(body),
           action: 'import CSV data'
@@ -2111,7 +700,7 @@ async function renderLog() {
 
   // Fetch all EB ranges in parallel for performance
   const ebRangePromises = events.map(evt => 
-    getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd)
+    API.getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd)
   );
   const ebRanges = await Promise.all(ebRangePromises);
 
@@ -2158,7 +747,7 @@ async function renderLog() {
 /* ------------ Method selection ------------ */
 
 function selectMethod(method) {
-  selectedMethod = method;
+  setSelectedMethod(method);
   document.querySelectorAll('.method-tile').forEach(tile => {
     tile.classList.toggle('active', tile.dataset.method === method);
   });
@@ -2177,7 +766,7 @@ async function renderAlerts() {
     if (selectedProjectFilter) {
       url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
     }
-    const data = await apiCall(url);
+    const data = await API.apiCall(url);
     const lastCleaned = data.lastCleaned;
 
     let critical = 0;
@@ -2254,7 +843,7 @@ async function renderStreamerCards(startDate = null, endDate = null) {
     if (selectedProjectFilter) {
       url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
     }
-    const data = await apiCall(url);
+    const data = await API.apiCall(url);
     const lastCleaned = data.lastCleaned;
 
     const cableCount = config.numCables;
@@ -2344,14 +933,14 @@ async function renderHeatmap() {
     if (selectedProjectFilter) {
       url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
     }
-    const data = await apiCall(url);
+    const data = await API.apiCall(url);
     const lastCleaned = data.lastCleaned;
 
     let deployments = {};
     const activeProject = projects.find(p => p.isActive);
     if (activeProject) {
       try {
-        deployments = await apiCall(`/api/projects/${activeProject.id}/streamer-deployments`);
+        deployments = await API.apiCall(`/api/projects/${activeProject.id}/streamer-deployments`);
       } catch (_) {}
     }
 
@@ -2659,13 +1248,13 @@ function clearDragState() {
     });
   }
 
-  dragState = {
+  setDragState({
     active: false,
     streamerId: null,
     start: null,
     end: null,
     cells: null,
-  };
+  });
 }
 
 /* ------------ Modal Confirmation ------------ */
@@ -2730,7 +1319,7 @@ function updateModalSummary() {
 function closeConfirmationModal() {
   safeGet('confirmation-modal').classList.remove('show');
   clearDragState();
-  isFinalizing = false;
+  setIsFinalizing(false);
 }
 
 async function confirmCleaning() {
@@ -2741,7 +1330,7 @@ async function confirmCleaning() {
     return;
   }
   
-  isFinalizing = true;
+  setIsFinalizing(true);
   
   const streamerNum = parseInt(safeGet('modal-streamer').value, 10);
   const startSection = parseInt(safeGet('modal-start').value, 10);
@@ -2756,7 +1345,7 @@ async function confirmCleaning() {
   const validation = validateStreamerAndSections(streamerNum, startSection, endSection, projectNumber);
   if (!validation.valid) {
     showErrorToast('Out of Range', validation.message);
-    isFinalizing = false;
+    setIsFinalizing(false);
     return;
   }
   
@@ -2778,7 +1367,7 @@ async function confirmCleaning() {
       vesselTag: config.vesselTag || 'TTN'
     };
     
-    await apiCall('/api/events', {
+    await API.apiCall('/api/events', {
       method: 'POST',
       body: JSON.stringify(body),
       action: 'add cleaning events'
@@ -2793,7 +1382,7 @@ async function confirmCleaning() {
     console.error(err);
     showErrorToast('Save Failed', 'Failed to save cleaning event. Please try again.');
   } finally {
-    isFinalizing = false;
+    setIsFinalizing(false);
   }
 }
 
@@ -2809,7 +1398,7 @@ async function refreshStatsFiltered() {
     if (selectedProjectFilter) statsParams.append('project', selectedProjectFilter);
     
     // Get overall stats from backend
-    const overallStats = await apiCall(`/api/stats?${statsParams}`);
+    const overallStats = await API.apiCall(`/api/stats?${statsParams}`);
     
     // Prepare filtered query params
     let params = new URLSearchParams();
@@ -2818,7 +1407,7 @@ async function refreshStatsFiltered() {
     if (selectedProjectFilter) params.append('project', selectedProjectFilter);
     
     // Get filtered stats (or overall if no filters)
-    const data = await apiCall(`/api/stats/filter?${params}`);
+    const data = await API.apiCall(`/api/stats/filter?${params}`);
     
     // Use totals from overall stats API
     const totalActiveSections = overallStats.totalAvailableSections;
@@ -2912,7 +1501,7 @@ async function refreshStatsFiltered() {
             });
           }
 
-          const streamerDeployments = await apiCall(`/api/projects/${activeProject.id}/streamer-deployments`);
+          const streamerDeployments = await API.apiCall(`/api/projects/${activeProject.id}/streamer-deployments`);
 
           // Collect days for each streamer
           const streamerDays = [];
@@ -3072,7 +1661,7 @@ async function sortTable(column) {
     return 0;
   });
 
-  events = sortedEvents;
+  setEvents(sortedEvents);
   await renderLog();
   updateSortIcons();
 }
@@ -3113,8 +1702,8 @@ function setupSidebarNavigation() {
 
 function setupEventListeners() {
   // Config
-  safeGet('btn-save-config')?.addEventListener('click', saveConfig);
-  safeGet('btn-cleanup-streamers')?.addEventListener('click', cleanupOrphanedStreamers);
+  safeGet('btn-save-config')?.addEventListener('click', Projects.saveConfig);
+  safeGet('btn-cleanup-streamers')?.addEventListener('click', Projects.cleanupOrphanedStreamers);
 
   // Method tiles
   document.querySelectorAll('.method-tile').forEach(tile => {
@@ -3152,24 +1741,24 @@ function setupEventListeners() {
   safeGet('btn-reset-filter')?.addEventListener('click', resetFilter);
 
   // Project management
-  safeGet('btn-create-project')?.addEventListener('click', createProject);
-  safeGet('btn-activate-project')?.addEventListener('click', activateSelectedProject);
-  safeGet('btn-clear-project')?.addEventListener('click', clearActiveProject);
-  
+  safeGet('btn-create-project')?.addEventListener('click', Projects.createProject);
+  safeGet('btn-activate-project')?.addEventListener('click', Projects.activateSelectedProject);
+  safeGet('btn-clear-project')?.addEventListener('click', Projects.clearActiveProject);
+
   // Project selector change event (for filtering)
   safeGet('project-selector')?.addEventListener('change', (e) => {
-    setProjectFilter(e.target.value);
+    Projects.setProjectFilter(e.target.value);
   });
-  
+
   // Backup management
-  safeGet('btn-create-backup')?.addEventListener('click', createBackup);
-  safeGet('btn-refresh-backups')?.addEventListener('click', loadBackups);
+  safeGet('btn-create-backup')?.addEventListener('click', Projects.createBackup);
+  safeGet('btn-refresh-backups')?.addEventListener('click', Projects.loadBackups);
 
   // Streamer deployment configuration
-  safeGet('btn-save-streamer-deployments')?.addEventListener('click', saveStreamerDeployments);
-  safeGet('btn-set-all-date')?.addEventListener('click', setAllDeploymentDates);
-  safeGet('btn-set-all-coating')?.addEventListener('click', setAllCoatingStatus);
-  safeGet('btn-clear-all-streamers')?.addEventListener('click', clearAllStreamerDeployments);
+  safeGet('btn-save-streamer-deployments')?.addEventListener('click', Projects.saveStreamerDeployments);
+  safeGet('btn-set-all-date')?.addEventListener('click', Projects.setAllDeploymentDates);
+  safeGet('btn-set-all-coating')?.addEventListener('click', Projects.setAllCoatingStatus);
+  safeGet('btn-clear-all-streamers')?.addEventListener('click', Projects.clearAllStreamerDeployments);
 
   // Modal - Confirmation
   safeGet('btn-modal-close')?.addEventListener('click', closeConfirmationModal);
@@ -3183,30 +1772,16 @@ function setupEventListeners() {
   safeGet('btn-delete-confirm')?.addEventListener('click', confirmDeleteEvent);
   document.querySelector('#delete-modal .modal-overlay')?.addEventListener('click', closeDeleteModal);
 
-  // Modal - Force Delete Project (single handler uses forceDeletePendingProjectId)
-  safeGet('btn-force-delete-project-close')?.addEventListener('click', closeForceDeleteProjectModal);
-  safeGet('btn-force-delete-project-cancel')?.addEventListener('click', closeForceDeleteProjectModal);
-  document.querySelector('#force-delete-project-modal .modal-overlay')?.addEventListener('click', closeForceDeleteProjectModal);
+  // Modal - Force Delete Project
+  safeGet('btn-force-delete-project-close')?.addEventListener('click', Projects.closeForceDeleteProjectModal);
+  safeGet('btn-force-delete-project-cancel')?.addEventListener('click', Projects.closeForceDeleteProjectModal);
+  document.querySelector('#force-delete-project-modal .modal-overlay')?.addEventListener('click', Projects.closeForceDeleteProjectModal);
   safeGet('force-delete-project-input')?.addEventListener('input', () => {
     const btn = safeGet('btn-force-delete-project-confirm');
     const inp = safeGet('force-delete-project-input');
     if (btn && inp) btn.disabled = inp.value.trim() !== 'DELETE';
   });
-  safeGet('btn-force-delete-project-confirm')?.addEventListener('click', async () => {
-    const id = forceDeletePendingProjectId;
-    const inp = safeGet('force-delete-project-input');
-    if (!id || !inp || inp.value.trim() !== 'DELETE') return;
-    try {
-      await apiCall(`api/projects/${id}/force`, { method: 'DELETE', action: 'force delete project' });
-      closeForceDeleteProjectModal();
-      forceDeletePendingProjectId = null;
-      showSuccessToast('Project Deleted', 'Project and all associated data have been removed.');
-      await loadProjects();
-    } catch (err) {
-      console.error(err);
-      showErrorToast('Delete Failed', err.message || 'Failed to delete project.');
-    }
-  });
+  safeGet('btn-force-delete-project-confirm')?.addEventListener('click', () => Projects.confirmForceDeleteProject());
 
   // Modal - Edit
   safeGet('btn-edit-close')?.addEventListener('click', closeEditModal);
@@ -3249,16 +1824,21 @@ function setupProjectCollapse() {
 /* ------------ Init ------------ */
 
 async function initApp() {
-  await loadConfig();
+  Projects.initProjects({
+    refreshEverything,
+    renderHeatmap,
+    refreshStatsFiltered,
+  });
+  await Projects.loadConfig();
   if (config.activeProjectNumber) {
-    selectedProjectFilter = String(config.activeProjectNumber);
+    setSelectedProjectFilter(String(config.activeProjectNumber));
   }
-  await loadProjects();
-  updateActiveProjectBanner();
-  await loadBackups();
+  await Projects.loadProjects();
+  Projects.updateActiveProjectBanner();
+  await Projects.loadBackups();
   await refreshEverything();
   await renderHeatmap();
-  await renderStreamerDeploymentGrid();
+  await Projects.renderStreamerDeploymentGrid();
   await refreshStatsFiltered();
 
   // Set default date/time for manual entry
@@ -3270,43 +1850,35 @@ async function initApp() {
   if (evtDate) evtDate.value = dateStr;
   if (evtTime) evtTime.value = timeStr;
 
+  initModals();
   setupEventListeners();
   setupSidebarNavigation();
   setupProjectCollapse();
-  
+
   // Update UI based on role after everything is loaded
   updateUIForRole();
   
-  if (typeof initPDFGeneration === 'function') {
-    initPDFGeneration();
-  }
+  initPDFGeneration();
 }
 
 /* ------------ Initialization ------------ */
 
 async function init() {
-  // Setup login form handler
-  const loginForm = safeGet('login-form');
+  setOnShowAppCallback(async () => {
+    await initApp();
+  });
 
-  if (loginForm) {
-    loginForm.addEventListener('submit', handleLogin);
-  }
+  const loginForm = safeGet("login-form");
+  if (loginForm) loginForm.addEventListener("submit", handleLogin);
 
-  const loginBtn = safeGet('login-submit');
-  if (loginBtn) {
-    loginBtn.addEventListener('click', handleLogin);
-  }
-  
-  // Setup logout button
-  const logoutBtn = safeGet('logout-btn');
-  if (logoutBtn) {
-    logoutBtn.addEventListener('click', handleLogout);
-  }
-  
-  // Setup password toggle
+  const loginBtn = safeGet("login-submit");
+  if (loginBtn) loginBtn.addEventListener("click", handleLogin);
+
+  const logoutBtn = safeGet("logout-btn");
+  if (logoutBtn) logoutBtn.addEventListener("click", handleLogout);
+
   setupPasswordToggle();
-  
-  // Check if user has a valid session
+
   if (loadSession()) {
     const isValid = await validateSession();
     if (isValid) {
@@ -3314,8 +1886,7 @@ async function init() {
       return;
     }
   }
-  
-  // No valid session, show login
+
   showLogin();
 }
 

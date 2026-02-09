@@ -1,7 +1,12 @@
 /**
  * PDF Report Generator
- * pdf-generator.js
+ * pdf-generator.js (ES module)
  */
+
+import { safeGet } from "./js/ui.js";
+import { config } from "./js/state.js";
+import { formatAS, eventDistance } from "./js/streamer-utils.js";
+import { getAuthHeaders } from "./js/api.js";
 
 // Color map for heatmap
 const AGE_COLOR_MAP = {
@@ -24,15 +29,15 @@ async function generatePDFReport() {
     if (config.activeProjectNumber) {
       statsUrl += `?project=${encodeURIComponent(config.activeProjectNumber)}`;
     }
-    const statsRes = await fetch(statsUrl);
+    const statsRes = await fetch(statsUrl, { headers: getAuthHeaders() });
     const stats = await statsRes.json();
 
     // Fetch last-cleaned data
-    let lastCleanedUrl = 'api/last-cleaned';
+    let lastCleanedUrl = "api/last-cleaned";
     if (config.activeProjectNumber) {
       lastCleanedUrl += `?project=${encodeURIComponent(config.activeProjectNumber)}`;
     }
-    const lastCleanedRes = await fetch(lastCleanedUrl);
+    const lastCleanedRes = await fetch(lastCleanedUrl, { headers: getAuthHeaders() });
     const lastCleanedData = await lastCleanedRes.json();
     const lastCleaned = lastCleanedData.lastCleaned;
 
@@ -49,11 +54,11 @@ async function generatePDFReport() {
       if (endDate) params.append('end', endDate);
       if (config.activeProjectNumber) params.append('project', config.activeProjectNumber);
 
-      const filterRes = await fetch(`api/stats/filter?${params}`);
+      const filterRes = await fetch(`api/stats/filter?${params}`, { headers: getAuthHeaders() });
       filteredStats = await filterRes.json();
 
       // Fetch filtered last-cleaned data for filtered heatmap
-      const filteredCleanedRes = await fetch(`api/last-cleaned-filtered?${params}`);
+      const filteredCleanedRes = await fetch(`api/last-cleaned-filtered?${params}`, { headers: getAuthHeaders() });
       const filteredCleanedData = await filteredCleanedRes.json();
       filteredLastCleaned = filteredCleanedData.lastCleaned;
     }
@@ -352,7 +357,7 @@ async function addAllEventsSection(doc) {
   if (config.activeProjectNumber) {
     eventsUrl += `?project=${encodeURIComponent(config.activeProjectNumber)}`;
   }
-  const eventsRes = await fetch(eventsUrl);
+  const eventsRes = await fetch(eventsUrl, { headers: getAuthHeaders() });
   const eventsToShow = await eventsRes.json();
 
   doc.setFontSize(14);
@@ -420,9 +425,11 @@ async function addAllEventsSection(doc) {
 /**
  * Initialize PDF button
  */
-function initPDFGeneration() {
-  const pdfBtn = safeGet('generatePdfBtn');
+export function initPDFGeneration() {
+  const pdfBtn = safeGet("generatePdfBtn");
   if (pdfBtn) {
-    pdfBtn.addEventListener('click', generatePDFReport);
+    pdfBtn.addEventListener("click", generatePDFReport);
   }
 }
+
+export { generatePDFReport };
