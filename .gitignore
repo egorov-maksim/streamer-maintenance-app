@@ -17,17 +17,6 @@ backend/DS_Store
 public/DS_Store
 legacy-removal.md
 
-backend/test.db
-backend/test.db-shm
-backend/test.db-wal
-backend/test.db-journal
-backend/test.db-wal-journal
-backend/test.db-wal-journal-shm
-backend/test.db-wal-journal-wal
-backend/test.db-wal-journal-wal-shm
-backend/test.db-wal-journal-wal-wal
-backend/test.db-wal-journal-wal-wal-shm
-backend/test.db-wal-journal-wal-wal-wal
 
 e2e/
 playwright-report/
@@ -43,3 +32,5 @@ testing-results.md
 TESTS.md    
 TESTS_QUICKREF.md
 verify-schema.sh
+TESTING_GUIDE.md
+
