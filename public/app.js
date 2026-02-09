@@ -331,6 +331,7 @@ function validateStreamerAndSections(streamerNum, startSection, endSection, proj
   return { valid: true, maxStreamer, maxSection };
 }
 
+/* ------------ Heatmap ------------ */
 /* ============================================================================
    SECTION HOVER TOOLTIP - Shows statistics for each section
    ============================================================================ */
@@ -1129,6 +1130,8 @@ async function deleteProject(projectId) {
     showErrorToast('Delete Failed', 'Failed to delete project.');
   }
 }
+
+/* ------------ Modals ------------ */
 
 let forceDeletePendingProjectId = null;
 
@@ -3276,8 +3279,10 @@ async function initApp() {
   
   if (typeof initPDFGeneration === 'function') {
     initPDFGeneration();
-  }  
+  }
 }
+
+/* ------------ Initialization ------------ */
 
 async function init() {
   // Setup login form handler

@@ -3,6 +3,7 @@
 const path = require("path");
 const sqlite3 = require("sqlite3").verbose();
 const fs = require("fs");
+const humps = require("humps");
 
 const DB_FILE = process.env.DB_FILE
   ? path.resolve(process.cwd(), process.env.DB_FILE)
@@ -133,10 +134,89 @@ function stopBackupScheduler() {
   }
 }
 
+/**
+ * Run a SQL statement (INSERT/UPDATE/DELETE).
+ * @param {string} sql - SQL statement
+ * @param {Array} [params=[]] - Query parameters
+ * @returns {Promise<{ lastID: number, changes: number }>}
+ */
+function runAsync(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function (err) {
+      if (err) reject(err);
+      else resolve({ lastID: this.lastID, changes: this.changes });
+    });
+  });
+}
+
+/**
+ * Run a SELECT and return all rows (raw, snake_case).
+ * @param {string} sql - SQL query
+ * @param {Array} [params=[]] - Query parameters
+ * @returns {Promise<Array<Object>>}
+ */
+function allAsync(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.all(sql, params, (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows);
+    });
+  });
+}
+
+/**
+ * Run a SELECT and return first row (raw, snake_case).
+ * @param {string} sql - SQL query
+ * @param {Array} [params=[]] - Query parameters
+ * @returns {Promise<Object|undefined>}
+ */
+function getAsync(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.get(sql, params, (err, row) => {
+      if (err) reject(err);
+      else resolve(row);
+    });
+  });
+}
+
+/**
+ * Run a SELECT and return all rows with keys camelized.
+ * @param {string} sql - SQL query
+ * @param {Array} [params=[]] - Query parameters
+ * @returns {Promise<Array<Object>>}
+ */
+async function getAllCamelized(sql, params = []) {
+  const rows = await allAsync(sql, params);
+  return rows.map(row => humps.camelizeKeys(row));
+}
+
+/**
+ * Run a SELECT and return first row with keys camelized, or null.
+ * @param {string} sql - SQL query
+ * @param {Array} [params=[]] - Query parameters
+ * @returns {Promise<Object|null>}
+ */
+async function getOneCamelized(sql, params = []) {
+  const row = await getAsync(sql, params);
+  return row ? humps.camelizeKeys(row) : null;
+}
+
 process.on("SIGINT", () => {
   stopBackupScheduler();
   db.close();
   process.exit(0);
 });
 
-module.exports = { db, initDb, createBackup, stopBackupScheduler };
+module.exports = {
+  db,
+  initDb,
+  createBackup,
+  stopBackupScheduler,
+  runAsync,
+  allAsync,
+  getAsync,
+  getAllCamelized,
+  getOneCamelized,
+  DB_FILE,
+  BACKUP_DIR,
+};
