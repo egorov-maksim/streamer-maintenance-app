@@ -524,12 +524,130 @@ export async function saveStreamerDeployments() {
   }
 }
 
-export async function clearStreamerDeployment(projectId, streamerNum) {
+// Pending state for clear-one streamer modal
+let clearOneDeploymentPending = null;
+
+export function clearStreamerDeployment(projectId, streamerNum) {
   if (!isSuperUser()) {
     showAccessDeniedToast("clear streamer configuration");
     return;
   }
-  if (!confirm(`Clear configuration for Streamer ${streamerNum}?`)) return;
+  showClearOneDeploymentModal(projectId, streamerNum);
+}
+
+// --- Set All Date modal ---
+export function showSetAllDateModal() {
+  if (!isSuperUser()) {
+    showAccessDeniedToast("set deployment dates");
+    return;
+  }
+  const modal = safeGet("set-all-date-modal");
+  const input = safeGet("set-all-date-input");
+  if (!modal || !input) return;
+  const today = new Date().toISOString().split("T")[0];
+  input.value = today;
+  modal.classList.add("show");
+  input.focus();
+}
+
+export function closeSetAllDateModal() {
+  const modal = safeGet("set-all-date-modal");
+  if (modal) modal.classList.remove("show");
+}
+
+export function applySetAllDateModal() {
+  const input = safeGet("set-all-date-input");
+  if (!input) return;
+  const date = (input.value || "").trim();
+  if (!date) {
+    showErrorToast("Invalid Date", "Please enter a date.");
+    return;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    showErrorToast("Invalid Date", "Please use format: YYYY-MM-DD");
+    return;
+  }
+  document.querySelectorAll(".streamer-deploy-date").forEach((el) => (el.value = date));
+  closeSetAllDateModal();
+  showSuccessToast("Applied", "Date set for all streamers. Click Save to apply.");
+}
+
+// --- Set All Coating modal ---
+export function showSetAllCoatingModal() {
+  if (!isSuperUser()) {
+    showAccessDeniedToast("set coating status");
+    return;
+  }
+  const modal = safeGet("set-all-coating-modal");
+  if (!modal) return;
+  document.querySelectorAll("#set-all-coating-modal .coating-modal-option").forEach((btn) => btn.classList.remove("active"));
+  const unknownBtn = safeGet("set-all-coating-unknown");
+  if (unknownBtn) unknownBtn.classList.add("active");
+  modal.classList.add("show");
+}
+
+export function closeSetAllCoatingModal() {
+  const modal = safeGet("set-all-coating-modal");
+  if (modal) modal.classList.remove("show");
+}
+
+export function applySetAllCoatingModal() {
+  const active = document.querySelector("#set-all-coating-modal .coating-modal-option.active");
+  const value = active ? active.dataset.value : "";
+  const label = value === "true" ? "Coated" : value === "false" ? "Uncoated" : "Unknown";
+  document.querySelectorAll(".coating-toggle").forEach((toggle) => {
+    toggle.querySelectorAll(".coating-option").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.value === value);
+    });
+  });
+  closeSetAllCoatingModal();
+  showSuccessToast("Applied", `All streamers set to ${label}. Click Save to apply.`);
+}
+
+// --- Clear All deployments modal ---
+export function showClearAllDeploymentsModal() {
+  if (!isSuperUser()) {
+    showAccessDeniedToast("clear streamer configurations");
+    return;
+  }
+  const modal = safeGet("clear-all-deployments-modal");
+  if (modal) modal.classList.add("show");
+}
+
+export function closeClearAllDeploymentsModal() {
+  const modal = safeGet("clear-all-deployments-modal");
+  if (modal) modal.classList.remove("show");
+}
+
+export function confirmClearAllDeployments() {
+  document.querySelectorAll(".streamer-deploy-date").forEach((input) => (input.value = ""));
+  document.querySelectorAll(".coating-toggle").forEach((toggle) => {
+    toggle.querySelectorAll(".coating-option").forEach((btn) => btn.classList.toggle("active", btn.dataset.value === ""));
+  });
+  closeClearAllDeploymentsModal();
+  showSuccessToast("Cleared", "All configurations cleared. Click Save to apply.");
+}
+
+// --- Clear one streamer modal ---
+export function showClearOneDeploymentModal(projectId, streamerNum) {
+  clearOneDeploymentPending = { projectId, streamerNum };
+  const messageEl = safeGet("clear-one-deployment-message");
+  if (messageEl) messageEl.textContent = `Clear configuration for Streamer ${streamerNum}?`;
+  const modal = safeGet("clear-one-deployment-modal");
+  if (modal) modal.classList.add("show");
+}
+
+export function closeClearOneDeploymentModal() {
+  clearOneDeploymentPending = null;
+  const modal = safeGet("clear-one-deployment-modal");
+  if (modal) modal.classList.remove("show");
+}
+
+export async function confirmClearOneDeployment() {
+  if (!clearOneDeploymentPending) return;
+  const { projectId, streamerNum } = clearOneDeploymentPending;
+  closeClearOneDeploymentModal();
+  clearOneDeploymentPending = null;
   try {
     await API.deleteStreamerDeployment(projectId, streamerNum);
     showSuccessToast("Cleared", `Streamer ${streamerNum} configuration cleared`);
@@ -541,46 +659,15 @@ export async function clearStreamerDeployment(projectId, streamerNum) {
 }
 
 export function setAllDeploymentDates() {
-  if (!isSuperUser()) {
-    showAccessDeniedToast("set deployment dates");
-    return;
-  }
-  const date = prompt("Enter deployment date for ALL streamers (YYYY-MM-DD):");
-  if (!date) return;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    showErrorToast("Invalid Date", "Please use format: YYYY-MM-DD");
-    return;
-  }
-  document.querySelectorAll(".streamer-deploy-date").forEach((input) => (input.value = date));
-  showSuccessToast("Applied", "Date set for all streamers. Click Save to apply.");
+  showSetAllDateModal();
 }
 
 export function setAllCoatingStatus() {
-  if (!isSuperUser()) {
-    showAccessDeniedToast("set coating status");
-    return;
-  }
-  const coating = confirm("Set coating status for ALL streamers:\n\nOK = Coated\nCancel = Uncoated");
-  const value = coating ? "true" : "false";
-  document.querySelectorAll(".coating-toggle").forEach((toggle) => {
-    toggle.querySelectorAll(".coating-option").forEach((btn) => {
-      btn.classList.toggle("active", btn.dataset.value === value);
-    });
-  });
-  showSuccessToast("Applied", `All streamers set to ${coating ? "Coated" : "Uncoated"}. Click Save to apply.`);
+  showSetAllCoatingModal();
 }
 
 export function clearAllStreamerDeployments() {
-  if (!isSuperUser()) {
-    showAccessDeniedToast("clear streamer configurations");
-    return;
-  }
-  if (!confirm("Clear ALL streamer configurations?\n\nThis will reset all deployment dates and coating status.")) return;
-  document.querySelectorAll(".streamer-deploy-date").forEach((input) => (input.value = ""));
-  document.querySelectorAll(".coating-toggle").forEach((toggle) => {
-    toggle.querySelectorAll(".coating-option").forEach((btn) => btn.classList.toggle("active", btn.dataset.value === ""));
-  });
-  showSuccessToast("Cleared", "All configurations cleared. Click Save to apply.");
+  showClearAllDeploymentsModal();
 }
 
 // --- Backups ---

@@ -1760,6 +1760,36 @@ function setupEventListeners() {
   safeGet('btn-set-all-coating')?.addEventListener('click', Projects.setAllCoatingStatus);
   safeGet('btn-clear-all-streamers')?.addEventListener('click', Projects.clearAllStreamerDeployments);
 
+  // Modal - Set All Deployment Date
+  safeGet('btn-set-all-date-close')?.addEventListener('click', Projects.closeSetAllDateModal);
+  safeGet('btn-set-all-date-cancel')?.addEventListener('click', Projects.closeSetAllDateModal);
+  safeGet('btn-set-all-date-apply')?.addEventListener('click', Projects.applySetAllDateModal);
+  document.querySelector('#set-all-date-modal .modal-overlay')?.addEventListener('click', Projects.closeSetAllDateModal);
+
+  // Modal - Set All Coating
+  safeGet('btn-set-all-coating-close')?.addEventListener('click', Projects.closeSetAllCoatingModal);
+  safeGet('btn-set-all-coating-cancel')?.addEventListener('click', Projects.closeSetAllCoatingModal);
+  safeGet('btn-set-all-coating-apply')?.addEventListener('click', Projects.applySetAllCoatingModal);
+  document.querySelector('#set-all-coating-modal .modal-overlay')?.addEventListener('click', Projects.closeSetAllCoatingModal);
+  document.querySelectorAll('#set-all-coating-modal .coating-modal-option').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#set-all-coating-modal .coating-modal-option').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  // Modal - Clear All Deployments
+  safeGet('btn-clear-all-deployments-close')?.addEventListener('click', Projects.closeClearAllDeploymentsModal);
+  safeGet('btn-clear-all-deployments-cancel')?.addEventListener('click', Projects.closeClearAllDeploymentsModal);
+  safeGet('btn-clear-all-deployments-confirm')?.addEventListener('click', Projects.confirmClearAllDeployments);
+  document.querySelector('#clear-all-deployments-modal .modal-overlay')?.addEventListener('click', Projects.closeClearAllDeploymentsModal);
+
+  // Modal - Clear One Streamer
+  safeGet('btn-clear-one-deployment-close')?.addEventListener('click', Projects.closeClearOneDeploymentModal);
+  safeGet('btn-clear-one-deployment-cancel')?.addEventListener('click', Projects.closeClearOneDeploymentModal);
+  safeGet('btn-clear-one-deployment-confirm')?.addEventListener('click', () => Projects.confirmClearOneDeployment());
+  document.querySelector('#clear-one-deployment-modal .modal-overlay')?.addEventListener('click', Projects.closeClearOneDeploymentModal);
+
   // Modal - Confirmation
   safeGet('btn-modal-close')?.addEventListener('click', closeConfirmationModal);
   safeGet('btn-modal-cancel')?.addEventListener('click', closeConfirmationModal);

@@ -1271,6 +1271,39 @@
   min-width: 140px;
 }
 
+/* Set All Coating modal – option buttons */
+.coating-modal-options {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.coating-modal-option {
+  flex: 1;
+  min-width: 100px;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.coating-modal-option:hover {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.coating-modal-option.active {
+  border-color: #3b82f6;
+  background: #3b82f6;
+  color: #ffffff;
+}
+
 
 /* Configuration Collapse Styles */
 .config-header {
@@ -2176,6 +2209,42 @@
 
 .streamer-deployment-section {
   margin-top: 24px;
+}
+
+.streamer-deployment-panel {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.streamer-deployment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.streamer-deployment-bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+
+.streamer-deployment-bulk-actions .bulk-actions-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-right: 4px;
 }
 
 .streamer-deployment-grid {

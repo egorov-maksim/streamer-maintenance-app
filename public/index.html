@@ -164,36 +164,41 @@
               
               <!-- Per-Streamer Deployment Configuration -->
               <div class="streamer-deployment-section section-divider" id="streamer-deployment-section" style="display: none;">
-                <h3 class="section-heading">
-                  🔧 Per-Streamer Deployment Configuration
-                  <span id="streamer-config-project-label" class="text-muted font-normal"></span>
-                </h3>
-                <p class="info-text-sm">
-                  Configure individual deployment dates and coating status for each streamer. 
-                  Streamers without specific configuration will show as "Not Configured".
-                </p>
+                <div class="streamer-deployment-panel">
+                  <h3 class="section-heading">
+                    🔧 Per-Streamer Deployment Configuration
+                    <span id="streamer-config-project-label" class="text-muted font-normal"></span>
+                  </h3>
+                  <p class="info-text-sm">
+                    Configure individual deployment dates and coating status for each streamer.
+                    Streamers without specific configuration will show as "Not Configured".
+                  </p>
 
-                <div class="actions mb-12 superuser-only">
-                  <button class="btn btn-outline btn-sm" id="btn-set-all-date">
-                    📅 Set All Deployment Dates
-                  </button>
-                  <button class="btn btn-outline btn-sm" id="btn-set-all-coating">
-                    🛡️ Set All Coating Status
-                  </button>
-                  <button class="btn btn-outline btn-sm" id="btn-clear-all-streamers">
-                    🗑️ Clear All Configurations
-                  </button>
-                  <button class="btn btn-primary" id="btn-save-streamer-deployments">
-                    💾 Save Streamer Configurations
-                  </button>
-                </div>
+                  <div class="streamer-deployment-actions superuser-only">
+                    <div class="streamer-deployment-bulk-actions">
+                      <span class="bulk-actions-label">Bulk actions</span>
+                      <button class="btn btn-outline btn-sm" id="btn-set-all-date">
+                        📅 Set All Deployment Dates
+                      </button>
+                      <button class="btn btn-outline btn-sm" id="btn-set-all-coating">
+                        🛡️ Set All Coating Status
+                      </button>
+                      <button class="btn btn-outline btn-sm" id="btn-clear-all-streamers">
+                        🗑️ Clear All Configurations
+                      </button>
+                    </div>
+                    <button class="btn btn-primary" id="btn-save-streamer-deployments">
+                      💾 Save Streamer Configurations
+                    </button>
+                  </div>
 
-                <div id="streamer-deployment-grid" class="streamer-deployment-grid">
-                  <!-- Dynamically generated -->
-                </div>
+                  <div id="streamer-deployment-grid" class="streamer-deployment-grid">
+                    <!-- Dynamically generated -->
+                  </div>
 
-                <div class="mt-12">
-                  <span id="streamer-deployment-status" class="status"></span>
+                  <div class="mt-12">
+                    <span id="streamer-deployment-status" class="status"></span>
+                  </div>
                 </div>
               </div>
               
@@ -616,6 +621,99 @@
         <button class="btn btn-danger" id="btn-clear-all-confirm" disabled>
           Delete All Events
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Set All Deployment Dates Modal -->
+  <div id="set-all-date-modal" class="modal">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>📅 Set All Deployment Dates</h3>
+        <button class="modal-close" id="btn-set-all-date-close">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="info-text-sm mb-12">Set the same deployment date for all streamers. Click Save Streamer Configurations after applying.</p>
+        <div class="form-group">
+          <label for="set-all-date-input">Deployment date</label>
+          <input type="date" id="set-all-date-input" class="input-full" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btn-set-all-date-cancel">Cancel</button>
+        <button class="btn btn-primary" id="btn-set-all-date-apply">Apply to All</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Set All Coating Status Modal -->
+  <div id="set-all-coating-modal" class="modal">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>🛡️ Set All Coating Status</h3>
+        <button class="modal-close" id="btn-set-all-coating-close">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="info-text-sm mb-12">Set the same coating status for all streamers. Click Save Streamer Configurations after applying.</p>
+        <div class="coating-modal-options" role="group" aria-label="Coating status">
+          <button type="button" class="coating-modal-option" id="set-all-coating-coated" data-value="true">Coated</button>
+          <button type="button" class="coating-modal-option" id="set-all-coating-uncoated" data-value="false">Uncoated</button>
+          <button type="button" class="coating-modal-option" id="set-all-coating-unknown" data-value="">Unknown</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btn-set-all-coating-cancel">Cancel</button>
+        <button class="btn btn-primary" id="btn-set-all-coating-apply">Apply to All</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Clear All Configurations Modal -->
+  <div id="clear-all-deployments-modal" class="modal">
+    <div class="modal-overlay"></div>
+    <div class="modal-content modal-delete">
+      <div class="modal-header modal-header-delete">
+        <h3>🗑️ Clear All Configurations</h3>
+        <button class="modal-close" id="btn-clear-all-deployments-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="delete-warning">
+          <div class="warning-icon">⚠️</div>
+          <div class="warning-text">
+            <strong>Clear all streamer configurations.</strong>
+            This will reset all deployment dates and coating status for all streamers. You must click Save to apply.
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer modal-footer-delete">
+        <button class="btn btn-secondary" id="btn-clear-all-deployments-cancel">Cancel</button>
+        <button class="btn btn-danger" id="btn-clear-all-deployments-confirm">Clear All</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Clear Single Streamer Configuration Modal -->
+  <div id="clear-one-deployment-modal" class="modal">
+    <div class="modal-overlay"></div>
+    <div class="modal-content modal-delete">
+      <div class="modal-header modal-header-delete">
+        <h3>🗑️ Clear Streamer Configuration</h3>
+        <button class="modal-close" id="btn-clear-one-deployment-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="delete-warning">
+          <div class="warning-icon">⚠️</div>
+          <div class="warning-text">
+            <strong id="clear-one-deployment-message">Clear configuration for Streamer N?</strong>
+            This will remove the deployment date and coating status for this streamer. You must click Save to apply.
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer modal-footer-delete">
+        <button class="btn btn-secondary" id="btn-clear-one-deployment-cancel">Cancel</button>
+        <button class="btn btn-danger" id="btn-clear-one-deployment-confirm">Clear</button>
       </div>
     </div>
   </div>
