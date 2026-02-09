@@ -345,6 +345,23 @@ function createTooltip() {
   return tooltip;
 }
 
+// Shared helper to position floating tooltips near the cursor,
+// while keeping them within the viewport. Assumes the element is
+// already visible (so getBoundingClientRect returns meaningful size).
+function positionTooltipNearCursor(el, e) {
+  if (!el || !e) return;
+
+  const baseX = e.clientX + 15;
+  const baseY = e.clientY + 15;
+
+  const rect = el.getBoundingClientRect();
+  const x = baseX + rect.width > window.innerWidth ? baseX - rect.width - 30 : baseX;
+  const y = baseY + rect.height > window.innerHeight ? baseY - rect.height - 30 : baseY;
+
+  el.style.left = `${x}px`;
+  el.style.top = `${y}px`;
+}
+
 function showSectionTooltip(e, streamerId, sectionIndex) {
   const tooltip = createTooltip();
   const streamerNum = streamerId;
@@ -437,18 +454,9 @@ function showSectionTooltip(e, streamerId, sectionIndex) {
 
   tooltip.innerHTML = html;
 
-  // Position tooltip near cursor
-  const x = e.clientX + 15;
-  const y = e.clientY + 15;
-
-  // Adjust if tooltip would go off screen
-  const rect = tooltip.getBoundingClientRect();
-  const adjustedX = (x + rect.width > window.innerWidth) ? x - rect.width - 30 : x;
-  const adjustedY = (y + rect.height > window.innerHeight) ? y - rect.height - 30 : y;
-
-  tooltip.style.left = `${adjustedX}px`;
-  tooltip.style.top = `${adjustedY}px`;
+  // Make visible, then position using shared helper
   tooltip.classList.add('show');
+  positionTooltipNearCursor(tooltip, e);
 }
 
 function hideSectionTooltip() {
@@ -528,7 +536,7 @@ async function handleLogin(event) {
   errorDiv.classList.add('hidden');
   
   try {
-    const res = await fetch('api/login', {
+    const res = await fetch('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password })
@@ -2420,7 +2428,6 @@ async function renderHeatmap() {
       const label = document.createElement('div');
       label.className = 'hm-col-label hm-header';
       label.textContent = `S${streamerId}`;
-      label.title = `Streamer ${streamerId}`;
       label.dataset.streamerId = streamerId;
       label.dataset.deploymentDate = deployment.deploymentDate || '';
       label.dataset.isCoated = deployment.isCoated === true ? 'true' : deployment.isCoated === false ? 'false' : 'unknown';
@@ -2564,14 +2571,13 @@ function attachStreamerHeaderTooltips(wrapper, lastCleaned, deployments) {
 
       tooltipEl.innerHTML = html;
       tooltipEl.style.display = 'block';
-      tooltipEl.style.left = `${e.pageX + 12}px`;
-      tooltipEl.style.top = `${e.pageY + 12}px`;
+      // Use the same positioning logic as section tooltips
+      positionTooltipNearCursor(tooltipEl, e);
     };
 
     const move = (e) => {
       if (tooltipEl.style.display === 'block') {
-        tooltipEl.style.left = `${e.pageX + 12}px`;
-        tooltipEl.style.top = `${e.pageY + 12}px`;
+        positionTooltipNearCursor(tooltipEl, e);
       }
     };
 
@@ -3276,8 +3282,14 @@ async function initApp() {
 async function init() {
   // Setup login form handler
   const loginForm = safeGet('login-form');
+
   if (loginForm) {
     loginForm.addEventListener('submit', handleLogin);
+  }
+
+  const loginBtn = safeGet('login-submit');
+  if (loginBtn) {
+    loginBtn.addEventListener('click', handleLogin);
   }
   
   // Setup logout button

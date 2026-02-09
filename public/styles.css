@@ -1113,7 +1113,7 @@
 
   /* Streamer column header tooltip (Step 8) */
   .hm-col-label.hm-header {
-    cursor: help;
+    cursor: pointer; /* match section cells */
   }
 
   .hm-col-label.hm-header:hover {

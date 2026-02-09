@@ -381,7 +381,7 @@ app.get("/api/projects/stats", async (_req, res) => {
 // Authentication endpoints
 app.post("/api/login", (req, res) => {
   const { username, password } = req.body;
-  
+
   if (!username || !password) {
     return res.status(400).json({ error: "Username and password required" });
   }

@@ -17,7 +17,7 @@ backend/DS_Store
 public/DS_Store
 legacy-removal.md
 
-.cursor/
+.cursor
 e2e/
 playwright-report/
 test-results/
