@@ -3,10 +3,10 @@
  * pdf-generator.js (ES module)
  */
 
-import { safeGet } from "./js/ui.js";
+import { safeGet, setStatus } from "./js/ui.js";
 import { config } from "./js/state.js";
-import { formatAS, eventDistance } from "./js/streamer-utils.js";
-import { getAuthHeaders } from "./js/api.js";
+import { formatAS, eventDistance, fmtKm, ageBucket } from "./js/streamer-utils.js";
+import { getAuthHeaders, getEBRange } from "./js/api.js";
 
 // Color map for heatmap
 const AGE_COLOR_MAP = {
