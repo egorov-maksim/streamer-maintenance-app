@@ -4,7 +4,7 @@
  */
 
 import { safeGet, setStatus } from "./js/ui.js";
-import { config } from "./js/state.js";
+import { config, getActiveProject } from "./js/state.js";
 import { formatAS, eventDistance, fmtKm, ageBucket } from "./js/streamer-utils.js";
 import { getAuthHeaders, getEBRange } from "./js/api.js";
 
@@ -22,7 +22,7 @@ async function generatePDFReport() {
   const statusEl = safeGet('pdf-status');
   try {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF('landscape');
+    const doc = new jsPDF({ orientation: 'landscape', format: 'a3' });
 
     // Fetch stats from backend
     let statsUrl = 'api/stats';
@@ -102,15 +102,8 @@ async function generatePDFReport() {
     doc.text(`Tail Sections: ${config.useRopeForTail ? 'Using rope (no tails)' : '5 tail sections added'}`, 25, yPos);
     
     // Add deployment date and coating status if available
-    if (config.deploymentDate) {
-      const deployDate = new Date(config.deploymentDate);
-      if (!isNaN(deployDate.getTime())) {
-        yPos += 6;
-        doc.text(`Deployment Date: ${deployDate.toLocaleDateString()}`, 25, yPos);
-      }
-    }
-    yPos += 6;
-    doc.text(`Coating Status: ${(config.isCoated === true || config.isCoated === 1) ? 'Yes' : 'No'}`, 25, yPos);
+    // Global deployment/coating flags are no longer used here;
+    // detailed per-streamer deployment/coating info is shown later.
 
     // === Overall Statistics ===
     yPos += 15;
@@ -129,6 +122,97 @@ async function generatePDFReport() {
     if (stats.totalAvailableTail > 0) {
       yPos += 6;
       doc.text(`Tail Section Coverage: ${tailCoverage}% (${stats.tailCleanedSections}/${stats.totalAvailableTail} sections)`, 25, yPos);
+    }
+
+    // === Streamer Deployment & Coating (per streamer, like header tooltip) ===
+    const activeProject = getActiveProject();
+    if (activeProject) {
+      try {
+        // Fetch per-streamer deployments for active project
+        const deploymentsRes = await fetch(`/api/projects/${activeProject.id}/streamer-deployments`, {
+          headers: getAuthHeaders()
+        });
+        const deployments = await deploymentsRes.json();
+
+        // Fetch events for this project to calculate first-scraping days
+        let eventsUrl = 'api/events';
+        if (config.activeProjectNumber) {
+          eventsUrl += `?project=${encodeURIComponent(config.activeProjectNumber)}`;
+        }
+        const eventsRes = await fetch(eventsUrl, { headers: getAuthHeaders() });
+        const eventsForProject = await eventsRes.json();
+
+        yPos += 15;
+        doc.setFontSize(14);
+        doc.text('Streamer Deployment & Coating', 20, yPos);
+        yPos += 8;
+
+        doc.setFontSize(9);
+        doc.text('Streamer', 20, yPos);
+        doc.text('Deployed', 45, yPos);
+        doc.text('Coating', 85, yPos);
+        doc.text('Days to First Cleaning', 115, yPos);
+        doc.text('Total Cleanings', 165, yPos);
+        yPos += 5;
+
+        const pageHeight = doc.internal.pageSize.getHeight();
+
+        for (let streamerNum = 1; streamerNum <= config.numCables; streamerNum++) {
+          if (yPos > pageHeight - 20) {
+            doc.addPage('a3', 'landscape');
+            yPos = 20;
+            doc.setFontSize(9);
+            doc.text('Streamer', 20, yPos);
+            doc.text('Deployed', 45, yPos);
+            doc.text('Coating', 85, yPos);
+            doc.text('Days to First Cleaning', 115, yPos);
+            doc.text('Total Cleanings', 165, yPos);
+            yPos += 5;
+          }
+
+          const deployment = deployments[streamerNum] || {};
+          const deployDateStr = deployment.deploymentDate
+            ? new Date(deployment.deploymentDate).toLocaleDateString()
+            : '—';
+          const coatingLabel =
+            deployment.isCoated === true
+              ? 'Coated'
+              : deployment.isCoated === false
+              ? 'Uncoated'
+              : 'Unknown';
+
+          const streamerEvents = eventsForProject.filter(
+            (e) => e.streamerId === streamerNum
+          );
+
+          let daysToFirst = null;
+          if (deployment.deploymentDate && streamerEvents.length > 0) {
+            const firstCleaning = [...streamerEvents].sort(
+              (a, b) => new Date(a.cleanedAt) - new Date(b.cleanedAt)
+            )[0];
+            const msPerDay = 1000 * 60 * 60 * 24;
+            const diffDays = Math.floor(
+              (new Date(firstCleaning.cleanedAt) - new Date(deployment.deploymentDate)) /
+                msPerDay
+            );
+            if (diffDays >= 0) {
+              daysToFirst = diffDays;
+            }
+          }
+
+          const daysToFirstLabel =
+            daysToFirst !== null ? `${daysToFirst} days` : '—';
+
+          doc.text(`S${streamerNum}`, 20, yPos);
+          doc.text(String(deployDateStr), 45, yPos);
+          doc.text(coatingLabel, 85, yPos);
+          doc.text(daysToFirstLabel, 115, yPos);
+          doc.text(String(streamerEvents.length), 165, yPos);
+          yPos += 5;
+        }
+      } catch (err) {
+        console.error('Failed to render deployment/coating section in PDF:', err);
+      }
     }
 
     // === Filtered Statistics (if applicable) ===
@@ -178,7 +262,7 @@ async function generatePDFReport() {
         yPos += 6;
         for (const [method, distance] of Object.entries(filteredStats.byMethod)) {
           if (yPos > 190) {
-            doc.addPage('landscape');
+            doc.addPage('a3', 'landscape');
             yPos = 20;
           }
           doc.text(`  ${method}: ${fmtKm(distance)}`, 30, yPos);
@@ -188,12 +272,12 @@ async function generatePDFReport() {
     }
 
     // === ALL HISTORY Heatmap (always included) ===
-    doc.addPage('landscape');
+    doc.addPage('a3', 'landscape');
     await addHeatmapPage(doc, lastCleaned, 'All History');
 
     // === FILTERED Heatmap (only if filters are active) ===
     if (filteredLastCleaned && (startDate || endDate)) {
-      doc.addPage('landscape');
+      doc.addPage('a3', 'landscape');
       const filterLabel = (startDate && endDate) 
         ? `${startDate} to ${endDate}` 
         : startDate 
@@ -203,7 +287,7 @@ async function generatePDFReport() {
     }
 
     // === All Events ===
-    doc.addPage('landscape');
+    doc.addPage('a3', 'landscape');
     await addAllEventsSection(doc);
 
     // Save
@@ -235,8 +319,8 @@ async function addHeatmapPage(doc, lastCleaned, title) {
   const totalSections = sectionsPerCable + tailSections;
 
   // Calculate dimensions for horizontal layout (landscape)
-  const pageWidth = 297; // Landscape A4
-  const pageHeight = 210;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
   const leftMargin = 20; // Space for section labels (AS01, AS02, etc.)
   const rightMargin = 35; // Space for EB range labels
   const topMargin = yPos + 5;
@@ -247,8 +331,10 @@ async function addHeatmapPage(doc, lastCleaned, title) {
 
   // Calculate cell dimensions
   // Cables as columns (12 cables), sections as rows (107+ sections)
-  const cellWidth = Math.min(availableWidth / numCables, 18);
-  const cellHeight = Math.min(availableHeight / totalSections, 1.2);
+  const maxCellWidth = 24;
+  const maxCellHeight = 2;
+  const cellWidth = Math.min(availableWidth / numCables, maxCellWidth);
+  const cellHeight = Math.min(availableHeight / totalSections, maxCellHeight);
 
   const heatmapWidth = cellWidth * numCables;
   const heatmapHeight = cellHeight * totalSections;
@@ -394,8 +480,8 @@ async function addAllEventsSection(doc) {
   for (let i = 0; i < eventsToShow.length; i++) {
     const evt = eventsToShow[i];
 
-    if (yPos > 195) {
-      doc.addPage('landscape');
+      if (yPos > 195) {
+        doc.addPage('a3', 'landscape');
       yPos = 20;
       drawHeaders(yPos);
       yPos += 5;

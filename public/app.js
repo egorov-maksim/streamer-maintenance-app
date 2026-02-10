@@ -941,6 +941,32 @@ async function renderHeatmap() {
     if (activeProject) {
       try {
         deployments = await API.apiCall(`/api/projects/${activeProject.id}/streamer-deployments`);
+        // #region agent log
+        (function () {
+          try {
+            const sample = Object.fromEntries(Object.entries(deployments).slice(0, 3));
+            fetch('http://127.0.0.1:7242/ingest/67e18581-87c7-4241-aa8e-2a9878a99534', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                id: `log_${Date.now()}_deployments`,
+                timestamp: Date.now(),
+                runId: 'pre-fix',
+                hypothesisId: 'H1',
+                location: 'public/app.js:939-945',
+                message: 'Streamer deployments sample for coating/deployment',
+                data: {
+                  activeProjectId: activeProject.id,
+                  activeProjectNumber: activeProject.projectNumber,
+                  sampleDeployments: sample
+                }
+              })
+            }).catch(() => {});
+          } catch {
+            // ignore logging errors
+          }
+        })();
+        // #endregion
       } catch (_) {}
     }
 
