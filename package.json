@@ -7,7 +7,7 @@
     "start": "node backend/server.js",
     "dev": "nodemon backend/server.js",
     "start:test": "DB_FILE=./backend/test.db node backend/server.js",
-    "test": "NODE_ENV=test DB_FILE=./backend/test.db node --test tests/*.test.js",
+    "test": "NODE_ENV=test DB_FILE=./backend/test.db node --test tests/*.test.js tests/unit/*.test.js",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:all": "npm test && npm run test:e2e"

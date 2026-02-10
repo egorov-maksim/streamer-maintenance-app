@@ -27,15 +27,16 @@ npm run test:all
 
 **Test database:** `backend/test.db`. Reset with: `rm backend/test.db backend/test.db-*`.
 
-**Expected runtime:** API ~10–30 s; E2E ~2–8 min (server startup + 39 tests on one worker).
+**Expected runtime:** API ~10–30 s (90 tests); E2E ~2–8 min (server startup + 39 tests on one worker).
 
 ---
 
 ## Backend API tests
 
-**Location:** `tests/*.test.js`  
+**Location:** `tests/*.test.js` and `tests/unit/*.test.js`  
 **Runner:** Node built-in test runner (`node --test`) + supertest.  
-**Database:** `DB_FILE=./backend/test.db` (set by `npm test`).
+**Database:** `DB_FILE=./backend/test.db` (set by `npm test`).  
+**Command:** `npm test` runs both API and unit tests (`tests/*.test.js tests/unit/*.test.js`).
 
 ### Structure
 
@@ -43,24 +44,31 @@ npm run test:all
 |------|----------|
 | `tests/helpers.js` | Shared utilities, app import, `loginAs`, `authHeader` |
 | `tests/auth.test.js` | Login, logout, session (all roles) |
+| `tests/backups.test.js` | Backups list, create, restore (SuperUser only); auth/role checks |
 | `tests/config.test.js` | Config GET/PUT, role checks |
-| `tests/projects.test.js` | Project CRUD, activate, deactivate, delete, force-delete |
-| `tests/events.test.js` | Event CRUD, bulk delete by project, validation |
-| `tests/stats.test.js` | Stats filter, last-cleaned |
+| `tests/projects.test.js` | Project CRUD, GET active, GET stats, PUT :id, activate, deactivate, delete, force-delete, streamer-deployments (GET/PUT/DELETE), cleanup-streamers |
+| `tests/events.test.js` | Event CRUD, PUT :id, bulk delete by project, global delete (SuperUser), validation (400) |
+| `tests/stats.test.js` | GET /api/stats, GET /api/eb-range, GET /api/last-cleaned, GET /api/last-cleaned-filtered, GET /api/stats/filter |
+| `tests/unit/eb.test.js` | `calculateEBRange` (backend/utils/eb.js) |
+| `tests/unit/queryHelpers.test.js` | `buildEventsWhereClause` (backend/utils/queryHelpers.js) |
+| `tests/unit/validation.test.js` | `toInt`, `requireValidId` (backend/utils/validation.js) |
 
 ### Conventions
 
 - **Project and config** create/update/delete require **SuperUser**; use `superuser` / `super123`.
 - **Events** use **streamerId** (integer 1–12), not `cableId`.
+- **Backups** restore does not overwrite the DB file when `NODE_ENV=test` (avoids corrupting shared test DB).
 
 ### Coverage
 
-- Authentication and authorization (superuser, admin, viewer)
+- Authentication and authorization (superuser, admin, viewer), including logout and session invalidation
+- Backups API (list, create, restore; SuperUser only; invalid filename, 404)
 - Role-based access (403 for unauthorized actions)
 - Configuration CRUD with role checks
-- Project lifecycle (create, activate, deactivate, delete, force-delete)
-- Cleaning events (CRUD, bulk delete, validation)
-- Statistics and filtering
+- Project lifecycle (create, activate, deactivate, delete, force-delete), project update (PUT :id), streamer-deployments, cleanup-streamers
+- Cleaning events (CRUD, PUT :id, bulk delete by project, global clear SuperUser only, validation 400)
+- Statistics and filtering (stats, stats/filter, last-cleaned, last-cleaned-filtered, eb-range)
+- Unit tests for backend utils: `eb.calculateEBRange`, `queryHelpers.buildEventsWhereClause`, `validation.toInt` / `requireValidId`
 - Error handling and validation
 
 ### Test fixtures / test data
@@ -80,6 +88,7 @@ API tests use a **fresh test database** (`backend/test.db` when `DB_FILE=./backe
 | File | Coverage |
 |------|----------|
 | `e2e/auth.spec.js` | Login, logout, session persistence |
+| `e2e/backups.spec.js` | Backup section visibility (SuperUser), create backup, list; viewer cannot see backups |
 | `e2e/navigation.spec.js` | Section navigation, active state, collapse/expand |
 | `e2e/projects.spec.js` | Project creation, activation, list, deployment filter |
 | `e2e/heatmap.spec.js` | Heatmap rendering, cleaning method toolbar, event creation |

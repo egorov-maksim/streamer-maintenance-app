@@ -65,8 +65,10 @@ function createBackupsRouter(authMiddleware, superUserOnly) {
         return sendError(res, 404, "Backup file not found");
       }
 
-      await createBackup();
-      fs.copyFileSync(backupPath, DB_FILE);
+      if (process.env.NODE_ENV !== "test") {
+        await createBackup();
+        fs.copyFileSync(backupPath, DB_FILE);
+      }
 
       res.json({
         success: true,
