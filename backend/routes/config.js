@@ -5,6 +5,7 @@ const { defaultConfig, loadConfig, saveConfig } = require("../config");
 const { runAsync, getOneCamelized } = require("../db");
 const { toInt } = require("../utils/validation");
 const { sendError } = require("../utils/errors");
+const { isGlobalUser } = require("../middleware/auth");
 
 /**
  * Create config router (GET/PUT /api/config).
@@ -43,6 +44,16 @@ function createConfigRouter(authMiddleware, superUserOnly) {
 
       const activeProject = await getOneCamelized("SELECT * FROM projects WHERE is_active = 1");
       if (activeProject) {
+        // Only allow per-vessel config changes on projects within user's vessel scope.
+        if (req.vesselScope && activeProject.vesselTag !== req.vesselScope) {
+          return sendError(res, 403, "Cannot change configuration for a project from another vessel");
+        }
+
+        // Ensure vesselTag cannot be changed outside user's scope.
+        if (req.vesselScope) {
+          partial.vesselTag = req.vesselScope;
+        }
+
         await runAsync(
           `UPDATE projects SET
           num_cables = ?,
@@ -65,6 +76,10 @@ function createConfigRouter(authMiddleware, superUserOnly) {
           ]
         );
       } else {
+        // Global defaults: restrict to global superusers only.
+        if (!isGlobalUser(req.user)) {
+          return sendError(res, 403, "Grand SuperUser access required to change global configuration");
+        }
         await saveConfig(partial);
       }
 

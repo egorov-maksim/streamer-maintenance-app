@@ -21,12 +21,21 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 
 ### 🔐 User Authentication & Access Control
 - **Multi-User Support**: Secure login system with role-based permissions
-- **Three Access Levels**:
-  - 🔑 **SuperUser**: Full access (projects, config, deployments, backups, global clear, force-delete)
-  - 👨‍💼 **Admin**: Event management only (add/edit/delete events, per-project clear)
-  - 👁️ **Viewer**: Read-only access (view data, filter, export reports)
+- **Access Levels**:
+  - 👑 **GrandSuperUser**: Full access to **all vessels** (projects, global config, deployments, backups, *global* clears, force-delete)
+  - 🔑 **SuperUser**: Full access **within their vessel** (projects, per-vessel config, deployments, backups listing/creation, per-project clears)
+  - 👨‍💼 **Admin**: Event management only **within their vessel** (add/edit/delete events, per-project clear)
+  - 👁️ **Viewer**: Read-only access **within their vessel** (view data, filter, export reports)
 - **Session Management**: Secure session tokens with localStorage persistence
-- **Configurable Users**: Define users and roles via `AUTH_USERS` in `.env` (format: `user:pass:role` with role `superuser`, `admin`, or `viewer`)
+- **Configurable Users**: Define users and roles via `AUTH_USERS` in `.env`
+  - Format (recommended): `USERNAME:PASSWORD:ROLE:VESSEL_TAG[:GLOBAL]`
+    - `ROLE`: `grandsuperuser`, `superuser`, `admin`, or `viewer`
+    - `VESSEL_TAG`: short code for the vessel (e.g. `TTN`, `RAM`)
+    - `GLOBAL` (optional): `true` to give the user global (all-vessel) access
+  - Examples:
+    - `GrandRoot:Password:grandsuperuser:ALL:true` (grand superuser, all vessels)
+    - `TTNOBS:Password:superuser:TTN` (superuser for vessel `TTN`)
+    - `TTNView:Password:viewer:TTN` (viewer for vessel `TTN`)
 
 ### 📋 Project Management
 - **Multi-Project Tracking**: Create and manage multiple seismic survey projects

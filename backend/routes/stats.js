@@ -9,9 +9,10 @@ const { calculateEBRange } = require("../utils/eb");
 
 /**
  * Create stats router (stats, last-cleaned, stats/filter, eb-range).
+ * @param {function} authMiddleware
  * @returns {express.Router}
  */
-function createStatsRouter() {
+function createStatsRouter(authMiddleware) {
   const router = express.Router();
 
   router.get("/api/eb-range", async (req, res) => {
@@ -38,7 +39,7 @@ function createStatsRouter() {
     }
   });
 
-  router.get("/api/stats", async (req, res) => {
+  router.get("/api/stats", authMiddleware, async (req, res) => {
     try {
       const { project } = req.query;
       const config = await loadConfig();
@@ -54,8 +55,15 @@ function createStatsRouter() {
         whereClause = " WHERE project_number = ?";
         params.push(project);
       }
+      if (req.vesselScope) {
+        whereClause += whereClause ? " AND vessel_tag = ?" : " WHERE vessel_tag = ?";
+        params.push(req.vesselScope);
+      }
 
-      const totalEvents = await getAsync(`SELECT COUNT(*) as count FROM cleaning_events${whereClause}`, params);
+      const totalEvents = await getAsync(
+        `SELECT COUNT(*) as count FROM cleaning_events${whereClause}`,
+        params
+      );
       const totals = await getAsync(
         `SELECT SUM(section_index_end - section_index_start + 1) as totalSections FROM cleaning_events${whereClause}`,
         params
@@ -101,7 +109,7 @@ function createStatsRouter() {
     }
   });
 
-  router.get("/api/last-cleaned", async (req, res) => {
+  router.get("/api/last-cleaned", authMiddleware, async (req, res) => {
     try {
       const { project } = req.query;
       const config = await loadConfig();
@@ -112,9 +120,17 @@ function createStatsRouter() {
 
       let sql = `SELECT streamer_id, section_index_start, section_index_end, section_type, cleaned_at FROM cleaning_events`;
       const params = [];
+      const conditions = [];
       if (project) {
-        sql += " WHERE project_number = ?";
+        conditions.push("project_number = ?");
         params.push(project);
+      }
+      if (req.vesselScope) {
+        conditions.push("vessel_tag = ?");
+        params.push(req.vesselScope);
+      }
+      if (conditions.length > 0) {
+        sql += " WHERE " + conditions.join(" AND ");
       }
       sql += " ORDER BY datetime(cleaned_at) DESC";
       const rows = await getAllCamelized(sql, params);
@@ -139,7 +155,7 @@ function createStatsRouter() {
     }
   });
 
-  router.get("/api/last-cleaned-filtered", async (req, res) => {
+  router.get("/api/last-cleaned-filtered", authMiddleware, async (req, res) => {
     try {
       const { start, end, project } = req.query;
       const config = await loadConfig();
@@ -148,7 +164,22 @@ function createStatsRouter() {
       const tailSections = config.useRopeForTail ? 0 : 5;
       const totalSections = sectionsPerCable + tailSections;
 
-      const { sql: whereSql, params: whereParams } = buildEventsWhereClause({ project, start, end });
+      const { sql: baseWhereSql, params: baseParams } = buildEventsWhereClause({
+        project,
+        start,
+        end,
+      });
+
+      let whereSql = baseWhereSql;
+      const whereParams = [...baseParams];
+      if (req.vesselScope) {
+        if (!whereSql) {
+          whereSql = " WHERE vessel_tag = ?";
+        } else {
+          whereSql += " AND vessel_tag = ?";
+        }
+        whereParams.push(req.vesselScope);
+      }
       const sql =
         `SELECT streamer_id, section_index_start, section_index_end, section_type, cleaned_at FROM cleaning_events` +
         whereSql +
@@ -175,15 +206,32 @@ function createStatsRouter() {
     }
   });
 
-  router.get("/api/stats/filter", async (req, res) => {
+  router.get("/api/stats/filter", authMiddleware, async (req, res) => {
     try {
       const { start, end, project } = req.query;
       const config = await loadConfig();
       const sectionLength = config.sectionLength || 1;
       const sectionsPerCable = config.sectionsPerCable;
 
-      const { sql: whereSql, params: whereParams } = buildEventsWhereClause({ project, start, end });
-      const sql = "SELECT * FROM cleaning_events" + whereSql + " ORDER BY datetime(cleaned_at) DESC";
+      const { sql: baseWhereSql, params: baseParams } = buildEventsWhereClause({
+        project,
+        start,
+        end,
+      });
+
+      let whereSql = baseWhereSql;
+      const whereParams = [...baseParams];
+      if (req.vesselScope) {
+        if (!whereSql) {
+          whereSql = " WHERE vessel_tag = ?";
+        } else {
+          whereSql += " AND vessel_tag = ?";
+        }
+        whereParams.push(req.vesselScope);
+      }
+
+      const sql =
+        "SELECT * FROM cleaning_events" + whereSql + " ORDER BY datetime(cleaned_at) DESC";
       const rows = await getAllCamelized(sql, whereParams);
 
       const totalSectionsCleaned = rows.reduce(

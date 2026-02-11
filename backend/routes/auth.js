@@ -26,12 +26,19 @@ function createAuthRouter(sessions, users, authMiddleware) {
     }
 
     const token = generateSessionToken();
-    sessions.set(token, { username, role: user.role });
+    sessions.set(token, {
+      username,
+      role: user.role,
+      vesselTag: user.vesselTag ?? null,
+      isGlobal: Boolean(user.isGlobal),
+    });
 
     res.json({
       token,
       username,
       role: user.role,
+      vesselTag: user.vesselTag ?? null,
+      isGlobal: Boolean(user.isGlobal),
       message: "Login successful",
     });
   });
@@ -49,6 +56,8 @@ function createAuthRouter(sessions, users, authMiddleware) {
     res.json({
       username: req.user.username,
       role: req.user.role,
+      vesselTag: req.user.vesselTag ?? null,
+      isGlobal: Boolean(req.user.isGlobal),
     });
   });
 

@@ -5,7 +5,7 @@ const { runAsync, getAllCamelized, getOneCamelized } = require("../db");
 const { defaultConfig, loadConfig } = require("../config");
 const { requireValidId } = require("../utils/validation");
 const { sendError } = require("../utils/errors");
-const { ROLES } = require("../middleware/auth");
+const { ROLES, isGlobalUser } = require("../middleware/auth");
 const { splitSectionRange, validateRangeForType } = require("../utils/sectionType");
 
 /**
@@ -17,15 +17,28 @@ const { splitSectionRange, validateRangeForType } = require("../utils/sectionTyp
 function createEventsRouter(authMiddleware, adminOrAbove) {
   const router = express.Router();
 
-  router.get("/api/events", async (req, res) => {
+  router.get("/api/events", authMiddleware, async (req, res) => {
     try {
       const { project } = req.query;
       let sql = "SELECT * FROM cleaning_events";
       const params = [];
+      const conditions = [];
+
       if (project) {
-        sql += " WHERE project_number = ?";
+        conditions.push("project_number = ?");
         params.push(project);
       }
+
+      // Per-vessel scoping: non-global users only see their vessel's events.
+      if (req.vesselScope) {
+        conditions.push("vessel_tag = ?");
+        params.push(req.vesselScope);
+      }
+
+      if (conditions.length > 0) {
+        sql += " WHERE " + conditions.join(" AND ");
+      }
+
       sql += " ORDER BY datetime(cleaned_at) DESC";
       const rows = await getAllCamelized(sql, params);
       res.json(rows);
@@ -66,6 +79,10 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
       if (finalProjectNumber === undefined || finalProjectNumber === null) {
         finalProjectNumber = config.activeProjectNumber || null;
         finalVesselTag = config.vesselTag;
+      }
+      // Per-vessel users are always scoped to their own vessel tag.
+      if (req.vesselScope) {
+        finalVesselTag = req.vesselScope;
       }
       const count = Number.isFinite(cleaning_count) ? cleaning_count : 1;
 
@@ -160,6 +177,14 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
       }
 
       const existing = await getOneCamelized("SELECT * FROM cleaning_events WHERE id = ?", [id]);
+      if (!existing) {
+        return sendError(res, 404, "Event not found");
+      }
+
+      // Per-vessel users cannot modify events from another vessel.
+      if (req.vesselScope && existing.vesselTag && existing.vesselTag !== req.vesselScope) {
+        return sendError(res, 403, "Cannot modify events from another vessel");
+      }
       const sectionType = body_section_type ?? existing?.sectionType ?? "active";
       const config = await loadConfig();
       const validation = validateRangeForType(
@@ -172,8 +197,14 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
         return sendError(res, 400, validation.message);
       }
 
-      const finalProjectNumber = project_number !== undefined ? project_number : (existing?.projectNumber || null);
-      const finalVesselTag = vessel_tag !== undefined ? vessel_tag : (existing?.vesselTag || defaultConfig.vesselTag);
+      const finalProjectNumber =
+        project_number !== undefined ? project_number : existing.projectNumber || null;
+
+      let finalVesselTag =
+        vessel_tag !== undefined ? vessel_tag : existing.vesselTag || defaultConfig.vesselTag;
+      if (req.vesselScope) {
+        finalVesselTag = req.vesselScope;
+      }
 
       await runAsync(
         `UPDATE cleaning_events
@@ -204,7 +235,19 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
     try {
       const id = requireValidId(req, res);
       if (id === null) return;
-      await runAsync("DELETE FROM cleaning_events WHERE id = ?", [id]);
+
+      const params = [id];
+      let sql = "DELETE FROM cleaning_events WHERE id = ?";
+      // Per-vessel users may only delete events for their vessel.
+      if (req.vesselScope) {
+        sql += " AND vessel_tag = ?";
+        params.push(req.vesselScope);
+      }
+
+      const result = await runAsync(sql, params);
+      if (result.changes === 0) {
+        return sendError(res, 404, "Event not found");
+      }
       res.json({ success: true });
     } catch (err) {
       console.error(err);
@@ -216,12 +259,23 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
     try {
       const project = req.query.project;
       if (project) {
-        const result = await runAsync("DELETE FROM cleaning_events WHERE project_number = ?", [project]);
+        // Per-vessel users can only clear events for their own vessel, even when a project is specified.
+        const params = [project];
+        let sql = "DELETE FROM cleaning_events WHERE project_number = ?";
+        if (req.vesselScope) {
+          sql += " AND vessel_tag = ?";
+          params.push(req.vesselScope);
+        }
+
+        const result = await runAsync(sql, params);
         return res.json({ success: true, deletedCount: result.changes });
       }
-      if (req.user?.role !== ROLES.SUPER_USER) {
-        return sendError(res, 403, "SuperUser access required for global clear");
+
+      // Global clear: only allowed for global superusers (including grand superuser).
+      if (!isGlobalUser(req.user) || (req.user.role !== ROLES.SUPER_USER && req.user.role !== ROLES.GRAND_SUPER_USER)) {
+        return sendError(res, 403, "Grand SuperUser access required for global clear");
       }
+
       const result = await runAsync("DELETE FROM cleaning_events");
       res.json({ success: true, deletedCount: result.changes });
     } catch (err) {

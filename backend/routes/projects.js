@@ -5,6 +5,7 @@ const { runAsync, getAsync, allAsync, getAllCamelized, getOneCamelized } = requi
 const { defaultConfig, loadConfig, saveConfig } = require("../config");
 const { requireValidId, toInt } = require("../utils/validation");
 const { sendError } = require("../utils/errors");
+const { isGlobalUser } = require("../middleware/auth");
 
 /**
  * Create projects router (CRUD, activate, streamer-deployments, cleanup).
@@ -15,14 +16,25 @@ const { sendError } = require("../utils/errors");
 function createProjectsRouter(authMiddleware, superUserOnly) {
   const router = express.Router();
 
-  router.get("/api/projects/stats", async (_req, res) => {
+  router.get("/api/projects/stats", authMiddleware, async (req, res) => {
     try {
-      const rows = await allAsync(`
+      const params = [];
+      let where = "WHERE project_number IS NOT NULL";
+
+      if (req.vesselScope) {
+        where += " AND vessel_tag = ?";
+        params.push(req.vesselScope);
+      }
+
+      const rows = await allAsync(
+        `
         SELECT project_number, COUNT(*) as event_count
         FROM cleaning_events
-        WHERE project_number IS NOT NULL
+        ${where}
         GROUP BY project_number
-      `);
+      `,
+        params
+      );
       const stats = {};
       for (const row of rows) {
         const camelized = humps.camelizeKeys(row);
@@ -35,9 +47,17 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
     }
   });
 
-  router.get("/api/projects", async (_req, res) => {
+  router.get("/api/projects", authMiddleware, async (req, res) => {
     try {
-      const rows = await getAllCamelized("SELECT * FROM projects ORDER BY created_at DESC");
+      const params = [];
+      let sql = "SELECT * FROM projects";
+      if (req.vesselScope) {
+        sql += " WHERE vessel_tag = ?";
+        params.push(req.vesselScope);
+      }
+      sql += " ORDER BY created_at DESC";
+
+      const rows = await getAllCamelized(sql, params);
       res.json(
         rows.map((p) => ({
           ...p,
@@ -51,9 +71,16 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
     }
   });
 
-  router.get("/api/projects/active", async (_req, res) => {
+  router.get("/api/projects/active", authMiddleware, async (req, res) => {
     try {
-      const project = await getOneCamelized("SELECT * FROM projects WHERE is_active = 1");
+      const params = [];
+      let sql = "SELECT * FROM projects WHERE is_active = 1";
+      if (req.vesselScope) {
+        sql += " AND vessel_tag = ?";
+        params.push(req.vesselScope);
+      }
+
+      const project = await getOneCamelized(sql, params);
       if (!project) return res.json(null);
       res.json({
         ...project,
@@ -86,6 +113,15 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
       }
 
       const created_at = new Date().toISOString();
+
+      // Determine effective vessel tag:
+      // - Global users may choose or fall back to default.
+      // - Per-vessel users are always scoped to their vessel.
+      let effectiveVesselTag = vessel_tag || defaultConfig.vesselTag;
+      if (req.vesselScope) {
+        effectiveVesselTag = req.vesselScope;
+      }
+
       const result = await runAsync(
         `INSERT INTO projects (
         project_number, project_name, vessel_tag, created_at, is_active,
@@ -94,7 +130,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
         [
           project_number,
           project_name || null,
-          vessel_tag || defaultConfig.vesselTag,
+          effectiveVesselTag,
           created_at,
           toInt(num_cables, defaultConfig.numCables),
           toInt(sections_per_cable, defaultConfig.sectionsPerCable),
@@ -129,6 +165,15 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
     try {
       const id = requireValidId(req, res);
       if (id === null) return;
+
+      // Only allow activation of projects within user's vessel scope.
+      const projectRow = await getOneCamelized("SELECT * FROM projects WHERE id = ?", [id]);
+      if (!projectRow) {
+        return sendError(res, 404, "Project not found");
+      }
+      if (req.vesselScope && projectRow.vesselTag !== req.vesselScope) {
+        return sendError(res, 403, "Cannot activate project from another vessel");
+      }
 
       await runAsync("UPDATE projects SET is_active = 0");
       await runAsync("UPDATE projects SET is_active = 1 WHERE id = ?", [id]);
@@ -167,6 +212,14 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
       const id = requireValidId(req, res);
       if (id === null) return;
 
+      const existing = await getOneCamelized("SELECT * FROM projects WHERE id = ?", [id]);
+      if (!existing) {
+        return sendError(res, 404, "Project not found");
+      }
+      if (req.vesselScope && existing.vesselTag !== req.vesselScope) {
+        return sendError(res, 403, "Cannot update project from another vessel");
+      }
+
       const bodyData = humps.decamelizeKeys(req.body);
       const {
         project_name,
@@ -179,6 +232,12 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
         use_rope_for_tail,
         comments,
       } = bodyData;
+
+      // Determine effective vessel tag for update.
+      let effectiveVesselTag = vessel_tag || existing.vesselTag || defaultConfig.vesselTag;
+      if (req.vesselScope) {
+        effectiveVesselTag = req.vesselScope;
+      }
 
       await runAsync(
         `UPDATE projects SET
@@ -194,7 +253,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
       WHERE id = ?`,
         [
           project_name || null,
-          vessel_tag || defaultConfig.vesselTag,
+          effectiveVesselTag,
           toInt(num_cables, defaultConfig.numCables),
           toInt(sections_per_cable, defaultConfig.sectionsPerCable),
           toInt(section_length, defaultConfig.sectionLength),
@@ -236,6 +295,11 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
 
   router.post("/api/projects/deactivate", authMiddleware, superUserOnly, async (_req, res) => {
     try {
+      // Deactivating all projects is a global operation; restrict to global superusers.
+      if (!isGlobalUser(_req.user)) {
+        return sendError(res, 403, "Grand SuperUser access required to deactivate all projects");
+      }
+
       await runAsync("UPDATE projects SET is_active = 0");
       await saveConfig({ activeProjectNumber: null });
       res.json({ success: true });
@@ -252,6 +316,10 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
 
       const project = await getAsync("SELECT * FROM projects WHERE id = ?", [id]);
       if (!project) return sendError(res, 404, "Project not found");
+
+      if (req.vesselScope && project.vessel_tag !== req.vesselScope) {
+        return sendError(res, 403, "Cannot delete project from another vessel");
+      }
 
       const eventCount = await getAsync(
         "SELECT COUNT(*) as count FROM cleaning_events WHERE project_number = ?",
@@ -286,6 +354,10 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
       const project = await getAsync("SELECT * FROM projects WHERE id = ?", [id]);
       if (!project) return sendError(res, 404, "Project not found");
 
+      if (req.vesselScope && project.vessel_tag !== req.vesselScope) {
+        return sendError(res, 403, "Cannot delete project from another vessel");
+      }
+
       await runAsync("DELETE FROM cleaning_events WHERE project_number = ?", [project.project_number]);
       await runAsync("DELETE FROM streamer_deployments WHERE project_id = ?", [id]);
       await runAsync("DELETE FROM projects WHERE id = ?", [id]);
@@ -300,6 +372,12 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
     try {
       const id = requireValidId(req, res);
       if (id === null) return;
+
+      const project = await getAsync("SELECT * FROM projects WHERE id = ?", [id]);
+      if (!project) return sendError(res, 404, "Project not found");
+      if (req.vesselScope && project.vessel_tag !== req.vesselScope) {
+        return sendError(res, 403, "Cannot view deployments for project from another vessel");
+      }
 
       const rows = await getAllCamelized(
         "SELECT streamer_id, deployment_date, is_coated FROM streamer_deployments WHERE project_id = ?",
@@ -324,6 +402,12 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
     try {
       const id = requireValidId(req, res);
       if (id === null) return;
+
+      const project = await getAsync("SELECT * FROM projects WHERE id = ?", [id]);
+      if (!project) return sendError(res, 404, "Project not found");
+      if (req.vesselScope && project.vessel_tag !== req.vesselScope) {
+        return sendError(res, 403, "Cannot update deployments for project from another vessel");
+      }
 
       const bodyData = humps.decamelizeKeys(req.body);
       for (const [streamerNum, data] of Object.entries(bodyData)) {
@@ -351,6 +435,12 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
       const id = requireValidId(req, res);
       if (id === null) return;
 
+      const project = await getAsync("SELECT * FROM projects WHERE id = ?", [id]);
+      if (!project) return sendError(res, 404, "Project not found");
+      if (req.vesselScope && project.vessel_tag !== req.vesselScope) {
+        return sendError(res, 403, "Cannot clear deployments for project from another vessel");
+      }
+
       const streamerId = toInt(req.params.streamerId, NaN);
       if (Number.isNaN(streamerId)) return sendError(res, 400, "Invalid streamer ID");
 
@@ -364,6 +454,11 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
 
   router.post("/api/cleanup-streamers", authMiddleware, superUserOnly, async (req, res) => {
     try {
+      // Cleanup across all projects/streamers is a global operation.
+      if (!isGlobalUser(req.user)) {
+        return sendError(res, 403, "Grand SuperUser access required to cleanup orphaned streamers");
+      }
+
       const { maxStreamerId } = req.body;
       const id = typeof maxStreamerId === "number" ? maxStreamerId : parseInt(maxStreamerId, 10);
       if (Number.isNaN(id) || id < 1) return sendError(res, 400, "Invalid maxStreamerId");

@@ -3,10 +3,10 @@
  * Call initProjects({ refreshEverything, renderHeatmap, refreshStatsFiltered }) before using.
  */
 
-import { config, projects, setConfig, setProjects, setSelectedProjectFilter } from "./state.js";
+import { config, projects, setConfig, setProjects, setSelectedProjectFilter, currentUser } from "./state.js";
 import * as API from "./api.js";
 import { safeGet, setStatus, showErrorToast, showWarningToast, showSuccessToast, showAccessDeniedToast } from "./ui.js";
-import { isSuperUser } from "./auth.js";
+import { isSuperUser, isGrandSuperUser } from "./auth.js";
 import { openModal, closeModal } from "./modals.js";
 
 let refreshCallbacks = {};
@@ -442,7 +442,7 @@ export function updateActiveProjectBanner() {
     nameEl.textContent = activeProject.projectName ? `${activeProject.projectNumber} - ${activeProject.projectName}` : activeProject.projectNumber;
     vesselEl.textContent = `[${activeProject.vesselTag || "TTN"}]`;
     banner.classList.add("has-project");
-    if (clearBtn && isSuperUser()) clearBtn.classList.remove("hidden");
+    if (clearBtn && isGrandSuperUser()) clearBtn.classList.remove("hidden");
     if (commentsEl) {
       commentsEl.value = activeProject.comments ?? "";
       commentsEl.disabled = !isSuperUser();

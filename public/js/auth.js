@@ -48,7 +48,12 @@ export async function validateSession() {
   try {
     const data = await fetchSession();
     if (data) {
-      setCurrentUser({ username: data.username, role: data.role });
+      setCurrentUser({
+        username: data.username,
+        role: data.role,
+        vesselTag: data.vesselTag ?? null,
+        isGlobal: Boolean(data.isGlobal),
+      });
       return true;
     }
     clearSession();
@@ -60,12 +65,21 @@ export async function validateSession() {
   }
 }
 
+export function isGrandSuperUser() {
+  return currentUser?.role === "grandsuperuser";
+}
+
 export function isSuperUser() {
-  return currentUser?.role === "superuser";
+  // Treat grand superuser as having all superuser capabilities in the UI.
+  return currentUser?.role === "superuser" || currentUser?.role === "grandsuperuser";
 }
 
 export function isAdminOrAbove() {
-  return currentUser?.role === "admin" || currentUser?.role === "superuser";
+  return (
+    currentUser?.role === "admin" ||
+    currentUser?.role === "superuser" ||
+    currentUser?.role === "grandsuperuser"
+  );
 }
 
 export function isAdmin() {
@@ -117,7 +131,12 @@ export async function handleLogin(event) {
     const data = await res.json();
 
     if (res.ok) {
-      saveSession(data.token, { username: data.username, role: data.role });
+      saveSession(data.token, {
+        username: data.username,
+        role: data.role,
+        vesselTag: data.vesselTag ?? null,
+        isGlobal: Boolean(data.isGlobal),
+      });
       showApp();
     } else {
       if (errorDiv) {
@@ -190,9 +209,19 @@ export function showApp() {
     userDisplayName.textContent = currentUser.username;
   }
   if (userRoleBadge && currentUser) {
-    userRoleBadge.textContent =
-      currentUser.role === "admin" ? "Administrator" : "Viewer";
-    userRoleBadge.className = `user-role-badge ${currentUser.role === "admin" ? "admin" : "viewer"}`;
+    if (currentUser.role === "grandsuperuser") {
+      userRoleBadge.textContent = "Grand Super User";
+      userRoleBadge.className = "user-role-badge superuser";
+    } else if (currentUser.role === "superuser") {
+      userRoleBadge.textContent = "Super User";
+      userRoleBadge.className = "user-role-badge superuser";
+    } else if (currentUser.role === "admin") {
+      userRoleBadge.textContent = "Administrator";
+      userRoleBadge.className = "user-role-badge admin";
+    } else {
+      userRoleBadge.textContent = "Viewer";
+      userRoleBadge.className = "user-role-badge viewer";
+    }
   }
 
   updateUIForRole();
@@ -204,6 +233,7 @@ export function showApp() {
 export function updateUIForRole() {
   const isSuperUserRole = isSuperUser();
   const isAdminRole = isAdminOrAbove();
+  const isGrandSuper = isGrandSuperUser();
 
   document.querySelectorAll(".superuser-only").forEach((el) =>
     el.classList.toggle("hidden", !isSuperUserRole)
@@ -218,7 +248,7 @@ export function updateUIForRole() {
   );
 
   const btnClearAll = safeGet("btn-clear-all");
-  if (btnClearAll) btnClearAll.classList.toggle("hidden", !isSuperUserRole);
+  if (btnClearAll) btnClearAll.classList.toggle("hidden", !isGrandSuper);
 
   const btnSaveConfig = safeGet("btn-save-config");
   if (btnSaveConfig) btnSaveConfig.classList.toggle("hidden", !isSuperUserRole);
@@ -254,7 +284,7 @@ export function updateUIForRole() {
 
   const btnClearProject = safeGet("btn-clear-project");
   if (btnClearProject) {
-    if (isSuperUserRole) {
+    if (isGrandSuper) {
       const activeProject = projects.find((p) => p.isActive === true);
       btnClearProject.classList.toggle("hidden", !activeProject);
     } else {

@@ -5,6 +5,7 @@ const fs = require("fs");
 const humps = require("humps");
 const { createBackup, BACKUP_DIR, DB_FILE } = require("../db");
 const { sendError } = require("../utils/errors");
+const { isGlobalUser } = require("../middleware/auth");
 
 /**
  * Create backups router (list, create, restore).
@@ -55,6 +56,11 @@ function createBackupsRouter(authMiddleware, superUserOnly) {
   router.post("/api/backups/:filename/restore", authMiddleware, superUserOnly, async (req, res) => {
     try {
       const { filename } = req.params;
+
+      // Restoring a backup replaces the entire database; restrict to global superusers.
+      if (!isGlobalUser(req.user)) {
+        return sendError(res, 403, "Grand SuperUser access required to restore backups");
+      }
       const backupPath = path.join(BACKUP_DIR, filename);
 
       if (!filename.startsWith("streamer_backup_") || !filename.endsWith(".db") || filename.includes("..")) {

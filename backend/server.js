@@ -68,7 +68,7 @@ const backupsRouter = createBackupsRouter(authMiddleware, superUserOnly);
 const configRouter = createConfigRouter(authMiddleware, superUserOnly);
 const projectsRouter = createProjectsRouter(authMiddleware, superUserOnly);
 const eventsRouter = createEventsRouter(authMiddleware, adminOrAbove);
-const statsRouter = createStatsRouter();
+const statsRouter = createStatsRouter(authMiddleware);
 
 app.use("/", authRouter);
 app.use("/", backupsRouter);
