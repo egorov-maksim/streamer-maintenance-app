@@ -12,11 +12,13 @@ CREATE TABLE IF NOT EXISTS app_config (
 );
 
 -- Cleaning events table - tracks all cleaning operations
+-- section_type: 'active' (indices 0..sectionsPerCable-1) or 'tail' (tail-relative 0..4)
 CREATE TABLE IF NOT EXISTS cleaning_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   streamer_id INTEGER NOT NULL,
   section_index_start INTEGER NOT NULL,
   section_index_end INTEGER NOT NULL,
+  section_type TEXT NOT NULL DEFAULT 'active' CHECK (section_type IN ('active', 'tail')),
   cleaning_method TEXT NOT NULL,
   cleaned_at TEXT NOT NULL,
   cleaning_count INTEGER DEFAULT 1,
@@ -30,6 +32,7 @@ CREATE TABLE IF NOT EXISTS cleaning_events (
 CREATE INDEX IF NOT EXISTS idx_cleaning_events_streamer ON cleaning_events(streamer_id);
 CREATE INDEX IF NOT EXISTS idx_cleaning_events_date ON cleaning_events(cleaned_at);
 CREATE INDEX IF NOT EXISTS idx_cleaning_events_project ON cleaning_events(project_number);
+CREATE INDEX IF NOT EXISTS idx_cleaning_events_section_type ON cleaning_events(section_type);
 
 -- Projects table - tracks all defined projects with their streamer configuration
 CREATE TABLE IF NOT EXISTS projects (

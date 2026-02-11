@@ -37,6 +37,19 @@ export function formatAS(sectionIndex) {
   return `AS${String(sectionIndex + 1).padStart(2, "0")}`;
 }
 
+/**
+ * Format section label by type: active -> AS01..AS107, tail -> T1..T5.
+ * @param {number} sectionIndex - 0-based (active 0..N-1 or tail-relative 0..4)
+ * @param {'active'|'tail'} sectionType
+ * @returns {string}
+ */
+export function formatSectionLabel(sectionIndex, sectionType) {
+  if (sectionType === "tail") {
+    return `T${sectionIndex + 1}`;
+  }
+  return formatAS(sectionIndex);
+}
+
 export function formatEB(num) {
   return `EB${String(num).padStart(2, "0")}`;
 }

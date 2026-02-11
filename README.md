@@ -147,8 +147,8 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 - **Auto-Naming**: Reports named with generation date
 
 ### 📤 CSV Import/Export
-- **Export Events**: Download all cleaning events as CSV file
-- **Import Events**: Bulk upload previously saved events
+- **Export Events**: Download all cleaning events as CSV file (includes Section Type: active or tail)
+- **Import Events**: Bulk upload previously saved events; supports both legacy format and Section Type column
 - **Backup Capability**: Create data backups for offline storage
 - **Data Migration**: Transfer data between systems or backup locations
 - **Format Preservation**: Maintains data integrity during import/export
@@ -424,7 +424,7 @@ npm start
 
 ### Issue: Cannot Import Events
 
-**Ensure CSV Format** (streamer_id is 1-12):
+**Ensure CSV Format** (streamer 1-12). Exported CSV uses: Streamer Number, Section Type (active/tail), First Section, Last Section (1-based within type), Cleaning Method, Date & Time, Project Number, Vessel Tag. Legacy import accepts 5+ columns without Section Type (global 1-based indices; backend splits active/tail).
 ```
 streamer_id,section_index_start,section_index_end,cleaning_method,cleaned_at,project_number,vessel_tag
 1,0,5,rope,2024-01-01T10:00:00Z,PRJ-001,TTN

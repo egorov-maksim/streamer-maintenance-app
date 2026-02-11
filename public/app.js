@@ -57,6 +57,7 @@ const ageBucket = StreamerUtils.ageBucket;
 const fmtKm = StreamerUtils.fmtKm;
 const getChannelRange = StreamerUtils.getChannelRange;
 const formatAS = StreamerUtils.formatAS;
+const formatSectionLabel = StreamerUtils.formatSectionLabel;
 const formatEB = StreamerUtils.formatEB;
 const getConfigForProject = StreamerUtils.getConfigForProject;
 const getSectionsPerCableWithTail = StreamerUtils.getSectionsPerCableWithTail;
@@ -102,14 +103,19 @@ function showSectionTooltip(e, streamerId, sectionIndex) {
 
   // Determine if it's a tail section
   const isTail = sectionIndex >= sectionsPerCable;
-  const sectionLabel = formatAS(sectionIndex);
+  const relIndex = isTail ? sectionIndex - sectionsPerCable : sectionIndex;
+  const sectionLabel = formatSectionLabel(relIndex, isTail ? 'tail' : 'active');
 
-  // Get cleaning history for this specific section
-  const sectionEvents = events.filter(evt =>
-    evt.streamerId === streamerId &&
-    sectionIndex >= evt.sectionIndexStart &&
-    sectionIndex <= evt.sectionIndexEnd
-  );
+  // Get cleaning history for this specific section (by section_type and indices)
+  const sectionEvents = events.filter(evt => {
+    if (evt.streamerId !== streamerId) return false;
+    if (isTail) {
+      if (evt.sectionType !== 'tail') return false;
+      return relIndex >= evt.sectionIndexStart && relIndex <= evt.sectionIndexEnd;
+    }
+    if (evt.sectionType !== 'active') return false;
+    return sectionIndex >= evt.sectionIndexStart && sectionIndex <= evt.sectionIndexEnd;
+  });
 
   const totalCleanings = sectionEvents.length;
 
@@ -289,13 +295,14 @@ async function addEvent() {
       vesselTag: config.vesselTag || 'TTN'
     };
 
-    await API.apiCall('api/events', {
+    const res = await API.apiCall('api/events', {
       method: 'POST',
       body: JSON.stringify(body),
       action: 'add events'
     });
 
-    setStatus(statusEl, '✅ Event added');
+    const count = Array.isArray(res?.created) ? res.created.length : 1;
+    setStatus(statusEl, count === 2 ? '✅ 2 events added (active + tail)' : '✅ Event added');
     await refreshEverything();
     await renderHeatmap();
     await refreshStatsFiltered();
@@ -314,8 +321,9 @@ async function deleteEvent(id) {
 
   safeGet('delete-event-id').value = evt.id;
   safeGet('delete-streamer-display').textContent = streamerNum;
-  safeGet('delete-range-display').textContent = `${formatAS(evt.sectionIndexStart)} – ${formatAS(evt.sectionIndexEnd)}`;
-  safeGet('delete-eb-display').textContent = await API.getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd);
+  const sectionType = evt.sectionType || 'active';
+  safeGet('delete-range-display').textContent = `${formatSectionLabel(evt.sectionIndexStart, sectionType)} – ${formatSectionLabel(evt.sectionIndexEnd, sectionType)}`;
+  safeGet('delete-eb-display').textContent = sectionType === 'tail' ? '—' : (await API.getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd)).ebRange;
   safeGet('delete-method-display').textContent = evt.cleaningMethod;
   safeGet('delete-date-display').textContent = formatDateTime(evt.cleanedAt);
   safeGet('delete-distance-display').textContent = `${eventDistance(evt)} m`;
@@ -536,17 +544,18 @@ function exportCsv() {
     return;
   }
 
-  const header = 'Streamer Number,First Section,Last Section,Cleaning Method,Date & Time,Project Number,Vessel Tag';
+  const header = 'Streamer Number,Section Type,First Section,Last Section,Cleaning Method,Date & Time,Project Number,Vessel Tag';
   const rows = [header];
 
   events.forEach(evt => {
     const streamerNum = evt.streamerId;
+    const sectionType = evt.sectionType || 'active';
     const startSection = evt.sectionIndexStart + 1;
     const endSection = evt.sectionIndexEnd + 1;
     const dateStr = new Date(evt.cleanedAt).toISOString();
     const projectNum = evt.projectNumber || '';
     const vesselTag = evt.vesselTag || 'TTN';
-    rows.push(`${streamerNum},${startSection},${endSection},${evt.cleaningMethod},"${dateStr}","${projectNum}","${vesselTag}"`);
+    rows.push(`${streamerNum},${sectionType},${startSection},${endSection},${evt.cleaningMethod},"${dateStr}","${projectNum}","${vesselTag}"`);
   });
 
   const csv = rows.join('\n');
@@ -609,24 +618,39 @@ async function handleCsvFile(file) {
     let successCount = 0;
     let errorCount = 0;
 
+    const hasSectionTypeColumn = dataLines.length > 0 && (() => {
+      const firstParts = parseCsvLine(dataLines[0].trim());
+      return firstParts.length >= 8 && (firstParts[1] === 'active' || firstParts[1] === 'tail');
+    })();
+
     for (let i = 0; i < dataLines.length; i++) {
       const line = dataLines[i].trim();
       if (!line) continue;
 
       const parts = parseCsvLine(line);
-      if (parts.length < 5) {
+      let streamerNum, startSection, endSection, method, dateTimeStr, projectNumber, vesselTag, sectionType;
+      if (hasSectionTypeColumn && parts.length >= 8 && (parts[1] === 'active' || parts[1] === 'tail')) {
+        streamerNum = parseInt(parts[0], 10);
+        sectionType = parts[1];
+        startSection = parseInt(parts[2], 10);
+        endSection = parseInt(parts[3], 10);
+        method = parts[4];
+        dateTimeStr = parts[5].replace(/"/g, '').trim();
+        projectNumber = parts[6] ? parts[6].replace(/"/g, '').trim() : null;
+        vesselTag = parts[7] ? parts[7].replace(/"/g, '').trim() : 'TTN';
+      } else if (parts.length >= 5) {
+        streamerNum = parseInt(parts[0], 10);
+        startSection = parseInt(parts[1], 10);
+        endSection = parseInt(parts[2], 10);
+        method = parts[3];
+        dateTimeStr = parts[4].replace(/"/g, '').trim();
+        projectNumber = parts[5] ? parts[5].replace(/"/g, '').trim() : null;
+        vesselTag = parts[6] ? parts[6].replace(/"/g, '').trim() : 'TTN';
+        sectionType = null;
+      } else {
         errorCount++;
         continue;
       }
-
-      const streamerNum = parseInt(parts[0], 10);
-      const startSection = parseInt(parts[1], 10);
-      const endSection = parseInt(parts[2], 10);
-      const method = parts[3];
-      const dateTimeStr = parts[4].replace(/"/g, '').trim();
-      // Optional: project_number and vessel_tag from CSV (columns 5 and 6)
-      const projectNumber = parts[5] ? parts[5].replace(/"/g, '').trim() : null;
-      const vesselTag = parts[6] ? parts[6].replace(/"/g, '').trim() : 'TTN';
 
       if (
         isNaN(streamerNum) ||
@@ -658,6 +682,7 @@ async function handleCsvFile(file) {
         projectNumber: projectNumber,
         vesselTag: vesselTag,
       };
+      if (sectionType) body.sectionType = sectionType;
 
       try {
         await API.apiCall('api/events', {
@@ -695,16 +720,19 @@ async function renderLog() {
   
   const isAdminUser = isAdminOrAbove();
 
-  // Fetch all EB ranges in parallel for performance
-  const ebRangePromises = events.map(evt => 
-    API.getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd)
+  // Fetch EB ranges for active events only; tail shows "—"
+  const ebRangePromises = events.map(evt =>
+    evt.sectionType === 'tail'
+      ? Promise.resolve('—')
+      : API.getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd).then(r => r.ebRange)
   );
   const ebRanges = await Promise.all(ebRangePromises);
 
   events.forEach((evt, idx) => {
     const tr = document.createElement('tr');
     const streamerNum = evt.streamerId;
-    const rangeLabel = `${formatAS(evt.sectionIndexEnd)}–${formatAS(evt.sectionIndexStart)}`;
+    const sectionType = evt.sectionType || 'active';
+    const rangeLabel = `${formatSectionLabel(evt.sectionIndexEnd, sectionType)}–${formatSectionLabel(evt.sectionIndexStart, sectionType)}`;
     const ebRange = ebRanges[idx];
     const distance = eventDistance(evt);
     const projectDisplay = evt.projectNumber || '<span style="color:#9ca3af">—</span>';
@@ -1312,10 +1340,14 @@ function updateModalSummary() {
 
   const min = Math.min(start, end);
   const max = Math.max(start, end);
-
-  const rangeText = `${formatAS(min)} – ${formatAS(max)}`;
-  const channelStart = getChannelRange(min).split('–')[0];
-  const channelEnd = getChannelRange(max).split('–')[1];
+  const sectionsPerCable = config.sectionsPerCable ?? 107;
+  const labelFor = (s) =>
+    s >= sectionsPerCable
+      ? formatSectionLabel(s - sectionsPerCable, 'tail')
+      : formatSectionLabel(s, 'active');
+  const rangeText = `${labelFor(min)} – ${labelFor(max)}`;
+  const channelStart = min < sectionsPerCable ? getChannelRange(min).split('–')[0] : '—';
+  const channelEnd = max < sectionsPerCable ? getChannelRange(max).split('–')[1] : '—';
   const channelText = `${channelStart} – ${channelEnd}`;
   const distance = (max - min + 1) * config.sectionLength;
 
@@ -1380,17 +1412,22 @@ async function confirmCleaning() {
       vesselTag: config.vesselTag || 'TTN'
     };
     
-    await API.apiCall('/api/events', {
+    const res = await API.apiCall('/api/events', {
       method: 'POST',
       body: JSON.stringify(body),
       action: 'add cleaning events'
     });
     
-    // Success
     closeConfirmationModal();
     await refreshEverything();
     await renderHeatmap();
     await refreshStatsFiltered();
+    const count = Array.isArray(res?.created) ? res.created.length : 1;
+    if (count === 2) {
+      showSuccessToast('Events added', '2 events added (active + tail).');
+    } else {
+      showSuccessToast('Event added', 'Cleaning event saved.');
+    }
   } catch (err) {
     console.error(err);
     showErrorToast('Save Failed', 'Failed to save cleaning event. Please try again.');

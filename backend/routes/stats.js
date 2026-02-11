@@ -18,10 +18,18 @@ function createStatsRouter() {
     try {
       const startSection = toInt(req.query.start, NaN);
       const endSection = toInt(req.query.end, NaN);
+      const sectionType = req.query.sectionType;
       if (Number.isNaN(startSection) || Number.isNaN(endSection)) {
         return sendError(res, 400, "start and end query params required");
       }
       const config = await loadConfig();
+      const sectionsPerCable = config.sectionsPerCable ?? 107;
+      const isTail =
+        sectionType === "tail" ||
+        (startSection >= sectionsPerCable && endSection >= sectionsPerCable);
+      if (isTail) {
+        return res.json({ ebRange: "—" });
+      }
       const ebRange = calculateEBRange(startSection, endSection, config);
       res.json({ ebRange });
     } catch (err) {
@@ -57,17 +65,23 @@ function createStatsRouter() {
       const totalDistance = totalSectionsCleaned * sectionLength;
 
       const allEvents = await getAllCamelized(
-        `SELECT streamer_id, section_index_start, section_index_end FROM cleaning_events${whereClause}`,
+        `SELECT streamer_id, section_index_start, section_index_end, section_type FROM cleaning_events${whereClause}`,
         params
       );
       const uniqueSections = new Set();
       const uniqueActiveSections = new Set();
       const uniqueTailSections = new Set();
       for (const evt of allEvents) {
+        const isTail = evt.sectionType === "tail";
+        const base = isTail ? sectionsPerCable : 0;
         for (let s = evt.sectionIndexStart; s <= evt.sectionIndexEnd; s++) {
-          uniqueSections.add(`${evt.streamerId}-${s}`);
-          if (s < sectionsPerCable) uniqueActiveSections.add(`${evt.streamerId}-${s}`);
-          else uniqueTailSections.add(`${evt.streamerId}-${s}`);
+          const globalIdx = base + s;
+          uniqueSections.add(`${evt.streamerId}-${globalIdx}`);
+          if (isTail) {
+            uniqueTailSections.add(`${evt.streamerId}-${globalIdx}`);
+          } else {
+            uniqueActiveSections.add(`${evt.streamerId}-${globalIdx}`);
+          }
         }
       }
 
@@ -96,7 +110,7 @@ function createStatsRouter() {
       const tailSections = config.useRopeForTail ? 0 : 5;
       const totalSections = sectionsPerCable + tailSections;
 
-      let sql = `SELECT streamer_id, section_index_start, section_index_end, cleaned_at FROM cleaning_events`;
+      let sql = `SELECT streamer_id, section_index_start, section_index_end, section_type, cleaned_at FROM cleaning_events`;
       const params = [];
       if (project) {
         sql += " WHERE project_number = ?";
@@ -112,8 +126,10 @@ function createStatsRouter() {
       for (const r of rows) {
         const arr = map[r.streamerId];
         if (!arr) continue;
-        for (let s = r.sectionIndexStart; s <= r.sectionIndexEnd && s < totalSections; s++) {
-          if (!arr[s]) arr[s] = r.cleanedAt;
+        const base = r.sectionType === "tail" ? sectionsPerCable : 0;
+        for (let s = r.sectionIndexStart; s <= r.sectionIndexEnd; s++) {
+          const idx = base + s;
+          if (idx < totalSections && !arr[idx]) arr[idx] = r.cleanedAt;
         }
       }
       res.json({ lastCleaned: map });
@@ -134,7 +150,7 @@ function createStatsRouter() {
 
       const { sql: whereSql, params: whereParams } = buildEventsWhereClause({ project, start, end });
       const sql =
-        `SELECT streamer_id, section_index_start, section_index_end, cleaned_at FROM cleaning_events` +
+        `SELECT streamer_id, section_index_start, section_index_end, section_type, cleaned_at FROM cleaning_events` +
         whereSql +
         " ORDER BY datetime(cleaned_at) DESC";
       const rows = await getAllCamelized(sql, whereParams);
@@ -146,8 +162,10 @@ function createStatsRouter() {
       for (const r of rows) {
         const arr = map[r.streamerId];
         if (!arr) continue;
-        for (let s = r.sectionIndexStart; s <= r.sectionIndexEnd && s < totalSections; s++) {
-          if (!arr[s]) arr[s] = r.cleanedAt;
+        const base = r.sectionType === "tail" ? sectionsPerCable : 0;
+        for (let s = r.sectionIndexStart; s <= r.sectionIndexEnd; s++) {
+          const idx = base + s;
+          if (idx < totalSections && !arr[idx]) arr[idx] = r.cleanedAt;
         }
       }
       res.json({ lastCleaned: map });
@@ -182,10 +200,16 @@ function createStatsRouter() {
       for (const r of rows) {
         const len = (r.sectionIndexEnd - r.sectionIndexStart + 1) * sectionLength;
         byMethod[r.cleaningMethod] = (byMethod[r.cleaningMethod] || 0) + len;
+        const isTail = r.sectionType === "tail";
+        const base = isTail ? sectionsPerCable : 0;
         for (let s = r.sectionIndexStart; s <= r.sectionIndexEnd; s++) {
-          uniqueSections.add(`${r.streamerId}-${s}`);
-          if (s < sectionsPerCable) uniqueActiveSections.add(`${r.streamerId}-${s}`);
-          else uniqueTailSections.add(`${r.streamerId}-${s}`);
+          const globalIdx = base + s;
+          uniqueSections.add(`${r.streamerId}-${globalIdx}`);
+          if (isTail) {
+            uniqueTailSections.add(`${r.streamerId}-${globalIdx}`);
+          } else {
+            uniqueActiveSections.add(`${r.streamerId}-${globalIdx}`);
+          }
         }
       }
       res.json({

@@ -6,6 +6,7 @@ const { defaultConfig, loadConfig } = require("../config");
 const { requireValidId } = require("../utils/validation");
 const { sendError } = require("../utils/errors");
 const { ROLES } = require("../middleware/auth");
+const { splitSectionRange, validateRangeForType } = require("../utils/sectionType");
 
 /**
  * Create events router (CRUD, bulk delete).
@@ -41,6 +42,7 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
         streamer_id,
         section_index_start,
         section_index_end,
+        section_type: body_section_type,
         cleaning_method,
         cleaned_at,
         cleaning_count,
@@ -58,30 +60,72 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
         return sendError(res, 400, "Invalid payload");
       }
 
+      const config = await loadConfig();
       let finalProjectNumber = project_number;
       let finalVesselTag = vessel_tag || defaultConfig.vesselTag;
-      if (!finalProjectNumber) {
-        const config = await loadConfig();
+      if (finalProjectNumber === undefined || finalProjectNumber === null) {
         finalProjectNumber = config.activeProjectNumber || null;
         finalVesselTag = config.vesselTag;
       }
+      const count = Number.isFinite(cleaning_count) ? cleaning_count : 1;
 
-      const result = await runAsync(
-        `INSERT INTO cleaning_events (streamer_id, section_index_start, section_index_end, cleaning_method, cleaned_at, cleaning_count, project_number, vessel_tag)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          streamer_id,
+      const insertOne = async (sectionType, start, end) => {
+        const result = await runAsync(
+          `INSERT INTO cleaning_events (streamer_id, section_index_start, section_index_end, section_type, cleaning_method, cleaned_at, cleaning_count, project_number, vessel_tag)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            streamer_id,
+            start,
+            end,
+            sectionType,
+            cleaning_method,
+            cleaned_at,
+            count,
+            finalProjectNumber,
+            finalVesselTag,
+          ]
+        );
+        return getOneCamelized("SELECT * FROM cleaning_events WHERE id = ?", [result.lastID]);
+      };
+
+      const explicitSectionType = body_section_type === "active" || body_section_type === "tail" ? body_section_type : null;
+      if (explicitSectionType) {
+        const validation = validateRangeForType(
           section_index_start,
           section_index_end,
-          cleaning_method,
-          cleaned_at,
-          Number.isFinite(cleaning_count) ? cleaning_count : 1,
-          finalProjectNumber,
-          finalVesselTag,
-        ]
+          explicitSectionType,
+          config
+        );
+        if (!validation.valid) {
+          return sendError(res, 400, validation.message);
+        }
+        const created = await insertOne(explicitSectionType, section_index_start, section_index_end);
+        return res.json(created);
+      }
+
+      const { active, tail } = splitSectionRange(
+        section_index_start,
+        section_index_end,
+        config
       );
-      const created = await getOneCamelized("SELECT * FROM cleaning_events WHERE id = ?", [result.lastID]);
-      res.json(created);
+
+      if (!active && !tail) {
+        return sendError(res, 400, "Section range out of bounds or tail sections not configured");
+      }
+
+      if (active && tail) {
+        const [createdActive, createdTail] = await Promise.all([
+          insertOne("active", active.start, active.end),
+          insertOne("tail", tail.start, tail.end),
+        ]);
+        return res.json({ created: [createdActive, createdTail] });
+      }
+      if (active) {
+        const created = await insertOne("active", active.start, active.end);
+        return res.json(created);
+      }
+      const created = await insertOne("tail", tail.start, tail.end);
+      return res.json(created);
     } catch (err) {
       console.error(err);
       sendError(res, 500, "Failed to create event");
@@ -98,6 +142,7 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
         streamer_id,
         section_index_start,
         section_index_end,
+        section_type: body_section_type,
         cleaning_method,
         cleaned_at,
         cleaning_count,
@@ -115,17 +160,30 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
       }
 
       const existing = await getOneCamelized("SELECT * FROM cleaning_events WHERE id = ?", [id]);
+      const sectionType = body_section_type ?? existing?.sectionType ?? "active";
+      const config = await loadConfig();
+      const validation = validateRangeForType(
+        section_index_start,
+        section_index_end,
+        sectionType,
+        config
+      );
+      if (!validation.valid) {
+        return sendError(res, 400, validation.message);
+      }
+
       const finalProjectNumber = project_number !== undefined ? project_number : (existing?.projectNumber || null);
       const finalVesselTag = vessel_tag !== undefined ? vessel_tag : (existing?.vesselTag || defaultConfig.vesselTag);
 
       await runAsync(
         `UPDATE cleaning_events
-       SET streamer_id = ?, section_index_start = ?, section_index_end = ?, cleaning_method = ?, cleaned_at = ?, cleaning_count = ?, project_number = ?, vessel_tag = ?
+       SET streamer_id = ?, section_index_start = ?, section_index_end = ?, section_type = ?, cleaning_method = ?, cleaned_at = ?, cleaning_count = ?, project_number = ?, vessel_tag = ?
        WHERE id = ?`,
         [
           streamer_id,
           section_index_start,
           section_index_end,
+          sectionType,
           cleaning_method,
           cleaned_at,
           Number.isFinite(cleaning_count) ? cleaning_count : 1,

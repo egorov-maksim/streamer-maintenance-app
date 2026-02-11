@@ -5,7 +5,7 @@
 
 import { safeGet, setStatus } from "./js/ui.js";
 import { config, getActiveProject } from "./js/state.js";
-import { formatAS, eventDistance, fmtKm, ageBucket } from "./js/streamer-utils.js";
+import { formatAS, formatSectionLabel, eventDistance, fmtKm, ageBucket } from "./js/streamer-utils.js";
 import { getAuthHeaders, getEBRange } from "./js/api.js";
 
 // Color map for heatmap
@@ -363,9 +363,11 @@ async function addHeatmapPage(doc, lastCleaned, title) {
   for (let s = 0; s < totalSections; s++) {
     const rowY = startY + s * cellHeight;
 
-    // Section number on left (AS01, AS02, etc.) - show every 5 sections
+    // Section number on left (AS01..AS107 or T1..T5) - show every 5 sections
     if (s % 5 === 0 || s === 0 || s === totalSections - 1) {
-      const sectionLabel = formatAS(s);
+      const sectionLabel = s < sectionsPerCable
+        ? formatSectionLabel(s, 'active')
+        : formatSectionLabel(s - sectionsPerCable, 'tail');
       doc.setTextColor(0, 0, 0);
       doc.text(sectionLabel, leftMargin + 12, rowY + cellHeight / 2 + 1, { align: 'right' });
     }
@@ -474,7 +476,11 @@ async function addAllEventsSection(doc) {
 
   // Fetch all EB ranges in parallel for performance
   const ebRanges = await Promise.all(
-    eventsToShow.map(evt => getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd))
+    eventsToShow.map(evt =>
+      evt.sectionType === 'tail'
+        ? Promise.resolve('—')
+        : getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd).then(r => r.ebRange)
+    )
   );
 
   for (let i = 0; i < eventsToShow.length; i++) {
@@ -491,7 +497,8 @@ async function addAllEventsSection(doc) {
 
     const date = new Date(evt.cleanedAt).toLocaleDateString();
     const streamer = `S${evt.streamerId}`;
-    const sections = `${formatAS(evt.sectionIndexStart)} - ${formatAS(evt.sectionIndexEnd)}`;
+    const sectionType = evt.sectionType || 'active';
+    const sections = `${formatSectionLabel(evt.sectionIndexStart, sectionType)} - ${formatSectionLabel(evt.sectionIndexEnd, sectionType)}`;
     const ebRange = ebRanges[i];
     const distance = `${eventDistance(evt)}m`;
     const count = evt.cleaningCount || 1;
