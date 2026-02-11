@@ -363,7 +363,7 @@ async function addHeatmapPage(doc, lastCleaned, title) {
   for (let s = 0; s < totalSections; s++) {
     const rowY = startY + s * cellHeight;
 
-    // Section number on left (AS01..AS107 or T1..T5) - show every 5 sections
+    // Section number on left (AS01..AS107 or Tail 1..Tail 5) - show every 5 sections
     if (s % 5 === 0 || s === 0 || s === totalSections - 1) {
       const sectionLabel = s < sectionsPerCable
         ? formatSectionLabel(s, 'active')

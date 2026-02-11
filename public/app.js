@@ -1100,7 +1100,7 @@ async function renderHeatmap() {
         tailCell.dataset.streamer = streamerId;
         tailCell.dataset.section = tailIdx;
         tailCell.dataset.isTail = 'true';
-        tailCell.textContent = `T${t + 1}`;
+        tailCell.textContent = formatSectionLabel(t, 'tail');
 
         const lastDate = sections[tailIdx] || null;
         let days = null;
