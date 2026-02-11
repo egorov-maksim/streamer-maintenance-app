@@ -1291,33 +1291,46 @@ function clearDragState() {
 
 /* ------------ Modal Confirmation ------------ */
 
+let confirmationModalTailOnly = false;
+
 function showConfirmationModal() {
   if (!dragState.active || isFinalizing) return;
   dragState.active = false;
   
   const { streamerId, start, end } = dragState;
+  const sectionsPerCable = config.sectionsPerCable ?? 107;
   const min = Math.min(start, end);
   const max = Math.max(start, end);
   const streamerNum = streamerId;
-    const streamerInput = safeGet('modal-streamer');
+  const streamerInput = safeGet('modal-streamer');
   const startInput = safeGet('modal-start');
   const endInput = safeGet('modal-end');
   const methodSelect = safeGet('modal-method');
   
-  // Calculate the TRUE max section including tails from current config
   const totalSections = getSectionsPerCableWithTail(config);
-  
-  // Set max attributes based on ACTUAL config (not validation)
+  const tailOnly = min >= sectionsPerCable;
+
   streamerInput.max = config.numCables;
   startInput.min = 1;
-  startInput.max = totalSections;  // ✅ Use calculated value, not validation
   endInput.min = 1;
-  endInput.max = totalSections;    // ✅ Use calculated value, not validation
-  
-  // Set values WITHOUT clamping or validation
+  if (tailOnly) {
+    confirmationModalTailOnly = true;
+    startInput.max = 5;
+    endInput.max = 5;
+    startInput.value = min - sectionsPerCable + 1;  // Tail 1-based 1..5
+    endInput.value = max - sectionsPerCable + 1;
+    safeGet('modal-first-section-label').childNodes[0].textContent = 'First Tail Section ';
+    safeGet('modal-last-section-label').childNodes[0].textContent = 'Last Tail Section ';
+  } else {
+    confirmationModalTailOnly = false;
+    startInput.max = totalSections;
+    endInput.max = totalSections;
+    startInput.value = min + 1;  // Global 1-based
+    endInput.value = max + 1;
+    safeGet('modal-first-section-label').childNodes[0].textContent = 'First Section ';
+    safeGet('modal-last-section-label').childNodes[0].textContent = 'Last Section ';
+  }
   streamerInput.value = streamerNum;
-  startInput.value = min + 1;  // Convert 0-based to 1-based
-  endInput.value = max + 1;    // Convert 0-based to 1-based
   methodSelect.value = selectedMethod;
 
   const now = new Date();
@@ -1335,12 +1348,20 @@ function showConfirmationModal() {
 }
 
 function updateModalSummary() {
-  const start = parseInt(safeGet('modal-start').value || 1, 10) - 1;
-  const end = parseInt(safeGet('modal-end').value || 1, 10) - 1;
-
-  const min = Math.min(start, end);
-  const max = Math.max(start, end);
   const sectionsPerCable = config.sectionsPerCable ?? 107;
+  let min;
+  let max;
+  if (confirmationModalTailOnly) {
+    const startVal = parseInt(safeGet('modal-start').value || 1, 10) - 1;
+    const endVal = parseInt(safeGet('modal-end').value || 1, 10) - 1;
+    min = Math.min(startVal, endVal) + sectionsPerCable;
+    max = Math.max(startVal, endVal) + sectionsPerCable;
+  } else {
+    const start = parseInt(safeGet('modal-start').value || 1, 10) - 1;
+    const end = parseInt(safeGet('modal-end').value || 1, 10) - 1;
+    min = Math.min(start, end);
+    max = Math.max(start, end);
+  }
   const labelFor = (s) =>
     s >= sectionsPerCable
       ? formatSectionLabel(s - sectionsPerCable, 'tail')
@@ -1357,6 +1378,7 @@ function updateModalSummary() {
 }
 
 function closeConfirmationModal() {
+  confirmationModalTailOnly = false;
   safeGet('confirmation-modal').classList.remove('show');
   clearDragState();
   setIsFinalizing(false);
@@ -1373,15 +1395,18 @@ async function confirmCleaning() {
   setIsFinalizing(true);
   
   const streamerNum = parseInt(safeGet('modal-streamer').value, 10);
-  const startSection = parseInt(safeGet('modal-start').value, 10);
-  const endSection = parseInt(safeGet('modal-end').value, 10);
+  const sectionsPerCable = config.sectionsPerCable ?? 107;
+  let startSection = parseInt(safeGet('modal-start').value, 10);
+  let endSection = parseInt(safeGet('modal-end').value, 10);
+  if (confirmationModalTailOnly) {
+    startSection = (startSection - 1) + sectionsPerCable + 1;
+    endSection = (endSection - 1) + sectionsPerCable + 1;
+  }
   const method = safeGet('modal-method').value;
   
-  // Get active project for validation
   const activeProject = projects.find(p => p.isActive);
   const projectNumber = activeProject ? activeProject.projectNumber : null;
   
-  // Use unified validation WITH project number
   const validation = validateStreamerAndSections(streamerNum, startSection, endSection, projectNumber);
   if (!validation.valid) {
     showErrorToast('Out of Range', validation.message);
@@ -1389,7 +1414,6 @@ async function confirmCleaning() {
     return;
   }
   
-  // Convert to 0-based indices
   const actualStart = Math.min(startSection, endSection) - 1;
   const actualEnd = Math.max(startSection, endSection) - 1;
   const streamerId = streamerNum;
