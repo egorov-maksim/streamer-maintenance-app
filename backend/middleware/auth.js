@@ -82,16 +82,6 @@ function adminOrAbove(req, res, next) {
   next();
 }
 
-/**
- * Express middleware: allow only admin role (legacy, for backward compatibility).
- */
-function adminOnly(req, res, next) {
-  if (req.user?.role !== "admin") {
-    return res.status(403).json({ error: "Admin access required" });
-  }
-  next();
-}
-
 module.exports = {
   ROLES,
   loadUsersFromEnv,
@@ -99,5 +89,4 @@ module.exports = {
   createAuthMiddleware,
   superUserOnly,
   adminOrAbove,
-  adminOnly,
 };

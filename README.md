@@ -207,7 +207,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 - **Node.js** 14.0 or higher
 - **npm** 6.0 or higher
 - **git** (for cloning the repository)
-- **jsPDF library** - Required for PDF report generation
+- **jsPDF library** (4.x) - Required for PDF report generation; see [INSTALL.md](INSTALL.md) for download
 
 ### Quick Start
 
@@ -219,7 +219,7 @@ cd streamer-maintenance-app
 npm install
 
 # 3. Configure environment (optional - see below for defaults)
-cp file.env .env  # Review and edit if needed
+cp .env.example .env  # Review and edit if needed
 
 # 4. Start the server
 npm start
@@ -238,7 +238,7 @@ The application will:
 
 ### Environment Configuration
 
-Create a `.env` file in the root directory:
+Create a `.env` file in the root directory (copy from `.env.example` for a template with safe defaults):
 
 ```env
 # Server
@@ -499,20 +499,47 @@ streamer_id,section_index_start,section_index_end,cleaning_method,cleaned_at,pro
 ```
 streamer-maintenance-app/
 ├── backend/
-│   ├── server.js          # Express server & API endpoints
+│   ├── server.js          # Express server & API entry
 │   ├── db.js              # SQLite database setup
+│   ├── config.js          # App config (port, CORS, etc.)
 │   ├── schema.sql         # Database schema
-│   └── pdf-generator.js   # PDF report generation
+│   ├── middleware/
+│   │   └── auth.js        # Session auth & role middleware
+│   ├── routes/
+│   │   ├── auth.js        # Login / session endpoints
+│   │   ├── backups.js     # Backup list / create / restore
+│   │   ├── config.js      # App & streamer config API
+│   │   ├── events.js      # Cleaning events CRUD
+│   │   ├── projects.js    # Projects CRUD
+│   │   └── stats.js       # Statistics & aggregates
+│   └── utils/
+│       ├── eb.js          # eBird module helpers
+│       ├── errors.js      # Error response helpers
+│       ├── queryHelpers.js
+│       └── validation.js
 ├── public/
-|   ├── libs/
-│   │   └── jspdf.umd.min.js  # jsPDF library 
 │   ├── index.html         # Main UI
-│   ├── app.js             # Frontend logic
-│   └── styles.css         # UI styling
-├── backup/                # Automated backup directory
-├── .env                   # Environment configuration
-├── package.json           # Dependencies
-└── README.md              # This file
+│   ├── app.js             # Frontend entry & orchestration
+│   ├── styles.css         # UI styling
+│   ├── pdf-generator.js   # PDF report generation
+│   ├── libs/
+│   │   └── jspdf.umd.min.js  # jsPDF 4.x (see INSTALL.md)
+│   └── js/
+│       ├── api.js         # API client
+│       ├── auth.js        # Auth state & login
+│       ├── modals.js      # Modal UI
+│       ├── projects.js    # Project UI logic
+│       ├── state.js       # App state
+│       ├── streamer-utils.js
+│       └── ui.js          # UI helpers
+├── backup/                # Automated backup directory (created at runtime)
+├── .env                   # Environment config (copy from .env.example)
+├── .env.example           # Example env template
+├── package.json           # Dependencies & scripts
+├── API.md                 # API reference
+├── INSTALL.md             # Installation guide
+├── README.md              # This file
+└── verify-schema.sh       # Schema verification script
 ```
 
 ---
@@ -553,8 +580,10 @@ This project is provided as-is for TGS marine survey operations.
 
 ---
 
-**Version**: 2.0.0  
+**Version**: 1.2.0  
 **Last Updated**: January 2026  
 **Node.js Required**: 14.0+  
 **Author**: Maksim Egorov  
-**Vessel**: Ramform Titan, Brazil
+**Vessel**: Ramform Titan, Brazil  
+
+**Documentation:** [INSTALL.md](INSTALL.md) (installation), [TESTING.md](TESTING.md) (testing), [API.md](API.md) (API reference).

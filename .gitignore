@@ -5,7 +5,6 @@ npm-debug.log*
 backup/
 .gitignore
 .cursorrules
-package-lock.json
 .DS_Store
 backend/streamer.db-shm
 backend/streamer.db-wal
@@ -18,21 +17,11 @@ public/DS_Store
 legacy-removal.md
 
 .cursor
-e2e/
+
+# Test suite and artifacts (app-only repo: testing/ not committed)
+testing/
 playwright-report/
 test-results/
-tests/
-API.md
-playwright.config.js
-TEST_IMPLEMENTATION.md
-TEST_STATUS.md
-TEST_SUMMARY.md
-TEST_GUIDE.md
-testing-results.md
-TESTS.md    
-TESTS_QUICKREF.md
-verify-schema.sh
-TESTING_GUIDE.md
 test.db
 test.db-shm
 test.db-wal

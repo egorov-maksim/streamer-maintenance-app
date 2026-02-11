@@ -47,14 +47,14 @@ Wait 1-2 minutes for installation to complete.
 
 ### 4. Install jsPDF Library (REQUIRED)
 
-Download and place the jsPDF library for PDF report generation:
+Download and place the jsPDF 4.x library for PDF report generation:
 
 ```bash
 # Create libs directory
 mkdir -p public/libs
 
-# Download jsPDF (macOS/Linux)
-curl -o public/libs/jspdf.umd.min.js https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js
+# Download jsPDF 4.x (macOS/Linux)
+curl -o public/libs/jspdf.umd.min.js https://unpkg.com/jspdf@4.0.0/dist/jspdf.umd.min.js
 
 # Or download manually from the URL above and place in public/libs/
 ```
@@ -91,9 +91,7 @@ Starting automated database backup scheduler...
 
 Navigate to: **http://localhost:3000**
 
-**Default Login Credentials:**
-- Admin: `xxx` / `xxx`
-- Viewer: `xxx` / `xxx`
+**Default Login Credentials:** See `.env` (AUTH_USERS). Configure users in `.env` or copy from `.env.example`; see [README.md](README.md) for format.
 
 ---
 
@@ -134,8 +132,8 @@ npm start
 # Verify file exists
 ls public/libs/jspdf.umd.min.js
 
-# If missing, download it:
-curl -o public/libs/jspdf.umd.min.js https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js
+# If missing, download jsPDF 4.x:
+curl -o public/libs/jspdf.umd.min.js https://unpkg.com/jspdf@4.0.0/dist/jspdf.umd.min.js
 ```
 
 ### Database Lock Error
@@ -236,19 +234,19 @@ Use the web interface:
 4. **Generate Report**: Test PDF generation
 5. **Set Up Backups**: Configure automated backups
 
-Read the full [README.md](README.md) for complete feature documentation.
+**Documentation:** [README.md](README.md) (overview), [TESTING.md](TESTING.md) (test setup), [API.md](API.md) (API reference).
 
 ---
 
 ## 📞 Support
 
-- **Documentation**: See [README.md](README.md)
+- **Documentation**: [README.md](README.md), [TESTING.md](TESTING.md), [API.md](API.md)
 - **Issues**: Check troubleshooting section above
 - **Contact**: maksim.egorov@tgs.com
 
 ---
 
-**Version**: 2.0.0  
+**Version**: 1.2.0  
 **Last Updated**: January 2026  
 **Node.js Required**: 14.0+
 
