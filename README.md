@@ -99,7 +99,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
   - Project number
   - Vessel tag
   - Cable/Streamer number
-  - Section range (e.g., AS01-AS10)
+  - Section range (e.g., AS01-AS10 for active; Tail 1–Tail 5 for tail). For a crossing range (active + tail), the log shows **two separate rows** (one active, one tail), not a single contiguous range.
   - eBird range affected
   - Total distance cleaned (meters)
   - Cleaning method used

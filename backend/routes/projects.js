@@ -177,6 +177,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
         module_frequency,
         channels_per_section,
         use_rope_for_tail,
+        comments,
       } = bodyData;
 
       await runAsync(
@@ -188,7 +189,8 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
         section_length = ?,
         module_frequency = ?,
         channels_per_section = ?,
-        use_rope_for_tail = ?
+        use_rope_for_tail = ?,
+        comments = ?
       WHERE id = ?`,
         [
           project_name || null,
@@ -199,6 +201,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
           toInt(module_frequency, defaultConfig.moduleFrequency),
           toInt(channels_per_section, defaultConfig.channelsPerSection),
           use_rope_for_tail === false ? 0 : 1,
+          comments !== undefined ? comments : null,
           id,
         ]
       );

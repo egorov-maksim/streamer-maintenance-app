@@ -233,6 +233,12 @@ export function updateUIForRole() {
     input.disabled = !isSuperUserRole;
   });
 
+  const projectCommentsEl = safeGet("project-comments");
+  if (projectCommentsEl) {
+    const activeProject = projects.find((p) => p.isActive === true);
+    projectCommentsEl.disabled = !isSuperUserRole || !activeProject;
+  }
+
   const manualEntryInputs = document.querySelectorAll(
     "#evt-streamer, #evt-start, #evt-end, #evt-method, #evt-date, #evt-time"
   );

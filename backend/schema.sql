@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS projects (
   section_length INTEGER DEFAULT 75,
   module_frequency INTEGER DEFAULT 4,
   channels_per_section INTEGER DEFAULT 6,
-  use_rope_for_tail INTEGER DEFAULT 1
+  use_rope_for_tail INTEGER DEFAULT 1,
+  comments TEXT
 );
 
 -- Streamer deployments table - per-streamer deployment configuration

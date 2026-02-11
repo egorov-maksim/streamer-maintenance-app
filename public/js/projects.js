@@ -81,10 +81,12 @@ export async function saveProjectConfig(projectId) {
   try {
     const formConfig = getConfigFromForm();
     const activeProject = projects.find((p) => p.id === projectId);
+    const commentsEl = safeGet("project-comments");
     const body = {
       projectName: activeProject?.projectName || null,
       vesselTag: activeProject?.vesselTag || "TTN",
       ...formConfig,
+      comments: commentsEl ? (commentsEl.value?.trim() || null) : null,
     };
     const updated = await API.updateProject(projectId, body);
     setConfig({ ...config, ...updated });
@@ -402,6 +404,8 @@ export function updateActiveProjectBanner() {
   const nameEl = safeGet("active-project-name");
   const vesselEl = safeGet("active-project-vessel");
   const clearBtn = safeGet("btn-clear-project");
+  const commentsEl = safeGet("project-comments");
+  const commentsBlock = safeGet("project-comments-block");
   if (!banner || !nameEl) return;
   const activeProject = projects.find((p) => p.isActive === true);
   if (activeProject) {
@@ -409,11 +413,21 @@ export function updateActiveProjectBanner() {
     vesselEl.textContent = `[${activeProject.vesselTag || "TTN"}]`;
     banner.classList.add("has-project");
     if (clearBtn && isSuperUser()) clearBtn.classList.remove("hidden");
+    if (commentsEl) {
+      commentsEl.value = activeProject.comments ?? "";
+      commentsEl.disabled = !isSuperUser();
+    }
+    if (commentsBlock) commentsBlock.style.display = "";
   } else {
     nameEl.textContent = "No project selected";
     vesselEl.textContent = "";
     banner.classList.remove("has-project");
     if (clearBtn) clearBtn.classList.add("hidden");
+    if (commentsEl) {
+      commentsEl.value = "";
+      commentsEl.disabled = true;
+    }
+    if (commentsBlock) commentsBlock.style.display = "none";
   }
 }
 
