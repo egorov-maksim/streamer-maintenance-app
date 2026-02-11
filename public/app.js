@@ -1818,6 +1818,7 @@ function setupEventListeners() {
   safeGet('btn-create-project')?.addEventListener('click', Projects.createProject);
   safeGet('btn-activate-project')?.addEventListener('click', Projects.activateSelectedProject);
   safeGet('btn-clear-project')?.addEventListener('click', Projects.clearActiveProject);
+  safeGet('btn-save-project-comments')?.addEventListener('click', Projects.saveProjectComments);
 
   // Project selector change event (for filtering)
   safeGet('project-selector')?.addEventListener('change', (e) => {

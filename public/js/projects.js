@@ -101,6 +101,36 @@ export async function saveProjectConfig(projectId) {
   }
 }
 
+/** Save only the project comments field. Uses full project body so other fields are not overwritten. */
+export async function saveProjectComments() {
+  const statusEl = safeGet("project-comments-status");
+  if (!isSuperUser()) {
+    setStatus(statusEl, "SuperUser access required", true);
+    return;
+  }
+  const activeProject = projects.find((p) => p.isActive === true);
+  if (!activeProject) {
+    setStatus(statusEl, "No active project", true);
+    return;
+  }
+  try {
+    const commentsEl = safeGet("project-comments");
+    const formConfig = getConfigFromForm();
+    const body = {
+      projectName: activeProject.projectName || null,
+      vesselTag: activeProject.vesselTag || "TTN",
+      ...formConfig,
+      comments: commentsEl ? (commentsEl.value?.trim() || null) : null,
+    };
+    await API.updateProject(activeProject.id, body);
+    setStatus(statusEl, "✅ Comments saved");
+    await loadProjects();
+  } catch (err) {
+    console.error(err);
+    setStatus(statusEl, "Failed to save comments", true);
+  }
+}
+
 export async function saveGlobalConfig() {
   const statusEl = safeGet("config-status");
   const previousNumCables = config.numCables;
