@@ -1830,6 +1830,15 @@ function setupEventListeners() {
   safeGet('btn-clear-one-deployment-confirm')?.addEventListener('click', () => Projects.confirmClearOneDeployment());
   document.querySelector('#clear-one-deployment-modal .modal-overlay')?.addEventListener('click', Projects.closeClearOneDeploymentModal);
 
+  // Modal - Cleanup Orphaned Streamers
+  safeGet('btn-cleanup-orphaned-close')?.addEventListener('click', Projects.closeCleanupOrphanedModal);
+  safeGet('btn-cleanup-orphaned-cancel')?.addEventListener('click', Projects.closeCleanupOrphanedModal);
+  safeGet('btn-cleanup-orphaned-confirm')?.addEventListener('click', async () => {
+    await Projects.performCleanupOrphanedStreamers();
+    Projects.closeCleanupOrphanedModal();
+  });
+  document.querySelector('#cleanup-orphaned-modal .modal-overlay')?.addEventListener('click', Projects.closeCleanupOrphanedModal);
+
   // Modal - Confirmation
   safeGet('btn-modal-close')?.addEventListener('click', closeConfirmationModal);
   safeGet('btn-modal-cancel')?.addEventListener('click', closeConfirmationModal);

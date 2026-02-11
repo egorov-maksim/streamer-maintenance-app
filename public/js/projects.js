@@ -7,6 +7,7 @@ import { config, projects, setConfig, setProjects, setSelectedProjectFilter } fr
 import * as API from "./api.js";
 import { safeGet, setStatus, showErrorToast, showWarningToast, showSuccessToast, showAccessDeniedToast } from "./ui.js";
 import { isSuperUser } from "./auth.js";
+import { openModal, closeModal } from "./modals.js";
 
 let refreshCallbacks = {};
 
@@ -128,16 +129,26 @@ export async function handleStreamerCountChange(previousNumCables, newNumCables)
   if (refreshCallbacks.renderHeatmap) await refreshCallbacks.renderHeatmap();
 }
 
-export async function cleanupOrphanedStreamers() {
+/** Opens the cleanup orphaned streamers modal and sets the "streamers affected" range. Call from button click. */
+export function cleanupOrphanedStreamers() {
   if (!isSuperUser()) {
     showAccessDeniedToast("cleanup orphaned streamers");
     return;
   }
   const maxId = config.numCables;
-  const confirmed = confirm(
-    `This will permanently delete all events and deployment configurations for streamers ${maxId + 1}-12.\n\nThis cannot be undone. Continue?`
-  );
-  if (!confirmed) return;
+  const rangeEl = safeGet("cleanup-orphaned-range");
+  if (rangeEl) rangeEl.textContent = `Streamers ${maxId + 1} and above`;
+  openModal("cleanup-orphaned-modal");
+}
+
+/** Closes the cleanup orphaned streamers modal. */
+export function closeCleanupOrphanedModal() {
+  closeModal("cleanup-orphaned-modal");
+}
+
+/** Performs the cleanup API call. Call from modal confirm button. Caller should close the modal after. */
+export async function performCleanupOrphanedStreamers() {
+  const maxId = config.numCables;
   try {
     const data = await API.cleanupStreamers({ maxStreamerId: maxId });
     showSuccessToast("Cleanup complete", `Removed ${data.deletedEvents || 0} events and ${data.deletedDeployments || 0} deployment configs.`);

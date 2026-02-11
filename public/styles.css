@@ -221,6 +221,16 @@
   .btn-outline:hover {
     background: #f9fafb;
   }
+
+  .btn-outline-danger {
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+
+  .btn-outline-danger:hover {
+    background: #fef2f2;
+    color: #b91c1c;
+  }
   
   .btn:disabled {
     opacity: 0.6;

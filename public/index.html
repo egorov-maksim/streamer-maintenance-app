@@ -155,8 +155,13 @@
                 </div>
                 <div class="actions mt-12">
                   <button class="btn btn-primary superuser-only" id="btn-save-config">💾 Save Configuration</button>
-                  <button type="button" class="btn btn-outline superuser-only" id="btn-cleanup-streamers" title="Remove events and deployments for streamers above current count">🧹 Cleanup orphaned streamers</button>
+                  <button type="button" class="btn btn-outline btn-outline-danger superuser-only" id="btn-cleanup-streamers" title="Remove events and deployments for streamers above current count">🧹 Cleanup orphaned streamers</button>
                   <span id="config-status" class="status"></span>
+                </div>
+                <div class="cleanup-explanation mt-8">
+                  <p class="info-text-sm">
+                    <strong>Cleanup orphaned streamers:</strong> Removes cleaning events and deployment configs for streamers above the current count. Use after reducing the number of streamers (e.g. decommissioned streamers). This cannot be undone.
+                  </p>
                 </div>
                 <p class="info-text-sm">
                   <strong>Note:</strong> Configuration is saved per project. eBird appear after 1st section, then every N sections.
@@ -717,6 +722,36 @@
       <div class="modal-footer modal-footer-delete">
         <button class="btn btn-secondary" id="btn-clear-one-deployment-cancel">Cancel</button>
         <button class="btn btn-danger" id="btn-clear-one-deployment-confirm">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cleanup Orphaned Streamers Modal -->
+  <div id="cleanup-orphaned-modal" class="modal">
+    <div class="modal-overlay"></div>
+    <div class="modal-content modal-delete">
+      <div class="modal-header modal-header-delete">
+        <h3>🧹 Cleanup orphaned streamers</h3>
+        <button class="modal-close" id="btn-cleanup-orphaned-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="delete-warning">
+          <div class="warning-icon">🚨</div>
+          <div class="warning-text">
+            <strong>This action cannot be undone.</strong>
+            This will permanently delete events and deployment configs for streamers above your current count.
+          </div>
+        </div>
+        <div class="event-details">
+          <div class="detail-row">
+            <span class="detail-label">Streamers affected</span>
+            <span class="detail-value text-danger-strong" id="cleanup-orphaned-range">Streamers N and above</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer modal-footer-delete">
+        <button class="btn btn-secondary" id="btn-cleanup-orphaned-cancel">Cancel</button>
+        <button class="btn btn-danger" id="btn-cleanup-orphaned-confirm">Run cleanup</button>
       </div>
     </div>
   </div>
