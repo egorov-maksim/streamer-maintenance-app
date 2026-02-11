@@ -35,9 +35,9 @@ function createStatsRouter() {
       const { project } = req.query;
       const config = await loadConfig();
       const sectionLength = config.sectionLength || 1;
-      const N = config.sectionsPerCable;
+      const sectionsPerCable = config.sectionsPerCable;
       const tailSections = config.useRopeForTail ? 0 : 5;
-      const totalAvailableSections = config.numCables * N;
+      const totalAvailableSections = config.numCables * sectionsPerCable;
       const totalAvailableTail = config.numCables * tailSections;
 
       let whereClause = "";
@@ -66,7 +66,7 @@ function createStatsRouter() {
       for (const evt of allEvents) {
         for (let s = evt.sectionIndexStart; s <= evt.sectionIndexEnd; s++) {
           uniqueSections.add(`${evt.streamerId}-${s}`);
-          if (s < N) uniqueActiveSections.add(`${evt.streamerId}-${s}`);
+          if (s < sectionsPerCable) uniqueActiveSections.add(`${evt.streamerId}-${s}`);
           else uniqueTailSections.add(`${evt.streamerId}-${s}`);
         }
       }
@@ -91,10 +91,10 @@ function createStatsRouter() {
     try {
       const { project } = req.query;
       const config = await loadConfig();
-      const N = config.sectionsPerCable;
+      const sectionsPerCable = config.sectionsPerCable;
       const cableCount = config.numCables;
       const tailSections = config.useRopeForTail ? 0 : 5;
-      const totalSections = N + tailSections;
+      const totalSections = sectionsPerCable + tailSections;
 
       let sql = `SELECT streamer_id, section_index_start, section_index_end, cleaned_at FROM cleaning_events`;
       const params = [];
@@ -127,10 +127,10 @@ function createStatsRouter() {
     try {
       const { start, end, project } = req.query;
       const config = await loadConfig();
-      const N = config.sectionsPerCable;
+      const sectionsPerCable = config.sectionsPerCable;
       const cableCount = config.numCables;
       const tailSections = config.useRopeForTail ? 0 : 5;
-      const totalSections = N + tailSections;
+      const totalSections = sectionsPerCable + tailSections;
 
       const { sql: whereSql, params: whereParams } = buildEventsWhereClause({ project, start, end });
       const sql =
@@ -162,7 +162,7 @@ function createStatsRouter() {
       const { start, end, project } = req.query;
       const config = await loadConfig();
       const sectionLength = config.sectionLength || 1;
-      const N = config.sectionsPerCable;
+      const sectionsPerCable = config.sectionsPerCable;
 
       const { sql: whereSql, params: whereParams } = buildEventsWhereClause({ project, start, end });
       const sql = "SELECT * FROM cleaning_events" + whereSql + " ORDER BY datetime(cleaned_at) DESC";
@@ -184,7 +184,7 @@ function createStatsRouter() {
         byMethod[r.cleaningMethod] = (byMethod[r.cleaningMethod] || 0) + len;
         for (let s = r.sectionIndexStart; s <= r.sectionIndexEnd; s++) {
           uniqueSections.add(`${r.streamerId}-${s}`);
-          if (s < N) uniqueActiveSections.add(`${r.streamerId}-${s}`);
+          if (s < sectionsPerCable) uniqueActiveSections.add(`${r.streamerId}-${s}`);
           else uniqueTailSections.add(`${r.streamerId}-${s}`);
         }
       }

@@ -143,11 +143,11 @@ export async function cleanupStreamers(body) {
 
 // --- Events ---
 export async function fetchEvents(params = {}) {
-  const q = new URLSearchParams();
-  if (params.project) q.set("project", params.project);
-  if (params.start) q.set("start", params.start);
-  if (params.end) q.set("end", params.end);
-  const query = q.toString();
+  const searchParams = new URLSearchParams();
+  if (params.project) searchParams.set("project", params.project);
+  if (params.start) searchParams.set("start", params.start);
+  if (params.end) searchParams.set("end", params.end);
+  const query = searchParams.toString();
   return apiCall(`api/events${query ? "?" + query : ""}`);
 }
 
@@ -185,23 +185,23 @@ export async function clearEvents(project = null) {
 
 // --- Stats ---
 export async function fetchStats(params = {}) {
-  const q = new URLSearchParams(params);
-  return apiCall(`api/stats${q.toString() ? "?" + q : ""}`);
+  const searchParams = new URLSearchParams(params);
+  return apiCall(`api/stats${searchParams.toString() ? "?" + searchParams : ""}`);
 }
 
 export async function fetchFilteredStats(params) {
-  const q = new URLSearchParams(params);
-  return apiCall(`api/stats/filter?${q}`);
+  const searchParams = new URLSearchParams(params);
+  return apiCall(`api/stats/filter?${searchParams}`);
 }
 
 export async function fetchLastCleaned(params = {}) {
-  const q = new URLSearchParams(params);
-  return apiCall(`api/last-cleaned${q.toString() ? "?" + q : ""}`);
+  const searchParams = new URLSearchParams(params);
+  return apiCall(`api/last-cleaned${searchParams.toString() ? "?" + searchParams : ""}`);
 }
 
 export async function fetchLastCleanedFiltered(params) {
-  const q = new URLSearchParams(params);
-  return apiCall(`api/last-cleaned-filtered?${q}`);
+  const searchParams = new URLSearchParams(params);
+  return apiCall(`api/last-cleaned-filtered?${searchParams}`);
 }
 
 // --- EB range ---

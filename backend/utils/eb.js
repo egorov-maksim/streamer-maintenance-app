@@ -10,27 +10,27 @@
  */
 function calculateEBRange(startSection, endSection, config) {
   const moduleFreq = config.moduleFrequency || 4;
-  const N = config.sectionsPerCable;
+  const sectionsPerCable = config.sectionsPerCable;
 
   const allModules = [];
   allModules.push({ num: 1, section: 0 });
 
-  for (let s = moduleFreq; s < N; s += moduleFreq) {
-    const moduleNum = Math.floor(s / moduleFreq) + 1;
-    allModules.push({ num: moduleNum, section: s });
+  for (let sectionIndex = moduleFreq; sectionIndex < sectionsPerCable; sectionIndex += moduleFreq) {
+    const moduleNum = Math.floor(sectionIndex / moduleFreq) + 1;
+    allModules.push({ num: moduleNum, section: sectionIndex });
   }
 
-  const lastModuleNum = Math.floor((N - 1) / moduleFreq) + 1;
-  if (!allModules.some(m => m.num === lastModuleNum)) {
-    allModules.push({ num: lastModuleNum, section: N - 1 });
+  const lastModuleNum = Math.floor((sectionsPerCable - 1) / moduleFreq) + 1;
+  if (!allModules.some((module) => module.num === lastModuleNum)) {
+    allModules.push({ num: lastModuleNum, section: sectionsPerCable - 1 });
   }
 
   const before = allModules
-    .filter(m => m.section <= startSection)
+    .filter((module) => module.section <= startSection)
     .sort((a, b) => b.section - a.section)[0];
 
   const after = allModules
-    .filter(m => m.section >= endSection)
+    .filter((module) => module.section >= endSection)
     .sort((a, b) => a.section - b.section)[0];
 
   const formatEB = (num) => `EB${String(num).padStart(2, "0")}`;

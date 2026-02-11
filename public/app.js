@@ -81,27 +81,27 @@ function createTooltip() {
 // Shared helper to position floating tooltips near the cursor,
 // while keeping them within the viewport. Assumes the element is
 // already visible (so getBoundingClientRect returns meaningful size).
-function positionTooltipNearCursor(el, e) {
-  if (!el || !e) return;
+function positionTooltipNearCursor(element, event) {
+  if (!element || !event) return;
 
-  const baseX = e.clientX + 15;
-  const baseY = e.clientY + 15;
+  const baseX = event.clientX + 15;
+  const baseY = event.clientY + 15;
 
-  const rect = el.getBoundingClientRect();
+  const rect = element.getBoundingClientRect();
   const x = baseX + rect.width > window.innerWidth ? baseX - rect.width - 30 : baseX;
   const y = baseY + rect.height > window.innerHeight ? baseY - rect.height - 30 : baseY;
 
-  el.style.left = `${x}px`;
-  el.style.top = `${y}px`;
+  element.style.left = `${x}px`;
+  element.style.top = `${y}px`;
 }
 
 function showSectionTooltip(e, streamerId, sectionIndex) {
   const tooltip = createTooltip();
   const streamerNum = streamerId;
-  const N = config.sectionsPerCable;
+  const sectionsPerCable = config.sectionsPerCable;
 
   // Determine if it's a tail section
-  const isTail = sectionIndex >= N;
+  const isTail = sectionIndex >= sectionsPerCable;
   const sectionLabel = formatAS(sectionIndex);
 
   // Get cleaning history for this specific section
@@ -585,7 +585,7 @@ function importCsv() {
 
 function parseCsvLine(line) {
   const regex = /,(?=(?:(?:[^"]*"){2})*[^"]*$)/;
-  return line.split(regex).map(p => p.trim().replace(/^"|"$/g, ''));
+  return line.split(regex).map(field => field.trim().replace(/^"|"$/g, ''));
 }
 
 async function handleCsvFile(file) {
@@ -844,9 +844,9 @@ async function renderStreamerCards(startDate = null, endDate = null) {
     const lastCleaned = data.lastCleaned;
 
     const cableCount = config.numCables;
-    const N = config.sectionsPerCable;
+    const sectionsPerCable = config.sectionsPerCable;
     const tailSections = config.useRopeForTail ? 0 : 5;
-    const totalPerCable = N + tailSections;
+    const totalPerCable = sectionsPerCable + tailSections;
 
     for (let streamerId = 1; streamerId <= cableCount; streamerId++) {
       const sections = lastCleaned[streamerId] || [];
@@ -938,10 +938,13 @@ async function renderHeatmap() {
     if (activeProject) {
       try {
         deployments = await API.apiCall(`/api/projects/${activeProject.id}/streamer-deployments`);
-      } catch (_) {}
+      } catch (error) {
+        // Deployment data optional for heatmap; log for debugging if needed
+        console.debug('Streamer deployments fetch skipped:', error?.message ?? error);
+      }
     }
 
-    const N = config.sectionsPerCable;
+    const sectionsPerCable = config.sectionsPerCable;
     const cableCount = config.numCables;
     const moduleFreq = config.moduleFrequency;
     const channelsPerSection = config.channelsPerSection;
@@ -949,8 +952,8 @@ async function renderHeatmap() {
     const tailSections = useTailSections ? 5 : 0;
 
     // Calculate total rows = sections + modules + tail sections
-    const modulesCount = Math.floor(N / moduleFreq);
-    const totalRows = N + modulesCount + tailSections;
+    const modulesCount = Math.floor(sectionsPerCable / moduleFreq);
+    const totalRows = sectionsPerCable + modulesCount + tailSections;
 
     // Wrapper for horizontal scroll
     const wrapper = document.createElement('div');
@@ -967,7 +970,7 @@ async function renderHeatmap() {
     channelCol.appendChild(channelLabel);
 
     let rowIndex = 0;
-    for (let s = 0; s < N; s++) {
+    for (let s = 0; s < sectionsPerCable; s++) {
       // Add section channel info
       const channelCell = document.createElement('div');
       channelCell.className = 'hm-vcell hm-channel-ref';
@@ -982,7 +985,7 @@ async function renderHeatmap() {
       const sectionNumber = s + 1;
       const isFirstModule = sectionNumber === 1;
       const isRegularModule = sectionNumber > 1 && (sectionNumber - 1) % moduleFreq === 0;
-      const isLastModule = sectionNumber === N;
+      const isLastModule = sectionNumber === sectionsPerCable;
 
       if (isFirstModule || isRegularModule || isLastModule) {
         const moduleChannelCell = document.createElement('div');
@@ -1025,7 +1028,7 @@ async function renderHeatmap() {
       rowIndex = 0;
       let moduleNum = 1;
 
-      for (let s = 0; s < N; s++) {
+      for (let s = 0; s < sectionsPerCable; s++) {
         // Active section cell
         const cell = document.createElement('div');
         cell.className = 'hm-vcell hm-active-section';
@@ -1048,7 +1051,7 @@ async function renderHeatmap() {
         const sectionNumber = s + 1;
         const isFirstModule = sectionNumber === 1;
         const isRegularModule = sectionNumber > 1 && (sectionNumber - 1) % moduleFreq === 0;
-        const isLastModule = sectionNumber === N;
+        const isLastModule = sectionNumber === sectionsPerCable;
 
         if (isFirstModule || isRegularModule || isLastModule) {
           const moduleCell = document.createElement('div');
@@ -1063,7 +1066,7 @@ async function renderHeatmap() {
 
       // Add tail sections if configured
       for (let t = 0; t < tailSections; t++) {
-        const tailIdx = N + t;
+        const tailIdx = sectionsPerCable + t;
         const tailCell = document.createElement('div');
         tailCell.className = 'hm-vcell hm-tail-section';
         tailCell.dataset.streamer = streamerId;

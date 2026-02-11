@@ -35,13 +35,12 @@ export async function loadConfig() {
 }
 
 export function populateConfigForm(cfg) {
-  const el = (id) => safeGet(id);
-  if (el("cfg-numCables")) el("cfg-numCables").value = cfg.numCables;
-  if (el("cfg-sectionsPerCable")) el("cfg-sectionsPerCable").value = cfg.sectionsPerCable;
-  if (el("cfg-sectionLength")) el("cfg-sectionLength").value = cfg.sectionLength;
-  if (el("cfg-moduleFrequency")) el("cfg-moduleFrequency").value = cfg.moduleFrequency;
-  if (el("cfg-channelsPerSection")) el("cfg-channelsPerSection").value = cfg.channelsPerSection;
-  if (el("cfg-useRopeForTail")) el("cfg-useRopeForTail").value = cfg.useRopeForTail;
+  if (safeGet("cfg-numCables")) safeGet("cfg-numCables").value = cfg.numCables;
+  if (safeGet("cfg-sectionsPerCable")) safeGet("cfg-sectionsPerCable").value = cfg.sectionsPerCable;
+  if (safeGet("cfg-sectionLength")) safeGet("cfg-sectionLength").value = cfg.sectionLength;
+  if (safeGet("cfg-moduleFrequency")) safeGet("cfg-moduleFrequency").value = cfg.moduleFrequency;
+  if (safeGet("cfg-channelsPerSection")) safeGet("cfg-channelsPerSection").value = cfg.channelsPerSection;
+  if (safeGet("cfg-useRopeForTail")) safeGet("cfg-useRopeForTail").value = cfg.useRopeForTail;
 }
 
 export function updateConfigProjectLabel() {

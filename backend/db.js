@@ -85,11 +85,11 @@ function createBackup() {
 function cleanupOldBackups() {
   try {
     const files = fs.readdirSync(BACKUP_DIR)
-      .filter(f => f.startsWith("streamer_backup_") && f.endsWith(".db"))
-      .map(f => ({
-        name: f,
-        path: path.join(BACKUP_DIR, f),
-        mtime: fs.statSync(path.join(BACKUP_DIR, f)).mtime
+      .filter((filename) => filename.startsWith("streamer_backup_") && filename.endsWith(".db"))
+      .map((filename) => ({
+        name: filename,
+        path: path.join(BACKUP_DIR, filename),
+        mtime: fs.statSync(path.join(BACKUP_DIR, filename)).mtime
       }))
       .sort((a, b) => b.mtime - a.mtime); // Newest first
 

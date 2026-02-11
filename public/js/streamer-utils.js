@@ -42,19 +42,19 @@ export function formatEB(num) {
 }
 
 export function getConfigForProject(projectNumber) {
-  const pn = (projectNumber || "").trim();
-  if (pn && Array.isArray(projects)) {
-    const p = projects.find((x) => x.projectNumber === pn);
-    if (p) {
+  const projectNumberTrimmed = (projectNumber || "").trim();
+  if (projectNumberTrimmed && Array.isArray(projects)) {
+    const project = projects.find((proj) => proj.projectNumber === projectNumberTrimmed);
+    if (project) {
       return {
-        numCables: p.numCables || config.numCables,
-        sectionsPerCable: p.sectionsPerCable || config.sectionsPerCable,
-        sectionLength: p.sectionLength || config.sectionLength,
-        moduleFrequency: p.moduleFrequency || config.moduleFrequency,
-        channelsPerSection: p.channelsPerSection || config.channelsPerSection,
+        numCables: project.numCables || config.numCables,
+        sectionsPerCable: project.sectionsPerCable || config.sectionsPerCable,
+        sectionLength: project.sectionLength || config.sectionLength,
+        moduleFrequency: project.moduleFrequency || config.moduleFrequency,
+        channelsPerSection: project.channelsPerSection || config.channelsPerSection,
         useRopeForTail:
-          p.useRopeForTail !== null && p.useRopeForTail !== undefined
-            ? p.useRopeForTail === true || p.useRopeForTail === 1
+          project.useRopeForTail !== null && project.useRopeForTail !== undefined
+            ? project.useRopeForTail === true || project.useRopeForTail === 1
             : config.useRopeForTail,
       };
     }
