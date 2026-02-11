@@ -3,6 +3,7 @@ const express = require("express");
 const humps = require("humps");
 const { runAsync, getAllCamelized, getOneCamelized } = require("../db");
 const { defaultConfig, loadConfig } = require("../config");
+const { getActiveProjectForVessel } = require("../activeProject");
 const { requireValidId } = require("../utils/validation");
 const { sendError } = require("../utils/errors");
 const { ROLES, isGlobalUser } = require("../middleware/auth");
@@ -77,10 +78,20 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
       let finalProjectNumber = project_number;
       let finalVesselTag = vessel_tag || defaultConfig.vesselTag;
       if (finalProjectNumber === undefined || finalProjectNumber === null) {
-        finalProjectNumber = config.activeProjectNumber || null;
-        finalVesselTag = config.vesselTag;
+        const vesselTagForResolve = req.vesselScope || config.vesselTag;
+        const activeProject = vesselTagForResolve
+          ? await getActiveProjectForVessel(vesselTagForResolve)
+          : null;
+        if (!activeProject) {
+          return sendError(
+            res,
+            400,
+            "No active project for this vessel. Set an active project first."
+          );
+        }
+        finalProjectNumber = activeProject.projectNumber;
+        finalVesselTag = activeProject.vesselTag || defaultConfig.vesselTag;
       }
-      // Per-vessel users are always scoped to their own vessel tag.
       if (req.vesselScope) {
         finalVesselTag = req.vesselScope;
       }

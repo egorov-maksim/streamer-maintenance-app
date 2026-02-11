@@ -3,6 +3,7 @@ const express = require("express");
 const humps = require("humps");
 const { runAsync, getAsync, allAsync, getAllCamelized, getOneCamelized } = require("../db");
 const { defaultConfig, loadConfig, saveConfig } = require("../config");
+const { getActiveProjectForVessel } = require("../activeProject");
 const { requireValidId, toInt } = require("../utils/validation");
 const { sendError } = require("../utils/errors");
 const { isGlobalUser } = require("../middleware/auth");
@@ -50,21 +51,34 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
   router.get("/api/projects", authMiddleware, async (req, res) => {
     try {
       const params = [];
-      let sql = "SELECT * FROM projects";
       if (req.vesselScope) {
-        sql += " WHERE vessel_tag = ?";
-        params.push(req.vesselScope);
+        const sql = `SELECT p.*, CASE WHEN v.vessel_tag IS NOT NULL THEN 1 ELSE 0 END AS is_active
+          FROM projects p
+          LEFT JOIN vessel_context v ON v.active_project_id = p.id AND v.vessel_tag = ?
+          WHERE p.vessel_tag = ?
+          ORDER BY p.created_at DESC`;
+        const rows = await getAllCamelized(sql, [req.vesselScope, req.vesselScope]);
+        res.json(
+          rows.map((p) => ({
+            ...p,
+            useRopeForTail: p.useRopeForTail === 1,
+            isActive: p.isActive === 1,
+          }))
+        );
+      } else {
+        const sql = `SELECT p.*, CASE WHEN v.active_project_id IS NOT NULL THEN 1 ELSE 0 END AS is_active
+          FROM projects p
+          LEFT JOIN vessel_context v ON v.active_project_id = p.id
+          ORDER BY p.created_at DESC`;
+        const rows = await getAllCamelized(sql, []);
+        res.json(
+          rows.map((p) => ({
+            ...p,
+            useRopeForTail: p.useRopeForTail === 1,
+            isActive: p.isActive === 1,
+          }))
+        );
       }
-      sql += " ORDER BY created_at DESC";
-
-      const rows = await getAllCamelized(sql, params);
-      res.json(
-        rows.map((p) => ({
-          ...p,
-          useRopeForTail: p.useRopeForTail === 1,
-          isActive: p.isActive === 1,
-        }))
-      );
     } catch (err) {
       console.error(err);
       sendError(res, 500, "Failed to fetch projects");
@@ -73,19 +87,14 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
 
   router.get("/api/projects/active", authMiddleware, async (req, res) => {
     try {
-      const params = [];
-      let sql = "SELECT * FROM projects WHERE is_active = 1";
-      if (req.vesselScope) {
-        sql += " AND vessel_tag = ?";
-        params.push(req.vesselScope);
-      }
-
-      const project = await getOneCamelized(sql, params);
+      const vesselTag = req.vesselScope || req.query.vessel_tag || null;
+      if (!vesselTag) return res.json(null);
+      const project = await getActiveProjectForVessel(vesselTag);
       if (!project) return res.json(null);
       res.json({
         ...project,
         useRopeForTail: project.useRopeForTail === 1,
-        isActive: project.isActive === 1,
+        isActive: true,
       });
     } catch (err) {
       console.error(err);
@@ -124,9 +133,9 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
 
       const result = await runAsync(
         `INSERT INTO projects (
-        project_number, project_name, vessel_tag, created_at, is_active,
+        project_number, project_name, vessel_tag, created_at,
         num_cables, sections_per_cable, section_length, module_frequency, channels_per_section, use_rope_for_tail
-      ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           project_number,
           project_name || null,
@@ -143,10 +152,11 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
 
       const created = await getOneCamelized("SELECT * FROM projects WHERE id = ?", [result.lastID]);
       if (created) {
+        const isActive = (await getActiveProjectForVessel(created.vesselTag))?.id === created.id;
         res.json({
           ...created,
           useRopeForTail: created.useRopeForTail === 1,
-          isActive: created.isActive === 1,
+          isActive: !!isActive,
         });
       } else {
         sendError(res, 500, "Failed to fetch created project");
@@ -166,7 +176,6 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
       const id = requireValidId(req, res);
       if (id === null) return;
 
-      // Only allow activation of projects within user's vessel scope.
       const projectRow = await getOneCamelized("SELECT * FROM projects WHERE id = ?", [id]);
       if (!projectRow) {
         return sendError(res, 404, "Project not found");
@@ -175,28 +184,20 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
         return sendError(res, 403, "Cannot activate project from another vessel");
       }
 
-      await runAsync("UPDATE projects SET is_active = 0");
-      await runAsync("UPDATE projects SET is_active = 1 WHERE id = ?", [id]);
+      const vesselTag = projectRow.vesselTag || defaultConfig.vesselTag;
+      const updatedAt = new Date().toISOString();
+      await runAsync(
+        `INSERT INTO vessel_context (vessel_tag, active_project_id, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(vessel_tag) DO UPDATE SET active_project_id = excluded.active_project_id, updated_at = excluded.updated_at`,
+        [vesselTag, id, updatedAt]
+      );
 
       const project = await getOneCamelized("SELECT * FROM projects WHERE id = ?", [id]);
-      if (project) {
-        await saveConfig({
-          activeProjectNumber: project.projectNumber,
-          vesselTag: project.vesselTag || defaultConfig.vesselTag,
-          numCables: project.numCables || defaultConfig.numCables,
-          sectionsPerCable: project.sectionsPerCable || defaultConfig.sectionsPerCable,
-          sectionLength: project.sectionLength || defaultConfig.sectionLength,
-          moduleFrequency: project.moduleFrequency || defaultConfig.moduleFrequency,
-          channelsPerSection: project.channelsPerSection || defaultConfig.channelsPerSection,
-          useRopeForTail: project.useRopeForTail === 1,
-        });
-      }
-
       if (project) {
         res.json({
           ...project,
           useRopeForTail: project.useRopeForTail === 1,
-          isActive: project.isActive === 1,
+          isActive: true,
         });
       } else {
         sendError(res, 404, "Project not found");
@@ -266,23 +267,16 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
       );
 
       const updated = await getOneCamelized("SELECT * FROM projects WHERE id = ?", [id]);
-      if (updated && updated.isActive === 1) {
-        await saveConfig({
-          vesselTag: updated.vesselTag || defaultConfig.vesselTag,
-          numCables: updated.numCables || defaultConfig.numCables,
-          sectionsPerCable: updated.sectionsPerCable || defaultConfig.sectionsPerCable,
-          sectionLength: updated.sectionLength || defaultConfig.sectionLength,
-          moduleFrequency: updated.moduleFrequency || defaultConfig.moduleFrequency,
-          channelsPerSection: updated.channelsPerSection || defaultConfig.channelsPerSection,
-          useRopeForTail: updated.useRopeForTail === 1,
-        });
+      let isActive = false;
+      if (updated) {
+        const activeForVessel = await getActiveProjectForVessel(updated.vesselTag || defaultConfig.vesselTag);
+        isActive = activeForVessel?.id === updated.id;
       }
-
       if (updated) {
         res.json({
           ...updated,
           useRopeForTail: updated.useRopeForTail === 1,
-          isActive: updated.isActive === 1,
+          isActive,
         });
       } else {
         sendError(res, 404, "Project not found");
@@ -293,15 +287,22 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
     }
   });
 
-  router.post("/api/projects/deactivate", authMiddleware, superUserOnly, async (_req, res) => {
+  router.post("/api/projects/deactivate", authMiddleware, superUserOnly, async (req, res) => {
     try {
-      // Deactivating all projects is a global operation; restrict to global superusers.
-      if (!isGlobalUser(_req.user)) {
-        return sendError(res, 403, "Grand SuperUser access required to deactivate all projects");
+      if (req.vesselScope) {
+        await runAsync("UPDATE vessel_context SET active_project_id = NULL, updated_at = ? WHERE vessel_tag = ?", [
+          new Date().toISOString(),
+          req.vesselScope,
+        ]);
+      } else {
+        if (!isGlobalUser(req.user)) {
+          return sendError(res, 403, "Grand SuperUser access required to deactivate all projects");
+        }
+        await runAsync("UPDATE vessel_context SET active_project_id = NULL, updated_at = ?", [
+          new Date().toISOString(),
+        ]);
+        await saveConfig({ activeProjectNumber: null });
       }
-
-      await runAsync("UPDATE projects SET is_active = 0");
-      await saveConfig({ activeProjectNumber: null });
       res.json({ success: true });
     } catch (err) {
       console.error(err);

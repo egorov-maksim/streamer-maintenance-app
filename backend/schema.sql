@@ -35,13 +35,13 @@ CREATE INDEX IF NOT EXISTS idx_cleaning_events_project ON cleaning_events(projec
 CREATE INDEX IF NOT EXISTS idx_cleaning_events_section_type ON cleaning_events(section_type);
 
 -- Projects table - tracks all defined projects with their streamer configuration
+-- Active project per vessel is stored in vessel_context, not here.
 CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_number TEXT UNIQUE NOT NULL,
   project_name TEXT,
   vessel_tag TEXT DEFAULT 'TTN',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  is_active INTEGER DEFAULT 0,
   num_cables INTEGER DEFAULT 12,
   sections_per_cable INTEGER DEFAULT 107,
   section_length INTEGER DEFAULT 75,
@@ -50,6 +50,16 @@ CREATE TABLE IF NOT EXISTS projects (
   use_rope_for_tail INTEGER DEFAULT 1,
   comments TEXT
 );
+
+-- Per-vessel context: which project is active for each vessel (one active per vessel).
+CREATE TABLE IF NOT EXISTS vessel_context (
+  vessel_tag TEXT PRIMARY KEY,
+  active_project_id INTEGER,
+  updated_at TEXT,
+  FOREIGN KEY (active_project_id) REFERENCES projects(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_vessel_context_active ON vessel_context(active_project_id);
 
 -- Streamer deployments table - per-streamer deployment configuration
 CREATE TABLE IF NOT EXISTS streamer_deployments (

@@ -2,7 +2,8 @@
 const express = require("express");
 const humps = require("humps");
 const { defaultConfig, loadConfig, saveConfig } = require("../config");
-const { runAsync, getOneCamelized } = require("../db");
+const { runAsync } = require("../db");
+const { getActiveProjectForVessel } = require("../activeProject");
 const { toInt } = require("../utils/validation");
 const { sendError } = require("../utils/errors");
 const { isGlobalUser } = require("../middleware/auth");
@@ -16,10 +17,24 @@ const { isGlobalUser } = require("../middleware/auth");
 function createConfigRouter(authMiddleware, superUserOnly) {
   const router = express.Router();
 
-  router.get("/api/config", async (_req, res) => {
+  router.get("/api/config", authMiddleware, async (req, res) => {
     try {
       const config = await loadConfig();
-      res.json(humps.camelizeKeys(config));
+      const base = humps.camelizeKeys(config);
+      if (req.vesselScope) {
+        const activeProject = await getActiveProjectForVessel(req.vesselScope);
+        if (activeProject) {
+          base.activeProjectNumber = activeProject.projectNumber;
+          base.vesselTag = activeProject.vesselTag || defaultConfig.vesselTag;
+          base.numCables = activeProject.numCables ?? base.numCables;
+          base.sectionsPerCable = activeProject.sectionsPerCable ?? base.sectionsPerCable;
+          base.sectionLength = activeProject.sectionLength ?? base.sectionLength;
+          base.moduleFrequency = activeProject.moduleFrequency ?? base.moduleFrequency;
+          base.channelsPerSection = activeProject.channelsPerSection ?? base.channelsPerSection;
+          base.useRopeForTail = activeProject.useRopeForTail === 1;
+        }
+      }
+      res.json(base);
     } catch (err) {
       console.error(err);
       sendError(res, 500, "Failed to load config");
@@ -42,41 +57,33 @@ function createConfigRouter(authMiddleware, superUserOnly) {
         partial.activeProjectNumber = bodyData.active_project_number || null;
       }
 
-      const activeProject = await getOneCamelized("SELECT * FROM projects WHERE is_active = 1");
-      if (activeProject) {
-        // Only allow per-vessel config changes on projects within user's vessel scope.
-        if (req.vesselScope && activeProject.vesselTag !== req.vesselScope) {
-          return sendError(res, 403, "Cannot change configuration for a project from another vessel");
+      if (req.vesselScope) {
+        partial.vesselTag = req.vesselScope;
+        const activeProject = await getActiveProjectForVessel(req.vesselScope);
+        if (activeProject) {
+          await runAsync(
+            `UPDATE projects SET
+            num_cables = ?,
+            sections_per_cable = ?,
+            section_length = ?,
+            module_frequency = ?,
+            channels_per_section = ?,
+            use_rope_for_tail = ?,
+            vessel_tag = ?
+          WHERE id = ?`,
+            [
+              partial.numCables,
+              partial.sectionsPerCable,
+              partial.sectionLength,
+              partial.moduleFrequency,
+              partial.channelsPerSection,
+              partial.useRopeForTail ? 1 : 0,
+              partial.vesselTag,
+              activeProject.id,
+            ]
+          );
         }
-
-        // Ensure vesselTag cannot be changed outside user's scope.
-        if (req.vesselScope) {
-          partial.vesselTag = req.vesselScope;
-        }
-
-        await runAsync(
-          `UPDATE projects SET
-          num_cables = ?,
-          sections_per_cable = ?,
-          section_length = ?,
-          module_frequency = ?,
-          channels_per_section = ?,
-          use_rope_for_tail = ?,
-          vessel_tag = ?
-        WHERE id = ?`,
-          [
-            partial.numCables,
-            partial.sectionsPerCable,
-            partial.sectionLength,
-            partial.moduleFrequency,
-            partial.channelsPerSection,
-            partial.useRopeForTail ? 1 : 0,
-            partial.vesselTag,
-            activeProject.id,
-          ]
-        );
       } else {
-        // Global defaults: restrict to global superusers only.
         if (!isGlobalUser(req.user)) {
           return sendError(res, 403, "Grand SuperUser access required to change global configuration");
         }
@@ -84,7 +91,21 @@ function createConfigRouter(authMiddleware, superUserOnly) {
       }
 
       const config = await loadConfig();
-      res.json(humps.camelizeKeys(config));
+      const base = humps.camelizeKeys(config);
+      if (req.vesselScope) {
+        const activeProject = await getActiveProjectForVessel(req.vesselScope);
+        if (activeProject) {
+          base.activeProjectNumber = activeProject.projectNumber;
+          base.vesselTag = activeProject.vesselTag || defaultConfig.vesselTag;
+          base.numCables = activeProject.numCables ?? base.numCables;
+          base.sectionsPerCable = activeProject.sectionsPerCable ?? base.sectionsPerCable;
+          base.sectionLength = activeProject.sectionLength ?? base.sectionLength;
+          base.moduleFrequency = activeProject.moduleFrequency ?? base.moduleFrequency;
+          base.channelsPerSection = activeProject.channelsPerSection ?? base.channelsPerSection;
+          base.useRopeForTail = activeProject.useRopeForTail === 1;
+        }
+      }
+      res.json(base);
     } catch (err) {
       console.error(err);
       sendError(res, 500, "Failed to save config");

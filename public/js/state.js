@@ -59,7 +59,13 @@ export function setIsFinalizing(val) {
 }
 
 export function getActiveProject() {
-  return projects.find((p) => p.isActive === true) || null;
+  const active = projects.filter((p) => p.isActive === true);
+  if (active.length === 0) return null;
+  if (currentUser?.vesselTag) {
+    const forVessel = active.find((p) => p.vesselTag === currentUser.vesselTag);
+    if (forVessel) return forVessel;
+  }
+  return active[0] || null;
 }
 
 export function getFilteredEvents() {
