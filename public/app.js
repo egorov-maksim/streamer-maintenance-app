@@ -48,6 +48,7 @@ import {
 import { initModals } from "./js/modals.js";
 import * as Projects from "./js/projects.js";
 import * as StreamerUtils from "./js/streamer-utils.js";
+import { computeStreamerTooltipData } from "./js/streamer-tooltip.js";
 import { initPDFGeneration } from "./pdf-generator.js";
 
 const sectionCount = StreamerUtils.sectionCount;
@@ -937,32 +938,6 @@ async function renderHeatmap() {
     if (activeProject) {
       try {
         deployments = await API.apiCall(`/api/projects/${activeProject.id}/streamer-deployments`);
-        // #region agent log
-        (function () {
-          try {
-            const sample = Object.fromEntries(Object.entries(deployments).slice(0, 3));
-            fetch('http://127.0.0.1:7242/ingest/67e18581-87c7-4241-aa8e-2a9878a99534', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                id: `log_${Date.now()}_deployments`,
-                timestamp: Date.now(),
-                runId: 'pre-fix',
-                hypothesisId: 'H1',
-                location: 'public/app.js:939-945',
-                message: 'Streamer deployments sample for coating/deployment',
-                data: {
-                  activeProjectId: activeProject.id,
-                  activeProjectNumber: activeProject.projectNumber,
-                  sampleDeployments: sample
-                }
-              })
-            }).catch(() => {});
-          } catch {
-            // ignore logging errors
-          }
-        })();
-        // #endregion
       } catch (_) {}
     }
 
@@ -1155,23 +1130,16 @@ function attachStreamerHeaderTooltips(wrapper, lastCleaned, deployments) {
     if (!streamerId) return;
 
     const show = (e) => {
-      const deployment = deployments[streamerId] || {};
-      const sectionDates = lastCleaned[streamerId] || [];
-      const streamerEvents = events.filter(ev => ev.streamerId === streamerId);
-      const lastCleanedDate = sectionDates.length
-        ? sectionDates.reduce((max, d) => (d && (!max || new Date(d) > new Date(max)) ? d : max), null)
-        : null;
-      let daysToFirstScraping = null;
-      if (deployment.deploymentDate && streamerEvents.length > 0) {
-        const firstCleaning = [...streamerEvents].sort((a, b) =>
-          new Date(a.cleanedAt) - new Date(b.cleanedAt)
-        )[0];
-        const days = Math.floor(
-          (new Date(firstCleaning.cleanedAt) - new Date(deployment.deploymentDate)) / (1000 * 60 * 60 * 24)
-        );
-        if (days >= 0) daysToFirstScraping = days;
-      }
-      const coatingLabel = deployment.isCoated === true ? 'Coated' : deployment.isCoated === false ? 'Uncoated' : 'Unknown';
+      // Use active project's events so "first scraping" matches deployment (same project); fallback to filtered events if no active project
+      const activeProject = getActiveProject();
+      const baseEvents = activeProject
+        ? events.filter(ev => String(ev.projectNumber) === String(activeProject.projectNumber))
+        : getFilteredEvents();
+      const streamerEvents = baseEvents.filter(ev => ev.streamerId === streamerId);
+
+      const data = computeStreamerTooltipData(streamerId, { deployments, lastCleaned, streamerEvents });
+      const { daysToFirstScraping, lastCleanedDate, coatingLabel } = data;
+      const deployment = data.deployment;
 
       let html = `<div class="streamer-tooltip-title">Streamer ${streamerId}</div>`;
       if (deployment.deploymentDate) {
@@ -1180,6 +1148,8 @@ function attachStreamerHeaderTooltips(wrapper, lastCleaned, deployments) {
           html += `<div class="streamer-tooltip-row">🌊 Days to first scraping: ${daysToFirstScraping}</div>`;
         } else if (streamerEvents.length === 0) {
           html += `<div class="streamer-tooltip-row">🌊 Days to first scraping: No scraping yet</div>`;
+        } else {
+          html += `<div class="streamer-tooltip-row">🌊 Days to first scraping: —</div>`;
         }
       } else {
         html += `<div class="streamer-tooltip-row">📅 No deployment date</div>`;
