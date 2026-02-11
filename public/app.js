@@ -1318,7 +1318,11 @@ function showConfirmationModal() {
   startInput.value = min + 1;  // Convert 0-based to 1-based
   endInput.value = max + 1;    // Convert 0-based to 1-based
   methodSelect.value = selectedMethod;
-  
+
+  const now = new Date();
+  safeGet('modal-date').value = now.toISOString().split('T')[0];
+  safeGet('modal-time').value = now.toTimeString().slice(0, 5);
+
   updateModalSummary();
   safeGet('confirmation-modal').classList.add('show');
   
@@ -1386,14 +1390,19 @@ async function confirmCleaning() {
   const streamerId = streamerNum;
   
   try {
-    const now = new Date().toISOString();
+    const dateVal = safeGet('modal-date').value;
+    const timeVal = safeGet('modal-time').value;
+    const cleanedAt = (dateVal && timeVal)
+      ? new Date(`${dateVal}T${timeVal}`).toISOString()
+      : new Date().toISOString();
+
     const body = {
-      streamerId: streamerId,                    
-      sectionIndexStart: actualStart,     
-      sectionIndexEnd: actualEnd,         
-      cleaningMethod: method,              
-      cleanedAt: now,                      
-      cleaningCount: 1,                    
+      streamerId: streamerId,
+      sectionIndexStart: actualStart,
+      sectionIndexEnd: actualEnd,
+      cleaningMethod: method,
+      cleanedAt,
+      cleaningCount: 1,
       projectNumber: projectNumber,
       vesselTag: config.vesselTag || 'TTN'
     };
