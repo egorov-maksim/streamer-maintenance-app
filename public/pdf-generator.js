@@ -343,9 +343,19 @@ async function addHeatmapPage(doc, lastCleaned, title) {
   const startX = leftMargin + 15; // Space for section labels
   const startY = topMargin + 8; // Space for cable labels
 
-  // Pre-fetch all EB ranges for the sections
+  // Pre-fetch all EB ranges for the sections, normalizing to display strings
   const ebRanges = await Promise.all(
-    Array.from({ length: totalSections }, (_, s) => getEBRange(s, s))
+    Array.from({ length: totalSections }, (_, s) =>
+      getEBRange(s, s).then((r) => {
+        if (r && typeof r === "object" && "ebRange" in r) {
+          return r.ebRange ?? "—";
+        }
+        if (typeof r === "string") {
+          return r;
+        }
+        return "—";
+      })
+    )
   );
 
   // Draw cable numbers at top (RIGHT TO LEFT: S12, S11, S10... S2, S1)
@@ -397,7 +407,11 @@ async function addHeatmapPage(doc, lastCleaned, title) {
 
     // EB label on right side - show every 10 sections
     if (s % 10 === 0 || s === 0 || s === totalSections - 1) {
-      const ebLabel = ebRanges[s];
+      const ebLabelRaw = ebRanges[s];
+      const ebLabel =
+        typeof ebLabelRaw === "string" && ebLabelRaw.trim().length > 0
+          ? ebLabelRaw
+          : "—";
       doc.setFontSize(5);
       doc.setTextColor(80, 80, 80);
       doc.text(ebLabel, startX + heatmapWidth + 3, rowY + cellHeight / 2 + 0.8);
@@ -474,12 +488,20 @@ async function addAllEventsSection(doc) {
   doc.line(15, yPos, 175, yPos);
   yPos += 5;
 
-  // Fetch all EB ranges in parallel for performance
+  // Fetch all EB ranges in parallel for performance, normalizing to display strings
   const ebRanges = await Promise.all(
-    eventsToShow.map(evt =>
-      evt.sectionType === 'tail'
-        ? Promise.resolve('—')
-        : getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd).then(r => r.ebRange)
+    eventsToShow.map((evt) =>
+      evt.sectionType === "tail"
+        ? Promise.resolve("—")
+        : getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd).then((r) => {
+            if (r && typeof r === "object" && "ebRange" in r) {
+              return r.ebRange ?? "—";
+            }
+            if (typeof r === "string") {
+              return r;
+            }
+            return "—";
+          })
     )
   );
 
@@ -499,7 +521,11 @@ async function addAllEventsSection(doc) {
     const streamer = `S${evt.streamerId}`;
     const sectionType = evt.sectionType || 'active';
     const sections = `${formatSectionLabel(evt.sectionIndexStart, sectionType)} - ${formatSectionLabel(evt.sectionIndexEnd, sectionType)}`;
-    const ebRange = ebRanges[i];
+    const ebRangeRaw = ebRanges[i];
+    const ebRange =
+      typeof ebRangeRaw === "string" && ebRangeRaw.trim().length > 0
+        ? ebRangeRaw
+        : "—";
     const distance = `${eventDistance(evt)}m`;
     const count = evt.cleaningCount || 1;
 

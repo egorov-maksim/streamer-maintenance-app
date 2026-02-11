@@ -323,7 +323,12 @@ async function deleteEvent(id) {
   safeGet('delete-streamer-display').textContent = streamerNum;
   const sectionType = evt.sectionType || 'active';
   safeGet('delete-range-display').textContent = `${formatSectionLabel(evt.sectionIndexStart, sectionType)} – ${formatSectionLabel(evt.sectionIndexEnd, sectionType)}`;
-  safeGet('delete-eb-display').textContent = sectionType === 'tail' ? '—' : (await API.getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd)).ebRange;
+
+  const ebRangeRaw = sectionType === 'tail'
+    ? '—'
+    : await API.getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd);
+
+  safeGet('delete-eb-display').textContent = sectionType === 'tail' ? '—' : ebRangeRaw;
   safeGet('delete-method-display').textContent = evt.cleaningMethod;
   safeGet('delete-date-display').textContent = formatDateTime(evt.cleanedAt);
   safeGet('delete-distance-display').textContent = `${eventDistance(evt)} m`;
@@ -724,7 +729,7 @@ async function renderLog() {
   const ebRangePromises = events.map(evt =>
     evt.sectionType === 'tail'
       ? Promise.resolve('—')
-      : API.getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd).then(r => r.ebRange)
+      : API.getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd)
   );
   const ebRanges = await Promise.all(ebRangePromises);
 
