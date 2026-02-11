@@ -70,8 +70,8 @@ PORT=3000
 DB_FILE=./backend/streamer.db
 ALLOWED_ORIGINS=http://localhost:3000
 
-# Authentication (format: USERNAME:PASSWORD:ROLE)
-AUTH_USERS=USERNAME:PASSWORD:admin,USERNAME:PASSWORD:viewer
+# Authentication (format: USERNAME:PASSWORD:ROLE:VESSEL_TAG[:GLOBAL])
+AUTH_USERS=USERNAME:PASSWORD:admin:ALL:true,USERNAME:PASSWORD:viewer:TTN
 ```
 
 ### 6. Start the Application

@@ -11,16 +11,13 @@ const ROLES = {
 
 /**
  * Load user credentials from AUTH_USERS environment variable.
- * New format (recommended):
+ *
+ * Format per user (comma-separated list):
  *   USERNAME:PASSWORD:ROLE:VESSEL_TAG[:GLOBAL]
  *
  * - ROLE: grandsuperuser | superuser | admin | viewer
- * - VESSEL_TAG: required for non-global users (e.g. TTN, RAM, etc.)
+ * - VESSEL_TAG: short vessel code (e.g. TTN, RAM); use "ALL" or empty for global users
  * - GLOBAL (optional): "true" marks the user as global (all vessels)
- *
- * Legacy format (still supported for backward compatibility):
- *   USERNAME:PASSWORD:ROLE
- * These users are treated as global (no vessel restriction).
  *
  * @returns {Object.<string, { password: string, role: string, vesselTag: string|null, isGlobal: boolean }>}
  */
@@ -33,31 +30,23 @@ function loadUsersFromEnv() {
     return users;
   }
 
-  authUsersEnv.split(",").forEach(userStr => {
+  authUsersEnv.split(",").forEach((userStr) => {
     const parts = userStr.trim().split(":");
-    if (parts.length < 3) return;
+    if (parts.length < 4) {
+      const username = (parts[0] || "").trim();
+      if (username) {
+        console.warn(
+          `[auth] Skipping AUTH_USERS entry for "${username}" – expected USERNAME:PASSWORD:ROLE:VESSEL_TAG[:GLOBAL]`
+        );
+      }
+      return;
+    }
 
     const username = parts[0].trim();
     const password = parts[1].trim();
     const role = parts[2].trim();
 
-    // Legacy format: USER:PASS:ROLE
-    if (parts.length === 3) {
-      users[username] = {
-        password,
-        role,
-        vesselTag: null,
-        // Legacy users are treated as global (same behavior as before).
-        isGlobal: true,
-      };
-      console.warn(
-        `[auth] User "${username}" is using legacy AUTH_USERS format (USERNAME:PASSWORD:ROLE). ` +
-          "Please update to USERNAME:PASSWORD:ROLE:VESSEL_TAG[:GLOBAL] to enable per-vessel scoping."
-      );
-      return;
-    }
-
-    // New format with vessel tag (and optional global flag)
+    // Format with vessel tag (and optional global flag)
     const rawVesselTag = (parts[3] || "").trim();
     const vesselTag = rawVesselTag === "" || rawVesselTag.toUpperCase() === "ALL"
       ? null

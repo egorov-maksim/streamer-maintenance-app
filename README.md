@@ -257,8 +257,8 @@ DB_FILE=./backend/streamer.db
 # CORS
 ALLOWED_ORIGINS=http://localhost:3000
 
-# Authentication (format: USERNAME:PASSWORD:ROLE, separated by commas)
-AUTH_USERS=TTNOBS:Password:admin,TTNView:Password:viewer,TTNNav:Password:viewer
+# Authentication (format: USERNAME:PASSWORD:ROLE:VESSEL_TAG[:GLOBAL], separated by commas)
+AUTH_USERS=TTNOBS:Password:admin:TTN:true,TTNView:Password:viewer:TTN,TTNNav:Password:viewer:TTN
 ```
 
 ---
