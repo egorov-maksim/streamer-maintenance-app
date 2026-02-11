@@ -1605,6 +1605,12 @@
   font-weight: 600;
 }
 
+.access-badge.superuser {
+  background: linear-gradient(135deg, #fae8ff 0%, #f3e8ff 100%);
+  color: #6b21a8;
+  border: 1px solid #a855f7;
+}
+
 .access-badge.admin {
   background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
   color: #92400e;
@@ -1657,6 +1663,11 @@
   border-radius: 16px;
   font-size: 12px;
   font-weight: 600;
+}
+
+.user-role-badge.superuser {
+  background: linear-gradient(135deg, #fae8ff 0%, #f3e8ff 100%);
+  color: #6b21a8;
 }
 
 .user-role-badge.admin {

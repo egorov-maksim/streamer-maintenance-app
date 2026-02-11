@@ -48,7 +48,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
   - ⚪ **Never**: Gray - Never cleaned
 - **Module Integration**: eBird module positions displayed directly on heatmap
 - **Real-Time Updates**: Heatmap refreshes immediately after logging events
-- **Hover Tooltips**: Section hover shows age, method, distance, EB range; **streamer column header hover** shows deployment date, days in water, coating status, total cleanings, and last cleaned date
+- **Hover Tooltips**: Section hover shows age, method, distance, EB range; **streamer column header hover** shows deployment date, days from deployment to first scraping, coating status, total cleanings, and last cleaned date
 
 ### 🖱️ Drag-to-Select Cleaning Interface
 - **One-Click Logging**: Click and drag across sections to mark them as cleaned
@@ -182,7 +182,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 - **Deployment Date**: Set deployment date per streamer for the active project
 - **Coating Status**: Three-state toggle (Coated / Uncoated / Unknown) per streamer
 - **Modern Card UI**: One card per streamer with date input and coating buttons
-- **Heatmap Tooltip**: Hover on streamer column header to see deployment date, days in water, coating, and cleaning stats
+- **Heatmap Tooltip**: Hover on streamer column header to see deployment date, days from deployment to first scraping, coating, and cleaning stats
 - **Clear Config**: SuperUser can clear individual or all streamer configurations
 
 ### 🗄️ Database Schema (Fresh Install)

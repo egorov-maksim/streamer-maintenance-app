@@ -1141,7 +1141,7 @@ async function renderHeatmap() {
 
 /**
  * Single floating tooltip for heatmap streamer column headers.
- * Shows deployment date, days in water, coating, total cleanings, last cleaned.
+ * Shows deployment date, days from deployment to first scraping, coating, total cleanings, last cleaned.
  */
 function attachStreamerHeaderTooltips(wrapper, lastCleaned, deployments) {
   let tooltipEl = document.getElementById('streamer-header-tooltip');
@@ -1165,16 +1165,25 @@ function attachStreamerHeaderTooltips(wrapper, lastCleaned, deployments) {
       const lastCleanedDate = sectionDates.length
         ? sectionDates.reduce((max, d) => (d && (!max || new Date(d) > new Date(max)) ? d : max), null)
         : null;
-      const daysInWater = deployment.deploymentDate
-        ? Math.floor((Date.now() - new Date(deployment.deploymentDate)) / (1000 * 60 * 60 * 24))
-        : null;
+      let daysToFirstScraping = null;
+      if (deployment.deploymentDate && streamerEvents.length > 0) {
+        const firstCleaning = [...streamerEvents].sort((a, b) =>
+          new Date(a.cleanedAt) - new Date(b.cleanedAt)
+        )[0];
+        const days = Math.floor(
+          (new Date(firstCleaning.cleanedAt) - new Date(deployment.deploymentDate)) / (1000 * 60 * 60 * 24)
+        );
+        if (days >= 0) daysToFirstScraping = days;
+      }
       const coatingLabel = deployment.isCoated === true ? 'Coated' : deployment.isCoated === false ? 'Uncoated' : 'Unknown';
 
       let html = `<div class="streamer-tooltip-title">Streamer ${streamerId}</div>`;
       if (deployment.deploymentDate) {
         html += `<div class="streamer-tooltip-row">📅 Deployed: ${new Date(deployment.deploymentDate).toLocaleDateString()}</div>`;
-        if (daysInWater !== null) {
-          html += `<div class="streamer-tooltip-row">🌊 Days in water: ${daysInWater}</div>`;
+        if (daysToFirstScraping !== null) {
+          html += `<div class="streamer-tooltip-row">🌊 Days to first scraping: ${daysToFirstScraping}</div>`;
+        } else if (streamerEvents.length === 0) {
+          html += `<div class="streamer-tooltip-row">🌊 Days to first scraping: No scraping yet</div>`;
         }
       } else {
         html += `<div class="streamer-tooltip-row">📅 No deployment date</div>`;
