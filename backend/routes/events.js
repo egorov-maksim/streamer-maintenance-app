@@ -75,11 +75,13 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
       }
 
       const config = await loadConfig();
-      let finalProjectNumber = project_number;
+      const projectNumberMissing = project_number === undefined || project_number === null || project_number === "";
+      let finalProjectNumber = projectNumberMissing ? null : project_number;
       let finalVesselTag = vessel_tag || defaultConfig.vesselTag;
+      let activeProject = null;
       if (finalProjectNumber === undefined || finalProjectNumber === null) {
-        const vesselTagForResolve = req.vesselScope || config.vesselTag;
-        const activeProject = vesselTagForResolve
+        const vesselTagForResolve = req.vesselScope || config.vesselTag || defaultConfig.vesselTag;
+        activeProject = vesselTagForResolve
           ? await getActiveProjectForVessel(vesselTagForResolve)
           : null;
         if (!activeProject) {
@@ -95,12 +97,21 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
       if (req.vesselScope) {
         finalVesselTag = req.vesselScope;
       }
+      const projectRow = activeProject || await getOneCamelized("SELECT * FROM projects WHERE project_number = ?", [finalProjectNumber]);
+      const eventConfig = {
+        ...config,
+        sectionsPerCable: projectRow?.sectionsPerCable ?? config.sectionsPerCable,
+        useRopeForTail: projectRow != null ? projectRow.useRopeForTail === 1 : config.useRopeForTail,
+      };
       const count = Number.isFinite(cleaning_count) ? cleaning_count : 1;
+      const addedByUsertag = bodyData.added_by_usertag != null
+        ? String(bodyData.added_by_usertag).trim() || null
+        : (req.user?.username ?? null);
 
       const insertOne = async (sectionType, start, end) => {
         const result = await runAsync(
-          `INSERT INTO cleaning_events (streamer_id, section_index_start, section_index_end, section_type, cleaning_method, cleaned_at, cleaning_count, project_number, vessel_tag)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO cleaning_events (streamer_id, section_index_start, section_index_end, section_type, cleaning_method, cleaned_at, cleaning_count, project_number, vessel_tag, added_by_usertag)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             streamer_id,
             start,
@@ -111,6 +122,7 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
             count,
             finalProjectNumber,
             finalVesselTag,
+            addedByUsertag,
           ]
         );
         return getOneCamelized("SELECT * FROM cleaning_events WHERE id = ?", [result.lastID]);
@@ -122,7 +134,7 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
           section_index_start,
           section_index_end,
           explicitSectionType,
-          config
+          eventConfig
         );
         if (!validation.valid) {
           return sendError(res, 400, validation.message);
@@ -134,7 +146,7 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
       const { active, tail } = splitSectionRange(
         section_index_start,
         section_index_end,
-        config
+        eventConfig
       );
 
       if (!active && !tail) {

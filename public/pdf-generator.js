@@ -472,20 +472,21 @@ async function addAllEventsSection(doc) {
     return;
   }
 
-  // Table headers with EB Range column
+  // Table headers with EB Range and Added by columns
   const drawHeaders = (y) => {
     doc.text('Date', 15, y);
     doc.text('Cable', 40, y);
     doc.text('Sections', 55, y);
     doc.text('EB Range', 85, y);
-    doc.text('Method', 120, y);
-    doc.text('Length', 145, y);
-    doc.text('Count', 165, y);
+    doc.text('Method', 115, y);
+    doc.text('Added by', 140, y);
+    doc.text('Length', 165, y);
+    doc.text('Count', 182, y);
   };
 
   drawHeaders(yPos);
   yPos += 5;
-  doc.line(15, yPos, 175, yPos);
+  doc.line(15, yPos, 195, yPos);
   yPos += 5;
 
   // Fetch all EB ranges in parallel for performance, normalizing to display strings
@@ -513,7 +514,7 @@ async function addAllEventsSection(doc) {
       yPos = 20;
       drawHeaders(yPos);
       yPos += 5;
-      doc.line(15, yPos, 175, yPos);
+      doc.line(15, yPos, 195, yPos);
       yPos += 5;
     }
 
@@ -526,6 +527,7 @@ async function addAllEventsSection(doc) {
       typeof ebRangeRaw === "string" && ebRangeRaw.trim().length > 0
         ? ebRangeRaw
         : "—";
+    const addedBy = evt.addedByUsertag || "—";
     const distance = `${eventDistance(evt)}m`;
     const count = evt.cleaningCount || 1;
 
@@ -534,9 +536,10 @@ async function addAllEventsSection(doc) {
     doc.text(streamer, 40, yPos);
     doc.text(sections, 55, yPos);
     doc.text(ebRange, 85, yPos);
-    doc.text(evt.cleaningMethod, 120, yPos);
-    doc.text(distance, 145, yPos);
-    doc.text(String(count), 165, yPos);
+    doc.text(evt.cleaningMethod, 115, yPos);
+    doc.text(addedBy, 140, yPos);
+    doc.text(distance, 165, yPos);
+    doc.text(String(count), 182, yPos);
     yPos += 5;
   }
 }

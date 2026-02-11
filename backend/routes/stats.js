@@ -1,11 +1,34 @@
 // routes/stats.js
 const express = require("express");
-const { getAsync, getAllCamelized } = require("../db");
-const { loadConfig } = require("../config");
+const { getAsync, getAllCamelized, getOneCamelized } = require("../db");
+const { loadConfig, defaultConfig } = require("../config");
+const { getActiveProjectForVessel } = require("../activeProject");
 const { toInt } = require("../utils/validation");
 const { sendError } = require("../utils/errors");
 const { buildEventsWhereClause } = require("../utils/queryHelpers");
 const { calculateEBRange } = require("../utils/eb");
+
+/**
+ * Resolve config for stats/last-cleaned: when project is in query or default vessel has active project, use that project's sectionsPerCable and useRopeForTail.
+ */
+async function getEffectiveConfig(req) {
+  const config = await loadConfig();
+  const project = req.query?.project;
+  const vesselTag = req.vesselScope || config.vesselTag || defaultConfig.vesselTag;
+  let projectRow = null;
+  if (project) {
+    projectRow = await getOneCamelized("SELECT * FROM projects WHERE project_number = ?", [project]);
+  } else {
+    projectRow = await getActiveProjectForVessel(vesselTag);
+  }
+  return {
+    ...config,
+    numCables: projectRow?.numCables ?? config.numCables,
+    sectionsPerCable: projectRow?.sectionsPerCable ?? config.sectionsPerCable,
+    useRopeForTail: projectRow != null ? projectRow.useRopeForTail === 1 : config.useRopeForTail,
+    sectionLength: projectRow?.sectionLength ?? config.sectionLength,
+  };
+}
 
 /**
  * Create stats router (stats, last-cleaned, stats/filter, eb-range).
@@ -42,7 +65,7 @@ function createStatsRouter(authMiddleware) {
   router.get("/api/stats", authMiddleware, async (req, res) => {
     try {
       const { project } = req.query;
-      const config = await loadConfig();
+      const config = await getEffectiveConfig(req);
       const sectionLength = config.sectionLength || 1;
       const sectionsPerCable = config.sectionsPerCable;
       const tailSections = config.useRopeForTail ? 0 : 5;
@@ -112,7 +135,7 @@ function createStatsRouter(authMiddleware) {
   router.get("/api/last-cleaned", authMiddleware, async (req, res) => {
     try {
       const { project } = req.query;
-      const config = await loadConfig();
+      const config = await getEffectiveConfig(req);
       const sectionsPerCable = config.sectionsPerCable;
       const cableCount = config.numCables;
       const tailSections = config.useRopeForTail ? 0 : 5;
@@ -158,7 +181,7 @@ function createStatsRouter(authMiddleware) {
   router.get("/api/last-cleaned-filtered", authMiddleware, async (req, res) => {
     try {
       const { start, end, project } = req.query;
-      const config = await loadConfig();
+      const config = await getEffectiveConfig(req);
       const sectionsPerCable = config.sectionsPerCable;
       const cableCount = config.numCables;
       const tailSections = config.useRopeForTail ? 0 : 5;
@@ -209,7 +232,7 @@ function createStatsRouter(authMiddleware) {
   router.get("/api/stats/filter", authMiddleware, async (req, res) => {
     try {
       const { start, end, project } = req.query;
-      const config = await loadConfig();
+      const config = await getEffectiveConfig(req);
       const sectionLength = config.sectionLength || 1;
       const sectionsPerCable = config.sectionsPerCable;
 

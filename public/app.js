@@ -549,7 +549,7 @@ function exportCsv() {
     return;
   }
 
-  const header = 'Streamer Number,Section Type,First Section,Last Section,Cleaning Method,Date & Time,Project Number,Vessel Tag';
+  const header = 'Streamer Number,Section Type,First Section,Last Section,Cleaning Method,Date & Time,Project Number,Vessel Tag,Added By';
   const rows = [header];
 
   events.forEach(evt => {
@@ -560,7 +560,8 @@ function exportCsv() {
     const dateStr = new Date(evt.cleanedAt).toISOString();
     const projectNum = evt.projectNumber || '';
     const vesselTag = evt.vesselTag || 'TTN';
-    rows.push(`${streamerNum},${sectionType},${startSection},${endSection},${evt.cleaningMethod},"${dateStr}","${projectNum}","${vesselTag}"`);
+    const addedBy = (evt.addedByUsertag || '').replace(/"/g, '""');
+    rows.push(`${streamerNum},${sectionType},${startSection},${endSection},${evt.cleaningMethod},"${dateStr}","${projectNum}","${vesselTag}","${addedBy}"`);
   });
 
   const csv = rows.join('\n');
@@ -742,6 +743,7 @@ async function renderLog() {
     const distance = eventDistance(evt);
     const projectDisplay = evt.projectNumber || '<span style="color:#9ca3af">—</span>';
     const vesselDisplay = evt.vesselTag || 'TTN';
+    const addedByDisplay = evt.addedByUsertag || '—';
 
     const actionButtons = isAdminUser 
       ? `<button class="btn btn-outline btn-edit" data-id="${evt.id}">✏️</button>
@@ -752,6 +754,7 @@ async function renderLog() {
       <td>${formatDateTime(evt.cleanedAt)}</td>
       <td>${projectDisplay}</td>
       <td>${vesselDisplay}</td>
+      <td>${addedByDisplay}</td>
       <td>Streamer ${streamerNum}</td>
       <td>${rangeLabel}</td>
       <td>${ebRange}</td>
@@ -1409,9 +1412,10 @@ async function confirmCleaning() {
   }
   const method = safeGet('modal-method').value;
   
+  // Use project that matches current list filter so the new event appears (important for grand super user where multiple projects can be "active").
   const activeProject = projects.find(p => p.isActive);
-  const projectNumber = activeProject ? activeProject.projectNumber : null;
-  
+  const projectNumber = selectedProjectFilter || config.activeProjectNumber || (activeProject ? activeProject.projectNumber : null);
+
   const validation = validateStreamerAndSections(streamerNum, startSection, endSection, projectNumber);
   if (!validation.valid) {
     showErrorToast('Out of Range', validation.message);
@@ -1730,6 +1734,10 @@ async function sortTable(column) {
       case 'method':
         valA = a.cleaningMethod;
         valB = b.cleaningMethod;
+        break;
+      case 'addedby':
+        valA = (a.addedByUsertag || '').toLowerCase();
+        valB = (b.addedByUsertag || '').toLowerCase();
         break;
       default:
         return 0;

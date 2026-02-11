@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS cleaning_events (
   cleaning_count INTEGER DEFAULT 1,
   project_number TEXT,
   vessel_tag TEXT DEFAULT 'TTN',
+  added_by_usertag TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(project_number) REFERENCES projects(project_number) ON DELETE CASCADE
 );

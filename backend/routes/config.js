@@ -21,18 +21,17 @@ function createConfigRouter(authMiddleware, superUserOnly) {
     try {
       const config = await loadConfig();
       const base = humps.camelizeKeys(config);
-      if (req.vesselScope) {
-        const activeProject = await getActiveProjectForVessel(req.vesselScope);
-        if (activeProject) {
-          base.activeProjectNumber = activeProject.projectNumber;
-          base.vesselTag = activeProject.vesselTag || defaultConfig.vesselTag;
-          base.numCables = activeProject.numCables ?? base.numCables;
-          base.sectionsPerCable = activeProject.sectionsPerCable ?? base.sectionsPerCable;
-          base.sectionLength = activeProject.sectionLength ?? base.sectionLength;
-          base.moduleFrequency = activeProject.moduleFrequency ?? base.moduleFrequency;
-          base.channelsPerSection = activeProject.channelsPerSection ?? base.channelsPerSection;
-          base.useRopeForTail = activeProject.useRopeForTail === 1;
-        }
+      const vesselTag = req.vesselScope || config.vesselTag || defaultConfig.vesselTag;
+      const activeProject = await getActiveProjectForVessel(vesselTag);
+      if (activeProject) {
+        base.activeProjectNumber = activeProject.projectNumber;
+        base.vesselTag = activeProject.vesselTag || defaultConfig.vesselTag;
+        base.numCables = activeProject.numCables ?? base.numCables;
+        base.sectionsPerCable = activeProject.sectionsPerCable ?? base.sectionsPerCable;
+        base.sectionLength = activeProject.sectionLength ?? base.sectionLength;
+        base.moduleFrequency = activeProject.moduleFrequency ?? base.moduleFrequency;
+        base.channelsPerSection = activeProject.channelsPerSection ?? base.channelsPerSection;
+        base.useRopeForTail = activeProject.useRopeForTail === 1;
       }
       res.json(base);
     } catch (err) {
