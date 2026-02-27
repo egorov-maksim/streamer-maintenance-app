@@ -85,6 +85,16 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 - **Collapse/Expand UI**: Fold configuration section for cleaner interface
 - **Cleanup Orphaned Streamers**: When streamer count is reduced, SuperUser can remove events and deployments for hidden streamers via "Cleanup orphaned streamers"
 
+### ⚙️ Config Page (Dedicated Dashboard)
+- **Separate Configuration UI**: Full-screen dashboard at `/config` for managing projects and streamer settings without cluttering the main heatmap view
+- **Access**: SuperUser and GrandSuperUser only; link "⚙️ Config" appears in the main app header when permitted
+- **Project & Streamer Configuration**: Active project banner, project comments (superuser-editable), project selector, and streamer parameters (count, sections, length, eBird frequency, tail option, etc.) with Save and "Cleanup orphaned streamers"
+- **Per-Streamer Deployment**: Set deployment date and coating (Coated/Uncoated/Unknown) per streamer; bulk actions to set all dates, set all coating, or clear all/single streamer config
+- **Vessel Project Overview**: Table of vessels with active project and project name; SuperUsers can change the active project per vessel from dropdowns
+- **Project Management**: Create new project, set active project, clear active project; list of all projects with actions (activate, force-delete with confirmation)
+- **Backup & Restore**: Create manual backup, refresh backup list, restore from backup (Admin/SuperUser)
+- **Back to Main**: Header link returns to the main app at `/`
+
 ### 📊 Comprehensive Statistics Dashboard
 - **Coverage Metrics**:
   - Overall coverage percentage (active + tails)
@@ -315,12 +325,20 @@ AUTH_USERS=TTNOBS:Password:admin:TTN:true,TTNView:Password:viewer:TTN,TTNNav:Pas
 
 ### Configuration
 
-#### Accessing Configuration
-1. Admin login required
-2. Scroll to "Configuration" section
-3. Click to expand/collapse
-4. Modify any setting
-5. Changes apply immediately to active project
+Configuration is changed on the dedicated **Config page** (SuperUser only); there is no configuration section on the main page.
+
+#### Config Page (SuperUser only)
+- Open the **⚙️ Config** link in the main app header (visible only to SuperUser/GrandSuperUser), or go to **http://localhost:3000/config**
+- After login, the dashboard shows:
+  - **Active project** and project comments (editable by superuser)
+  - **Project selector** and "Set as Active" to switch the active project
+  - **Streamer configuration** (number of streamers, sections, section length, eBird frequency, tail option, etc.) — Save applies to the active project; "Cleanup orphaned streamers" removes events/deployments for streamers above the current count
+  - **Per-streamer deployment** (deployment date and coating per streamer; bulk Set All Date / Set All Coating / Clear All)
+  - **Vessel Project Overview** — see which project is active per vessel; superusers can change active project per vessel from the table
+  - **Create New Project** (project number, name, vessel tag)
+  - **All Projects** list with activate/delete actions
+  - **Database Backup & Restore** — create backup, refresh list, restore
+- Use **← Back to main** to return to the heatmap and event log.
 
 #### Key Settings
 
@@ -377,7 +395,7 @@ The PDF report includes:
 
 ### Configuration
 - `GET /api/config` - Get current configuration
-- `PUT /api/config` - Update configuration (Admin only)
+- `PUT /api/config` - Update configuration (SuperUser only)
 
 ### Projects
 - `GET /api/projects` - List all projects
@@ -527,7 +545,9 @@ streamer-maintenance-app/
 │       ├── queryHelpers.js
 │       └── validation.js
 ├── public/
-│   ├── index.html         # Main UI
+│   ├── index.html         # Main UI (heatmap, events, stats)
+│   ├── config.html        # Config page (projects, streamer config, backups)
+│   ├── configPage.js      # Config page logic (SuperUser only)
 │   ├── app.js             # Frontend entry & orchestration
 │   ├── styles.css         # UI styling
 │   ├── pdf-generator.js   # PDF report generation
@@ -567,6 +587,7 @@ streamer-maintenance-app/
 
 ## 📝 Latest Updates (January 2026)
 
+- ✅ **Config page** (`/config`): dedicated SuperUser dashboard for project & streamer configuration, vessel–project overview, per-streamer deployment, backups, and project management
 - ✅ Multi-project support with project creation and management
 - ✅ User authentication with role-based access control (Admin/Viewer)
 - ✅ Session management with localStorage persistence
