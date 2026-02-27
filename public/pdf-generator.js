@@ -5,7 +5,7 @@
 
 import { safeGet, setStatus } from "./js/ui.js";
 import { config, getActiveProject } from "./js/state.js";
-import { formatAS, formatSectionLabel, eventDistance, fmtKm, ageBucket } from "./js/streamer-utils.js";
+import { formatAS, formatSectionLabel, eventDistance, fmtKm, ageBucket, formatEB } from "./js/streamer-utils.js";
 import { getAuthHeaders, getEBRange } from "./js/api.js";
 
 // Color map for heatmap
@@ -288,7 +288,7 @@ async function generatePDFReport() {
 
     // === All Events ===
     doc.addPage('a3', 'landscape');
-    await addAllEventsSection(doc);
+    await addAllEventsSection(doc, startDate, endDate);
 
     // Save
     const filename = `streamer-maintenance-report-${new Date().toISOString().split('T')[0]}.pdf`;
@@ -343,20 +343,25 @@ async function addHeatmapPage(doc, lastCleaned, title) {
   const startX = leftMargin + 15; // Space for section labels
   const startY = topMargin + 8; // Space for cable labels
 
-  // Pre-fetch all EB ranges for the sections, normalizing to display strings
-  const ebRanges = await Promise.all(
-    Array.from({ length: totalSections }, (_, s) =>
-      getEBRange(s, s).then((r) => {
-        if (r && typeof r === "object" && "ebRange" in r) {
-          return r.ebRange ?? "—";
-        }
-        if (typeof r === "string") {
-          return r;
-        }
-        return "—";
-      })
-    )
-  );
+  // Pre-compute EB module positions per section (active sections only)
+  const moduleFreq = config.moduleFrequency || 4;
+  const modulesBySection = Array.from({ length: totalSections }, () => null);
+
+  // Always have EB01 at section 0
+  modulesBySection[0] = 1;
+
+  for (let sectionIndex = moduleFreq; sectionIndex < sectionsPerCable; sectionIndex += moduleFreq) {
+    const moduleNum = Math.floor(sectionIndex / moduleFreq) + 1;
+    if (sectionIndex < totalSections) {
+      modulesBySection[sectionIndex] = moduleNum;
+    }
+  }
+
+  const lastModuleNum = Math.floor((sectionsPerCable - 1) / moduleFreq) + 1;
+  const lastModuleSection = sectionsPerCable - 1;
+  if (lastModuleSection < totalSections && !modulesBySection[lastModuleSection]) {
+    modulesBySection[lastModuleSection] = lastModuleNum;
+  }
 
   // Draw cable numbers at top (RIGHT TO LEFT: S12, S11, S10... S2, S1)
   doc.setFontSize(8);
@@ -405,16 +410,14 @@ async function addHeatmapPage(doc, lastCleaned, title) {
       doc.rect(startX + c * cellWidth, rowY, cellWidth, cellHeight, 'S');
     }
 
-    // EB label on right side - show every 10 sections
-    if (s % 10 === 0 || s === 0 || s === totalSections - 1) {
-      const ebLabelRaw = ebRanges[s];
-      const ebLabel =
-        typeof ebLabelRaw === "string" && ebLabelRaw.trim().length > 0
-          ? ebLabelRaw
-          : "—";
-      doc.setFontSize(5);
-      doc.setTextColor(80, 80, 80);
-      doc.text(ebLabel, startX + heatmapWidth + 3, rowY + cellHeight / 2 + 0.8);
+    // EB module labels on right side:
+    // show only even-numbered modules (EB02, EB04, ...) and no ranges
+    const moduleNum = modulesBySection[s];
+    if (moduleNum && moduleNum % 2 === 0) {
+      const ebLabel = formatEB(moduleNum);
+      doc.setFontSize(6);
+      doc.setTextColor(0, 0, 0);
+      doc.text(ebLabel, startX + heatmapWidth + 3, rowY + cellHeight / 2 + 1, { align: 'left' });
     }
   }
 
@@ -449,9 +452,10 @@ async function addHeatmapPage(doc, lastCleaned, title) {
 }
 
 /**
- * Helper: Add all events section with EB range column
+ * Helper: Add all events section with EB range column.
+ * If startDate/endDate are provided, only events within that range are included.
  */
-async function addAllEventsSection(doc) {
+async function addAllEventsSection(doc, startDate, endDate) {
   let yPos = 20;
 
   // Fetch events from API with project filter
@@ -460,15 +464,37 @@ async function addAllEventsSection(doc) {
     eventsUrl += `?project=${encodeURIComponent(config.activeProjectNumber)}`;
   }
   const eventsRes = await fetch(eventsUrl, { headers: getAuthHeaders() });
-  const eventsToShow = await eventsRes.json();
+  const allEvents = await eventsRes.json();
 
+  // Filter by date range when filter dates are set
+  const eventsToShow = (startDate || endDate)
+    ? allEvents.filter((e) => {
+        const eventDate = new Date(e.cleanedAt).toISOString().split('T')[0];
+        if (startDate && endDate) return eventDate >= startDate && eventDate <= endDate;
+        if (startDate) return eventDate >= startDate;
+        if (endDate) return eventDate <= endDate;
+        return true;
+      })
+    : allEvents;
+
+  const hasFilter = Boolean(startDate || endDate);
   doc.setFontSize(14);
-  doc.text(`All Cleaning Events (${eventsToShow.length} total)`, 20, yPos);
+  doc.text(
+    hasFilter
+      ? `Cleaning Events (${eventsToShow.length} in selected period)`
+      : `All Cleaning Events (${eventsToShow.length} total)`,
+    20,
+    yPos
+  );
   yPos += 8;
   doc.setFontSize(8);
 
   if (eventsToShow.length === 0) {
-    doc.text('No cleaning events recorded.', 25, yPos);
+    doc.text(
+      hasFilter ? 'No cleaning events recorded for the selected period.' : 'No cleaning events recorded.',
+      25,
+      yPos
+    );
     return;
   }
 
@@ -509,8 +535,8 @@ async function addAllEventsSection(doc) {
   for (let i = 0; i < eventsToShow.length; i++) {
     const evt = eventsToShow[i];
 
-      if (yPos > 195) {
-        doc.addPage('a3', 'landscape');
+    if (yPos > 195) {
+      doc.addPage('a3', 'landscape');
       yPos = 20;
       drawHeaders(yPos);
       yPos += 5;
