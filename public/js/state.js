@@ -63,9 +63,12 @@ export function getActiveProject() {
   if (active.length === 0) return null;
   if (currentUser?.vesselTag) {
     const forVessel = active.find((p) => p.vesselTag === currentUser.vesselTag);
-    if (forVessel) return forVessel;
+    if (forVessel) {
+      return forVessel;
+    }
   }
-  return active[0] || null;
+  const fallback = active[0] || null;
+  return fallback;
 }
 
 export function getFilteredEvents() {

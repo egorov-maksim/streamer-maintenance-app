@@ -62,6 +62,11 @@ app.use(express.json());
 // serve frontend
 app.use(express.static(path.join(__dirname, "..", "public")));
 
+// dedicated config page
+app.get("/config", (_req, res) => {
+  res.sendFile(path.join(__dirname, "..", "public", "config.html"));
+});
+
 // Mount route modules
 const authRouter = createAuthRouter(sessions, users, authMiddleware);
 const backupsRouter = createBackupsRouter(authMiddleware, superUserOnly);

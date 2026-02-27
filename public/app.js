@@ -1956,16 +1956,20 @@ async function initApp() {
     renderHeatmap,
     refreshStatsFiltered,
   });
+  // Load config so heatmap / stats have correct streamer layout,
+  // even though editing is done on /config.
   await Projects.loadConfig();
-  if (config.activeProjectNumber) {
-    setSelectedProjectFilter(String(config.activeProjectNumber));
-  }
   await Projects.loadProjects();
-  Projects.updateActiveProjectBanner();
-  await Projects.loadBackups();
+
+  // Default project filter to the active project for this user/vessel,
+  // so heatmap, stats and log are scoped to that project instead of
+  // aggregating all projects on the same vessel.
+  const active = getActiveProject();
+  if (active?.projectNumber) {
+    setSelectedProjectFilter(String(active.projectNumber));
+  }
   await refreshEverything();
   await renderHeatmap();
-  await Projects.renderStreamerDeploymentGrid();
   await refreshStatsFiltered();
 
   // Set default date/time for manual entry
