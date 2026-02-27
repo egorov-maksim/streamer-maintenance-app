@@ -78,9 +78,12 @@
         <span class="user-name" id="user-display-name">User</span>
         <span class="user-role-badge" id="user-role-badge">Viewer</span>
       </div>
-      <button class="logout-btn" id="logout-btn">
-        <span>🚪</span> Logout
-      </button>
+      <div class="user-header-actions">
+        <a href="/config" class="back-to-main-btn superuser-only"><span>⚙️</span> Config</a>
+        <button class="logout-btn" id="logout-btn">
+          <span>🚪</span> Logout
+        </button>
+      </div>
     </div>
 
   <!-- Left Sidebar Navigation -->
@@ -97,10 +100,6 @@
       <div class="nav-icon">📊</div>
       <div class="nav-label">Stats</div>
     </div>
-    <a class="nav-item superuser-only" href="/config">
-      <div class="nav-icon">⚙️</div>
-      <div class="nav-label">Config</div>
-    </a>
   </nav>
 
   <div class="main-wrapper">

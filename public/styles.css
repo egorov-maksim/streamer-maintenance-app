@@ -1692,6 +1692,32 @@
   color: #1e40af;
 }
 
+.user-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.back-to-main-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.back-to-main-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 .logout-btn {
   display: flex;
   align-items: center;
