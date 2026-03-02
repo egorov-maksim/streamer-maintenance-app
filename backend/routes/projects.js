@@ -455,17 +455,28 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
 
   router.post("/api/cleanup-streamers", authMiddleware, superUserOnly, async (req, res) => {
     try {
-      // Cleanup across all projects/streamers is a global operation.
       if (!isGlobalUser(req.user)) {
         return sendError(res, 403, "Grand SuperUser access required to cleanup orphaned streamers");
       }
 
-      const { maxStreamerId } = req.body;
+      const { maxStreamerId, projectId, projectNumber } = req.body;
       const id = typeof maxStreamerId === "number" ? maxStreamerId : parseInt(maxStreamerId, 10);
       if (Number.isNaN(id) || id < 1) return sendError(res, 400, "Invalid maxStreamerId");
 
-      const eventsResult = await runAsync("DELETE FROM cleaning_events WHERE streamer_id > ?", [id]);
-      const deploymentsResult = await runAsync("DELETE FROM streamer_deployments WHERE streamer_id > ?", [id]);
+      const pid = typeof projectId === "number" ? projectId : parseInt(projectId, 10);
+      if (Number.isNaN(pid) || pid < 1) return sendError(res, 400, "Invalid or missing projectId");
+      if (!projectNumber || typeof projectNumber !== "string" || String(projectNumber).trim() === "") {
+        return sendError(res, 400, "Invalid or missing projectNumber");
+      }
+
+      const eventsResult = await runAsync(
+        "DELETE FROM cleaning_events WHERE streamer_id > ? AND project_number = ?",
+        [id, String(projectNumber).trim()]
+      );
+      const deploymentsResult = await runAsync(
+        "DELETE FROM streamer_deployments WHERE streamer_id > ? AND project_id = ?",
+        [id, pid]
+      );
       res.json({
         success: true,
         deletedEvents: eventsResult.changes,

@@ -16,6 +16,8 @@ backend/DS_Store
 public/DS_Store
 legacy-removal.md
 
+# Cursor AI local rules (machine-specific, not for version control)
+.cursor/rules/
 .cursor
 
 # Test suite and artifacts (app-only repo: testing/ not committed)

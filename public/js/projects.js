@@ -3,7 +3,7 @@
  * Call initProjects({ refreshEverything, renderHeatmap, refreshStatsFiltered }) before using.
  */
 
-import { config, projects, setConfig, setProjects, setSelectedProjectFilter, currentUser } from "./state.js";
+import { config, projects, setConfig, setProjects, setSelectedProjectFilter, currentUser, getActiveProject } from "./state.js";
 import * as API from "./api.js";
 import { safeGet, setStatus, showErrorToast, showWarningToast, showSuccessToast, showAccessDeniedToast } from "./ui.js";
 import { isSuperUser, isGrandSuperUser } from "./auth.js";
@@ -179,9 +179,18 @@ export function closeCleanupOrphanedModal() {
 
 /** Performs the cleanup API call. Call from modal confirm button. Caller should close the modal after. */
 export async function performCleanupOrphanedStreamers() {
+  const activeProject = getActiveProject();
+  if (!activeProject) {
+    showErrorToast("Cleanup failed", "No active project. Activate a project before cleaning up orphaned streamers.");
+    return;
+  }
   const maxId = config.numCables;
   try {
-    const data = await API.cleanupStreamers({ maxStreamerId: maxId });
+    const data = await API.cleanupStreamers({
+      maxStreamerId: maxId,
+      projectId: activeProject.id,
+      projectNumber: activeProject.projectNumber,
+    });
     showSuccessToast("Cleanup complete", `Removed ${data.deletedEvents || 0} events and ${data.deletedDeployments || 0} deployment configs.`);
     await refresh();
     await renderStreamerDeploymentGrid();

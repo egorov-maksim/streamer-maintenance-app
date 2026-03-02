@@ -1565,23 +1565,14 @@ async function refreshStatsFiltered() {
         deployDaysBreakdownDiv.innerHTML = '<h3 class="section-title">Days to First Scraping per Streamer</h3><p class="info-text-md">No cleaning events yet</p>';
       } else {
         try {
-          // Get filtered events for calculation
-          let filteredEvents = events;
+          // Get events for first-scraping calculation:
+          // - Always use full project history (ignore date filter) so
+          //   "days to first scraping" is a fixed metric per project.
+          let eventsForFirstScraping = events;
           if (selectedProjectFilter) {
-            filteredEvents = filteredEvents.filter(e => String(e.projectNumber) === selectedProjectFilter);
-          }
-          if (startDate || endDate) {
-            filteredEvents = filteredEvents.filter(e => {
-              const eventDate = new Date(e.cleanedAt).toISOString().split('T')[0];
-              if (startDate && endDate) {
-                return eventDate >= startDate && eventDate <= endDate;
-              } else if (startDate) {
-                return eventDate >= startDate;
-              } else if (endDate) {
-                return eventDate <= endDate;
-              }
-              return true;
-            });
+            eventsForFirstScraping = eventsForFirstScraping.filter(
+              (e) => String(e.projectNumber) === selectedProjectFilter
+            );
           }
 
           const streamerDeployments = await API.apiCall(`/api/projects/${activeProject.id}/streamer-deployments`);
@@ -1592,7 +1583,9 @@ async function refreshStatsFiltered() {
 
           for (let streamerNum = 1; streamerNum <= config.numCables; streamerNum++) {
             const streamerId = streamerNum;
-            const streamerEvents = filteredEvents.filter(e => e.streamerId === streamerId);
+            const streamerEvents = eventsForFirstScraping.filter(
+              (e) => e.streamerId === streamerId
+            );
 
             // Get deployment date for this streamer
             const deployment = streamerDeployments[streamerNum];
