@@ -46,7 +46,7 @@ function createStatsRouter(authMiddleware) {
       if (Number.isNaN(startSection) || Number.isNaN(endSection)) {
         return sendError(res, 400, "start and end query params required");
       }
-      const config = await loadConfig();
+      const config = await getEffectiveConfig(req);
       const sectionsPerCable = config.sectionsPerCable ?? 107;
       const isTail =
         sectionType === "tail" ||

@@ -20,9 +20,11 @@ function calculateEBRange(startSection, endSection, config) {
     allModules.push({ num: moduleNum, section: sectionIndex });
   }
 
-  const lastModuleNum = Math.floor((sectionsPerCable - 1) / moduleFreq) + 1;
-  if (!allModules.some((module) => module.num === lastModuleNum)) {
-    allModules.push({ num: lastModuleNum, section: sectionsPerCable - 1 });
+  // Always add a fixed EB at the last active section if not already there,
+  // matching the heatmap's isLastModule rule in app.js.
+  const lastBuilt = allModules[allModules.length - 1];
+  if (lastBuilt.section !== sectionsPerCable - 1) {
+    allModules.push({ num: lastBuilt.num + 1, section: sectionsPerCable - 1 });
   }
 
   const before = allModules
@@ -33,15 +35,17 @@ function calculateEBRange(startSection, endSection, config) {
     .filter((module) => module.section >= endSection)
     .sort((a, b) => a.section - b.section)[0];
 
+  const effectiveAfter = after || allModules[allModules.length - 1];
+
   const formatEB = (num) => `EB${String(num).padStart(2, "0")}`;
 
-  if (before && after) {
-    if (before.num === after.num) return formatEB(before.num);
-    return `${formatEB(Math.max(before.num, after.num))} - ${formatEB(Math.min(before.num, after.num))}`;
+  if (before && effectiveAfter) {
+    if (before.num === effectiveAfter.num) return formatEB(before.num);
+    return `${formatEB(Math.max(before.num, effectiveAfter.num))} - ${formatEB(Math.min(before.num, effectiveAfter.num))}`;
   } else if (before) {
     return `Tail Adaptor - ${formatEB(before.num)}`;
-  } else if (after) {
-    return formatEB(after.num);
+  } else if (effectiveAfter) {
+    return formatEB(effectiveAfter.num);
   }
 
   return "-";
