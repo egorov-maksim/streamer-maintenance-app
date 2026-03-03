@@ -79,6 +79,7 @@
         <span class="user-role-badge" id="user-role-badge">Viewer</span>
       </div>
       <div class="user-header-actions">
+        <a href="/stats" class="back-to-main-btn"><span>📊</span> Statistics</a>
         <a href="/config" class="back-to-main-btn superuser-only"><span>⚙️</span> Config</a>
         <button class="logout-btn" id="logout-btn">
           <span>🚪</span> Logout
@@ -118,7 +119,7 @@
         <h2 class="card-title">🧹 Cleaning Method Selection</h2>
         <p class="mb-12">Select a cleaning method to use</p>
         <div class="method-tiles">
-          <div class="method-tile active" data-method="rope">
+          <div class="method-tile" data-method="rope">
             <div class="method-icon">🪢</div>
             <div class="method-name">Rope</div>
           </div>
@@ -126,7 +127,7 @@
             <div class="method-icon">🛠️</div>
             <div class="method-name">Scraper</div>
           </div>
-          <div class="method-tile" data-method="scraper-rope">
+          <div class="method-tile active" data-method="scraper-rope">
             <div class="method-icon">🪢🛠️</div>
             <div class="method-name">Scraper&Rope</div>
           </div>
@@ -202,7 +203,7 @@
             <select id="evt-method">
               <option value="rope">Rope</option>
               <option value="scraper">Scraper</option>
-              <option value="scraper-rope">Scraper&Rope</option>
+              <option value="scraper-rope" selected>Scraper&Rope</option>
               <option value="scue">SCUE</option>
               <option value="knife">Knife</option>
             </select>
@@ -290,7 +291,7 @@
             <select id="modal-method">
               <option value="rope">🪢 Rope</option>
               <option value="scraper">🛠️ Scraper</option>
-              <option value="scraper-rope">🪢🛠️ Scraper&Rope</option>
+              <option value="scraper-rope" selected>🪢🛠️ Scraper&Rope</option>
               <option value="scue">⚙️ SCUE</option>
               <option value="knife">🔪 Knife</option>
             </select>
@@ -340,7 +341,7 @@
             <select id="edit-method">
               <option value="rope">Rope</option>
               <option value="scraper">Scraper</option>
-              <option value="scraper-rope">Scraper&Rope</option>
+              <option value="scraper-rope" selected>Scraper&Rope</option>
               <option value="scue">SCUE</option>
               <option value="knife">Knife</option>
             </select>
@@ -469,6 +470,32 @@
   </div>
 
   </div> <!-- Close app-container -->
+
+  <!-- Adjacent Event Merge Modal -->
+  <div id="adjacent-merge-modal" class="modal">
+    <div class="modal-overlay"></div>
+    <div class="modal-content modal-delete">
+      <div class="modal-header modal-header-warning">
+        <h3>Adjacent Cleaning Event</h3>
+        <button class="modal-close" id="btn-adjacent-merge-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="clean-warning">
+          <div class="warning-icon">🔗</div>
+          <div class="clean-warning-text">
+            <strong id="adjacent-merge-headline"></strong>
+            <span id="adjacent-merge-detail"></span>
+          </div>
+        </div>
+        <p class="modal-body-note">Merge these into one event, or keep them as separate records?</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btn-adjacent-merge-cancel">Cancel</button>
+        <button class="btn btn-outline" id="btn-adjacent-merge-separate">Keep Separate</button>
+        <button class="btn btn-primary" id="btn-adjacent-merge-confirm">Merge Events</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Recent Clean Warning Modal -->
   <div id="recent-clean-warning-modal" class="modal">

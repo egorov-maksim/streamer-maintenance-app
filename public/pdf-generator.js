@@ -44,6 +44,7 @@ async function generatePDFReport() {
     // Get filter dates
     const startDate = safeGet('filter-start')?.value;
     const endDate = safeGet('filter-end')?.value;
+    const hasDateFilter = Boolean(startDate || endDate);
 
     let filteredStats = null;
     let filteredLastCleaned = null;
@@ -125,8 +126,9 @@ async function generatePDFReport() {
     }
 
     // === Streamer Deployment & Coating (per streamer, like header tooltip) ===
+    // Omitted when a date filter is active — deployment/coating is project-level metadata, not period-specific.
     const activeProject = getActiveProject();
-    if (activeProject) {
+    if (activeProject && !hasDateFilter) {
       try {
         // Fetch per-streamer deployments for active project
         const deploymentsRes = await fetch(`/api/projects/${activeProject.id}/streamer-deployments`, {
@@ -329,12 +331,9 @@ async function addHeatmapPage(doc, lastCleaned, title) {
   const availableWidth = pageWidth - leftMargin - rightMargin;
   const availableHeight = pageHeight - topMargin - bottomMargin;
 
-  // Calculate cell dimensions
-  // Cables as columns (12 cables), sections as rows (107+ sections)
-  const maxCellWidth = 24;
-  const maxCellHeight = 2;
-  const cellWidth = Math.min(availableWidth / numCables, maxCellWidth);
-  const cellHeight = Math.min(availableHeight / totalSections, maxCellHeight);
+  // Calculate cell dimensions to fill all available space (fit to page)
+  const cellWidth = availableWidth / numCables;
+  const cellHeight = availableHeight / totalSections;
 
   const heatmapWidth = cellWidth * numCables;
   const heatmapHeight = cellHeight * totalSections;

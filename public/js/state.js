@@ -5,7 +5,7 @@
 
 export let config = null;
 export let events = [];
-export let selectedMethod = "rope";
+export let selectedMethod = "scraper-rope";
 export let projects = [];
 export let selectedProjectFilter = null;
 

@@ -50,6 +50,11 @@ import * as Projects from "./js/projects.js";
 import * as StreamerUtils from "./js/streamer-utils.js";
 import { computeStreamerTooltipData } from "./js/streamer-tooltip.js";
 import { initPDFGeneration } from "./pdf-generator.js";
+import {
+  refreshStatsFiltered,
+  resetFilter,
+  renderStreamerCards,
+} from "./js/stats.js";
 
 const sectionCount = StreamerUtils.sectionCount;
 const eventDistance = StreamerUtils.eventDistance;
@@ -256,8 +261,10 @@ async function loadEvents() {
 /* ------------ Recent-clean check helpers ------------ */
 
 let pendingCleaningPayload = null;
+let adjacentMergeTarget = null;
 
 const RECENT_CLEAN_WINDOW_MS = 24 * 60 * 60 * 1000;
+const ADJACENT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 /**
  * Returns the most recent event overlapping the given range that was cleaned
@@ -278,6 +285,67 @@ function checkRecentCleanings(streamerId, startIndex, endIndex, cleanedAtIso) {
     if (diff > 0 && diff < RECENT_CLEAN_WINDOW_MS && diff < smallestDiff) {
       smallestDiff = diff;
       mostRecent = { evt, diffMs: diff };
+    }
+  }
+
+  return mostRecent;
+}
+
+/**
+ * Returns the most recent event adjacent to the given range that shares the same
+ * streamer and cleaning method, within 1 hour in either direction.
+ * Only checks single-type ranges (active-only or tail-only); returns null for
+ * ranges that span both active and tail.
+ *
+ * @param {number} streamerId
+ * @param {number} startIndex - 0-based global start index
+ * @param {number} endIndex - 0-based global end index (inclusive)
+ * @param {string} cleaningMethod
+ * @param {string} cleanedAtIso
+ * @returns {{ evt, mergedStart, mergedEnd, sectionType, diffMs } | null}
+ */
+function checkAdjacentEvents(streamerId, startIndex, endIndex, cleaningMethod, cleanedAtIso) {
+  const sectionsPerCable = config.sectionsPerCable ?? 107;
+
+  let proposedType;
+  let proposedStart;
+  let proposedEnd;
+
+  if (endIndex < sectionsPerCable) {
+    proposedType = 'active';
+    proposedStart = startIndex;
+    proposedEnd = endIndex;
+  } else if (startIndex >= sectionsPerCable) {
+    proposedType = 'tail';
+    proposedStart = startIndex - sectionsPerCable;
+    proposedEnd = endIndex - sectionsPerCable;
+  } else {
+    // Spans active + tail — skip merge suggestion for now
+    return null;
+  }
+
+  const proposedTime = new Date(cleanedAtIso).getTime();
+  let mostRecent = null;
+  let smallestDiff = Infinity;
+
+  for (const evt of events) {
+    if (evt.streamerId !== streamerId) continue;
+    if ((evt.sectionType || 'active') !== proposedType) continue;
+    if (evt.cleaningMethod !== cleaningMethod) continue;
+
+    const isAdjacent =
+      evt.sectionIndexEnd + 1 === proposedStart ||
+      proposedEnd + 1 === evt.sectionIndexStart;
+    if (!isAdjacent) continue;
+
+    const existingTime = new Date(evt.cleanedAt).getTime();
+    const diff = Math.abs(proposedTime - existingTime);
+
+    if (diff < ADJACENT_WINDOW_MS && diff < smallestDiff) {
+      smallestDiff = diff;
+      const mergedStart = Math.min(evt.sectionIndexStart, proposedStart);
+      const mergedEnd = Math.max(evt.sectionIndexEnd, proposedEnd);
+      mostRecent = { evt, mergedStart, mergedEnd, sectionType: proposedType, diffMs: diff };
     }
   }
 
@@ -307,6 +375,63 @@ function showRecentCleanWarning(recentClean, body) {
 
   pendingCleaningPayload = body;
   openModal('recent-clean-warning-modal');
+}
+
+/** Populates and opens the adjacent-merge modal, storing the payload and merge target. */
+function showAdjacentMergeModal(adjacentMatch, body) {
+  const { evt, mergedStart, mergedEnd, sectionType, diffMs } = adjacentMatch;
+  const sectionsPerCable = config.sectionsPerCable ?? 107;
+
+  const existingRange = `${formatSectionLabel(evt.sectionIndexStart, sectionType)}–${formatSectionLabel(evt.sectionIndexEnd, sectionType)}`;
+
+  const proposedStart = sectionType === 'tail'
+    ? body.sectionIndexStart - sectionsPerCable
+    : body.sectionIndexStart;
+  const proposedEnd = sectionType === 'tail'
+    ? body.sectionIndexEnd - sectionsPerCable
+    : body.sectionIndexEnd;
+  const proposedRange = `${formatSectionLabel(proposedStart, sectionType)}–${formatSectionLabel(proposedEnd, sectionType)}`;
+  const mergedRange = `${formatSectionLabel(mergedStart, sectionType)}–${formatSectionLabel(mergedEnd, sectionType)}`;
+
+  safeGet('adjacent-merge-headline').textContent =
+    `Streamer ${evt.streamerId}: "${evt.cleaningMethod}" was applied to sections ${existingRange} ${formatTimeAgo(diffMs)}.`;
+  safeGet('adjacent-merge-detail').textContent =
+    `Your new event covers adjacent sections ${proposedRange}. Merge into one event covering ${mergedRange}?`;
+
+  adjacentMergeTarget = adjacentMatch;
+  pendingCleaningPayload = body;
+  openModal('adjacent-merge-modal');
+}
+
+/** Merges the pending payload into the existing adjacent event by extending its section range. */
+async function mergeAdjacentEvent() {
+  closeModal('adjacent-merge-modal');
+  if (!adjacentMergeTarget || !pendingCleaningPayload) return;
+
+  const { evt, mergedStart, mergedEnd, sectionType } = adjacentMergeTarget;
+  adjacentMergeTarget = null;
+  pendingCleaningPayload = null;
+
+  try {
+    await API.updateEvent(evt.id, {
+      streamerId: evt.streamerId,
+      sectionIndexStart: mergedStart,
+      sectionIndexEnd: mergedEnd,
+      sectionType: sectionType,
+      cleaningMethod: evt.cleaningMethod,
+      cleanedAt: evt.cleanedAt,
+      cleaningCount: evt.cleaningCount,
+      projectNumber: evt.projectNumber,
+      vesselTag: evt.vesselTag,
+    });
+    await refreshEverything();
+    await renderHeatmap();
+    await refreshStatsFiltered();
+    showSuccessToast('Events merged', 'Cleaning events merged into one.');
+  } catch (err) {
+    console.error(err);
+    showErrorToast('Merge Failed', 'Failed to merge events. Please try again.');
+  }
 }
 
 /** Submits a cleaning event payload and refreshes all views. */
@@ -377,6 +502,12 @@ async function addEvent() {
     const recentClean = checkRecentCleanings(streamerId, actualStart, actualEnd, datetimeIso);
     if (recentClean) {
       showRecentCleanWarning(recentClean, body);
+      return;
+    }
+
+    const adjacentMatch = checkAdjacentEvents(streamerId, actualStart, actualEnd, method, datetimeIso);
+    if (adjacentMatch) {
+      showAdjacentMergeModal(adjacentMatch, body);
       return;
     }
 
@@ -938,97 +1069,6 @@ async function renderAlerts() {
   }
 }
 
-/* ------------ Streamer Cards (UPDATED WITH DATE FILTERING) ------------ */
-
-async function renderStreamerCards(startDate = null, endDate = null) {
-  const container = safeGet('streamer-cards-container');
-  if (!container) return;
-
-  container.innerHTML = '';
-
-  try {
-    // Add project filter to API call
-    let url = 'api/last-cleaned';
-    if (selectedProjectFilter) {
-      url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
-    }
-    const data = await API.apiCall(url);
-    const lastCleaned = data.lastCleaned;
-
-    const cableCount = config.numCables;
-    const sectionsPerCable = config.sectionsPerCable;
-    const tailSections = config.useRopeForTail ? 0 : 5;
-    const totalPerCable = sectionsPerCable + tailSections;
-
-    for (let streamerId = 1; streamerId <= cableCount; streamerId++) {
-      const sections = lastCleaned[streamerId] || [];
-
-      // Filter events by date range if provided
-      let filteredEvents = events.filter(evt => evt.streamerId === streamerId);
-
-      if (startDate || endDate) {
-        filteredEvents = filteredEvents.filter(evt => {
-          const evtDate = new Date(evt.cleanedAt).toISOString().split('T')[0];
-          if (startDate && evtDate < startDate) return false;
-          if (endDate && evtDate > endDate) return false;
-          return true;
-        });
-      }
-
-      // Calculate coverage based on filtered events
-      let cleanedCount = 0;
-      let totalCleanings = 0;
-
-      // Count total cleaning events for this cable
-      totalCleanings = filteredEvents.length;
-
-      sections.forEach((date, idx) => {
-        if (!date) return; // Never cleaned
-        
-        // If filters applied, check if lastCleaned date is in range  
-        if (startDate || endDate) {
-          const sectionDate = new Date(date).toISOString().split('T')[0];
-          if (startDate && sectionDate < startDate) return;
-          if (endDate && sectionDate > endDate) return;
-        }
-        
-        // Count this cleaned section (either passed filter checks or no filters)
-        cleanedCount++;
-      });
-
-      const coverage = totalPerCable > 0 ? Math.round((cleanedCount / totalPerCable) * 100) : 0;
-            // Count total times all sections were cleaned
-      let totalSectionCleanings = 0;
-
-      filteredEvents.forEach(evt => {
-        // Each event covers a range of sections, count them all
-        totalSectionCleanings += (evt.sectionIndexEnd - evt.sectionIndexStart + 1);
-      });
-
-      // Average = total section cleanings / total available sections
-      const avgCleanings = totalPerCable > 0 ? (totalSectionCleanings / totalPerCable).toFixed(1) : 0;
-
-      const card = document.createElement('div');
-      card.className = 'streamer-card';
-      card.innerHTML = `
-        <div class="streamer-card-header">
-          <div class="streamer-card-title">Streamer ${streamerId}</div>
-          <div class="streamer-card-percent">${coverage}%</div>
-        </div>
-        <div class="streamer-card-detail">
-          ${cleanedCount}/${totalPerCable} sections · ${avgCleanings} avg cleanings
-        </div>
-        <div class="progress-bar">
-          <div class="progress-fill" style="width: ${coverage}%"></div>
-        </div>
-      `;
-      container.appendChild(card);
-    }
-  } catch (err) {
-    console.error(err);
-  }
-}
-
 /* ------------ Heat-map rendering ------------ */
 
 async function renderHeatmap() {
@@ -1529,6 +1569,14 @@ async function confirmCleaning() {
       return;
     }
 
+    const adjacentMatch = checkAdjacentEvents(streamerId, actualStart, actualEnd, method, cleanedAt);
+    if (adjacentMatch) {
+      setIsFinalizing(false);
+      closeConfirmationModal();
+      showAdjacentMergeModal(adjacentMatch, body);
+      return;
+    }
+
     closeConfirmationModal();
     await proceedWithCleaning(body);
   } catch (err) {
@@ -1539,217 +1587,7 @@ async function confirmCleaning() {
   }
 }
 
-/* ------------ Statistics ------------ */
-
-async function refreshStatsFiltered() {
-  const startDate = safeGet('filter-start')?.value;
-  const endDate = safeGet('filter-end')?.value;
-
-  try {
-    // Prepare query params with project filter
-    let statsParams = new URLSearchParams();
-    if (selectedProjectFilter) statsParams.append('project', selectedProjectFilter);
-    
-    // Get overall stats from backend
-    const overallStats = await API.apiCall(`/api/stats?${statsParams}`);
-    
-    // Prepare filtered query params
-    let params = new URLSearchParams();
-    if (startDate) params.append('start', startDate);
-    if (endDate) params.append('end', endDate);
-    if (selectedProjectFilter) params.append('project', selectedProjectFilter);
-    
-    // Get filtered stats (or overall if no filters)
-    const data = await API.apiCall(`/api/stats/filter?${params}`);
-    
-    // Use totals from overall stats API
-    const totalActiveSections = overallStats.totalAvailableSections;
-    const totalTailSections = overallStats.totalAvailableTail;
-    const totalSections = totalActiveSections + totalTailSections;
-    
-    // Determine which stats to display based on filters
-    let displayStats;
-    if (startDate || endDate) {
-      // Show filtered stats
-      displayStats = data;
-    } else {
-      // Show overall stats (no filter)
-      displayStats = overallStats;
-    }
-    
-    // Calculate overall coverage
-    const totalCleanedSections = displayStats.uniqueCleanedSections || 0;
-    const overallCoverage = totalSections > 0
-      ? ((totalCleanedSections / totalSections) * 100).toFixed(1)
-      : 0;
-    
-    // Calculate active coverage
-    const cleanedActiveCount = displayStats.activeCleanedSections || 0;
-    const activeCoverage = totalActiveSections > 0
-      ? ((cleanedActiveCount / totalActiveSections) * 100).toFixed(1)
-      : 0;
-    
-    // Calculate tail coverage
-    const cleanedTailCount = displayStats.tailCleanedSections || 0;
-    const tailCoverage = totalTailSections > 0
-      ? ((cleanedTailCount / totalTailSections) * 100).toFixed(1)
-      : 0;
-
-    // Update UI - Overall Coverage
-    safeGet('kpi-coverage').textContent = `${overallCoverage}%`;
-    safeGet('kpi-coverage-sub').textContent = `${totalCleanedSections} / ${totalSections} sections`;
-
-    // Update UI - Breakdown
-    if (totalTailSections > 0) {
-      safeGet('kpi-breakdown').textContent = 
-        `Active: ${activeCoverage}% (${cleanedActiveCount}/${totalActiveSections}) · Tail: ${tailCoverage}% (${cleanedTailCount}/${totalTailSections})`;
-    } else {
-      safeGet('kpi-breakdown').textContent = 
-        `Active: ${activeCoverage}% (${cleanedActiveCount}/${totalActiveSections})`;
-    }
-
-    // Update other KPIs (distance, events, last cleaning)
-    safeGet('kpi-distance').textContent = fmtKm(data.totalDistance);
-    safeGet('kpi-distance-sub').textContent = `${data.totalDistance} meters cleaned`;
-
-    safeGet('kpi-events').textContent = data.events;
-    safeGet('kpi-events-sub').textContent = `${data.events} log entries`;
-
-    if (data.lastCleaning) {
-      const lastDate = new Date(data.lastCleaning);
-      safeGet('kpi-last').textContent = lastDate.toLocaleDateString();
-      safeGet('kpi-last-sub').textContent = lastDate.toLocaleTimeString();
-    } else {
-      safeGet('kpi-last').textContent = '—';
-      safeGet('kpi-last-sub').textContent = 'No events';
-    }
-
-    // Calculate Days to First Scraping per-streamer breakdown
-    const deployDaysBreakdownDiv = safeGet('deploy-days-breakdown');
-    if (deployDaysBreakdownDiv) {
-      const activeProject = projects.find(p => p.isActive === true);
-      
-      if (!activeProject) {
-        deployDaysBreakdownDiv.innerHTML = '<h3 class="section-title">Days to First Scraping per Streamer</h3><p class="info-text-md">Requires active project with deployment dates</p>';
-      } else if (data.events === 0) {
-        deployDaysBreakdownDiv.innerHTML = '<h3 class="section-title">Days to First Scraping per Streamer</h3><p class="info-text-md">No cleaning events yet</p>';
-      } else {
-        try {
-          // Get events for first-scraping calculation:
-          // - Always use full project history (ignore date filter) so
-          //   "days to first scraping" is a fixed metric per project.
-          let eventsForFirstScraping = events;
-          if (selectedProjectFilter) {
-            eventsForFirstScraping = eventsForFirstScraping.filter(
-              (e) => String(e.projectNumber) === selectedProjectFilter
-            );
-          }
-
-          const streamerDeployments = await API.apiCall(`/api/projects/${activeProject.id}/streamer-deployments`);
-
-          // Collect days for each streamer
-          const streamerDays = [];
-          let maxDays = 0;
-
-          for (let streamerNum = 1; streamerNum <= config.numCables; streamerNum++) {
-            const streamerId = streamerNum;
-            const streamerEvents = eventsForFirstScraping.filter(
-              (e) => e.streamerId === streamerId
-            );
-
-            // Get deployment date for this streamer
-            const deployment = streamerDeployments[streamerNum];
-            const deployDate = deployment?.deploymentDate;
-
-            if (deployDate && streamerEvents.length > 0) {
-              // Find first cleaning for this streamer
-              const firstCleaning = streamerEvents.sort((a, b) => 
-                new Date(a.cleanedAt) - new Date(b.cleanedAt)
-              )[0];
-
-              const days = Math.floor(
-                (new Date(firstCleaning.cleanedAt) - new Date(deployDate)) / (1000 * 60 * 60 * 24)
-              );
-
-              if (days >= 0) {
-                streamerDays.push({ streamerNum, days });
-                if (days > maxDays) {
-                  maxDays = days;
-                }
-              }
-            }
-          }
-
-          // Generate breakdown HTML
-          if (streamerDays.length === 0) {
-            deployDaysBreakdownDiv.innerHTML = '<h3 class="section-title">Days to First Scraping per Streamer</h3><p class="info-text-md">No deployment dates configured</p>';
-          } else {
-            deployDaysBreakdownDiv.innerHTML = '<h3 class="section-title">Days to First Scraping per Streamer</h3>';
-            
-            // Sort by streamer number for consistent display
-            streamerDays.sort((a, b) => a.streamerNum - b.streamerNum);
-            
-            streamerDays.forEach(({ streamerNum, days }) => {
-              const percentage = maxDays > 0 ? (days / maxDays) * 100 : 0;
-              const bar = document.createElement('div');
-              bar.innerHTML = `
-                <div class="bar-label">
-                  <span>Streamer ${streamerNum}</span>
-                  <span>${days} days</span>
-                </div>
-                <div class="bar">
-                  <div class="bar-fill" style="width: ${percentage}%"></div>
-                </div>
-              `;
-              deployDaysBreakdownDiv.appendChild(bar);
-            });
-          }
-        } catch (err) {
-          console.error('Failed to calculate days to first scraping', err);
-          deployDaysBreakdownDiv.innerHTML = '<h3 class="section-title">Days to First Scraping per Streamer</h3><p class="error-text-md">Calculation error</p>';
-        }
-      }
-    }
-
-    // Method breakdown
-    const methodBreakdownDiv = safeGet('method-breakdown');
-    if (methodBreakdownDiv && data.byMethod && Object.keys(data.byMethod).length > 0) {
-      methodBreakdownDiv.innerHTML = '<h3 style="margin-top: 0">Distance by Method</h3>';
-      Object.keys(data.byMethod).forEach(method => {
-        const distance = data.byMethod[method];
-        const bar = document.createElement('div');
-        bar.innerHTML = `
-          <div class="bar-label">
-            <span>${method}</span>
-            <span>${distance} m</span>
-          </div>
-          <div class="bar">
-            <div class="bar-fill" style="width: ${(distance / data.totalDistance) * 100}%"></div>
-          </div>
-        `;
-        methodBreakdownDiv.appendChild(bar);
-      });
-    }
-
-    // Update streamer cards with same date filter
-    await renderStreamerCards(startDate, endDate);
-
-  } catch (err) {
-    console.error(err);
-  }
-}
-
-async function resetFilter() {
-  // Clear the date inputs
-  const startInput = safeGet('filter-start');
-  const endInput = safeGet('filter-end');
-  
-  if (startInput) startInput.value = '';
-  if (endInput) endInput.value = '';
-  
-  // Refresh stats without filters (show all data)
-  await refreshStatsFiltered();
-}
+/* ------------ Statistics (imported from js/stats.js) ------------ */
 
 async function refreshEverything() {
   await loadEvents();
@@ -1986,6 +1824,30 @@ function setupEventListeners() {
       await proceedWithCleaning(payload);
     }
   });
+
+  // Modal - Adjacent Event Merge
+  safeGet('btn-adjacent-merge-close')?.addEventListener('click', () => closeModal('adjacent-merge-modal'));
+  safeGet('btn-adjacent-merge-cancel')?.addEventListener('click', () => {
+    adjacentMergeTarget = null;
+    pendingCleaningPayload = null;
+    closeModal('adjacent-merge-modal');
+  });
+  document.querySelector('#adjacent-merge-modal .modal-overlay')
+    ?.addEventListener('click', () => {
+      adjacentMergeTarget = null;
+      pendingCleaningPayload = null;
+      closeModal('adjacent-merge-modal');
+    });
+  safeGet('btn-adjacent-merge-separate')?.addEventListener('click', async () => {
+    closeModal('adjacent-merge-modal');
+    adjacentMergeTarget = null;
+    if (pendingCleaningPayload) {
+      const payload = pendingCleaningPayload;
+      pendingCleaningPayload = null;
+      await proceedWithCleaning(payload);
+    }
+  });
+  safeGet('btn-adjacent-merge-confirm')?.addEventListener('click', mergeAdjacentEvent);
 
   // Modal - Edit
   safeGet('btn-edit-close')?.addEventListener('click', closeEditModal);

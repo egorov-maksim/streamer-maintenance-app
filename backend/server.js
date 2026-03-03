@@ -67,6 +67,11 @@ app.get("/config", (_req, res) => {
   res.sendFile(path.join(__dirname, "..", "public", "config.html"));
 });
 
+// dedicated stats page
+app.get("/stats", (_req, res) => {
+  res.sendFile(path.join(__dirname, "..", "public", "stats.html"));
+});
+
 // Mount route modules
 const authRouter = createAuthRouter(sessions, users, authMiddleware);
 const backupsRouter = createBackupsRouter(authMiddleware, superUserOnly);
