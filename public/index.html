@@ -470,6 +470,31 @@
 
   </div> <!-- Close app-container -->
 
+  <!-- Recent Clean Warning Modal -->
+  <div id="recent-clean-warning-modal" class="modal">
+    <div class="modal-overlay"></div>
+    <div class="modal-content modal-delete">
+      <div class="modal-header modal-header-warning">
+        <h3>Area Recently Cleaned</h3>
+        <button class="modal-close" id="btn-recent-clean-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="clean-warning">
+          <div class="warning-icon">⚠️</div>
+          <div class="clean-warning-text">
+            <strong id="recent-clean-headline"></strong>
+            <span id="recent-clean-detail"></span>
+          </div>
+        </div>
+        <p class="modal-body-note">Do you want to save this cleaning event anyway?</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btn-recent-clean-cancel">Cancel</button>
+        <button class="btn btn-primary" id="btn-recent-clean-confirm">Save Anyway</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification Container -->
   <div id="toast-container" class="toast-container"></div>
 

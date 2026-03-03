@@ -189,6 +189,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 - **Status Indicators**: Real-time status badges on cards
 - **Uncleaned Sections**: List sections that have never been cleaned
 - **Toast Notifications**: Real-time feedback for actions (success/error/warning)
+- **Duplicate-Clean Guard**: When logging a new event over a section already cleaned within the last 24 hours, a warning modal interrupts the save — showing which prior event overlaps, how long ago it was cleaned (e.g. "3 hrs 22 min ago"), and offering Cancel or Save Anyway
 
 ### 📊 eBird Module Tracking
 - **Intelligent Calculation**: Automatically calculates EB module ranges affected by cleaning
@@ -298,6 +299,7 @@ AUTH_USERS=TTNOBS:Password:admin:TTN:true,TTNView:Password:viewer:TTN,TTNNav:Pas
 - Review the logged event in the history
 - Statistics update automatically
 - Hover over sections for detailed information
+- If the selected area was already cleaned within the last 24 hours, a warning dialog will appear showing the prior clean time before confirming
 
 #### 5. **Manual Entry**
 - For off-schedule cleanings, use the manual entry form
@@ -585,8 +587,9 @@ streamer-maintenance-app/
 
 ---
 
-## 📝 Latest Updates (January 2026)
+## 📝 Latest Updates (March 2026)
 
+- ✅ **Duplicate-clean guard**: warning modal when logging a cleaning event over an area already cleaned within the last 24 hours
 - ✅ **Config page** (`/config`): dedicated SuperUser dashboard for project & streamer configuration, vessel–project overview, per-streamer deployment, backups, and project management
 - ✅ Multi-project support with project creation and management
 - ✅ User authentication with role-based access control (Admin/Viewer)
@@ -610,8 +613,8 @@ This project is provided as-is for TGS marine survey operations.
 
 ---
 
-**Version**: 1.2.0  
-**Last Updated**: January 2026  
+**Version**: 1.3.0  
+**Last Updated**: March 2026  
 **Node.js Required**: 14.0+  
 **Author**: Maksim Egorov  
 **Vessel**: Ramform Titan, Brazil  

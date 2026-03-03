@@ -45,7 +45,7 @@ import {
   isAdminOrAbove,
   isAdmin,
 } from "./js/auth.js";
-import { initModals } from "./js/modals.js";
+import { initModals, openModal, closeModal } from "./js/modals.js";
 import * as Projects from "./js/projects.js";
 import * as StreamerUtils from "./js/streamer-utils.js";
 import { computeStreamerTooltipData } from "./js/streamer-tooltip.js";
@@ -253,6 +253,85 @@ async function loadEvents() {
   setEvents(await API.apiCall(url));
 }
 
+/* ------------ Recent-clean check helpers ------------ */
+
+let pendingCleaningPayload = null;
+
+const RECENT_CLEAN_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Returns the most recent event overlapping the given range that was cleaned
+ * within the 24-hour window before `cleanedAtIso`, or null if none found.
+ */
+function checkRecentCleanings(streamerId, startIndex, endIndex, cleanedAtIso) {
+  const proposedTime = new Date(cleanedAtIso).getTime();
+  let mostRecent = null;
+  let smallestDiff = Infinity;
+
+  for (const evt of events) {
+    if (evt.streamerId !== streamerId) continue;
+    if (evt.sectionIndexStart > endIndex || evt.sectionIndexEnd < startIndex) continue;
+
+    const existingTime = new Date(evt.cleanedAt).getTime();
+    const diff = proposedTime - existingTime;
+
+    if (diff > 0 && diff < RECENT_CLEAN_WINDOW_MS && diff < smallestDiff) {
+      smallestDiff = diff;
+      mostRecent = { evt, diffMs: diff };
+    }
+  }
+
+  return mostRecent;
+}
+
+/** Formats a millisecond duration as a human-readable "X hrs Y min ago" string. */
+function formatTimeAgo(ms) {
+  const totalMins = Math.floor(ms / 60000);
+  const hours = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+  if (hours === 0) return `${mins} min ago`;
+  if (mins === 0) return `${hours} hr${hours !== 1 ? 's' : ''} ago`;
+  return `${hours} hr${hours !== 1 ? 's' : ''} ${mins} min ago`;
+}
+
+/** Populates and opens the recent-clean warning modal, storing the payload for deferred submit. */
+function showRecentCleanWarning(recentClean, body) {
+  const { evt, diffMs } = recentClean;
+  const sectionType = evt.sectionType || 'active';
+  const rangeLabel = `${formatSectionLabel(evt.sectionIndexStart, sectionType)}–${formatSectionLabel(evt.sectionIndexEnd, sectionType)}`;
+
+  safeGet('recent-clean-headline').textContent =
+    `Streamer ${evt.streamerId}, sections ${rangeLabel} was cleaned ${formatTimeAgo(diffMs)}.`;
+  safeGet('recent-clean-detail').textContent =
+    `Method: ${evt.cleaningMethod} · Recorded: ${formatDateTime(evt.cleanedAt)}`;
+
+  pendingCleaningPayload = body;
+  openModal('recent-clean-warning-modal');
+}
+
+/** Submits a cleaning event payload and refreshes all views. */
+async function proceedWithCleaning(body) {
+  try {
+    const res = await API.apiCall('/api/events', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      action: 'add cleaning events'
+    });
+    await refreshEverything();
+    await renderHeatmap();
+    await refreshStatsFiltered();
+    const count = Array.isArray(res?.created) ? res.created.length : 1;
+    if (count === 2) {
+      showSuccessToast('Events added', '2 events added (active + tail).');
+    } else {
+      showSuccessToast('Event added', 'Cleaning event saved.');
+    }
+  } catch (err) {
+    console.error(err);
+    showErrorToast('Save Failed', 'Failed to save cleaning event. Please try again.');
+  }
+}
+
 async function addEvent() {
   const statusEl = safeGet("event-status");
   if (!isAdminOrAbove()) {
@@ -295,17 +374,14 @@ async function addEvent() {
       vesselTag: config.vesselTag || 'TTN'
     };
 
-    const res = await API.apiCall('api/events', {
-      method: 'POST',
-      body: JSON.stringify(body),
-      action: 'add events'
-    });
+    const recentClean = checkRecentCleanings(streamerId, actualStart, actualEnd, datetimeIso);
+    if (recentClean) {
+      showRecentCleanWarning(recentClean, body);
+      return;
+    }
 
-    const count = Array.isArray(res?.created) ? res.created.length : 1;
-    setStatus(statusEl, count === 2 ? '✅ 2 events added (active + tail)' : '✅ Event added');
-    await refreshEverything();
-    await renderHeatmap();
-    await refreshStatsFiltered();
+    await proceedWithCleaning(body);
+    setStatus(statusEl, '✅ Event added');
   } catch (err) {
     console.error(err);
     setStatus(statusEl, 'Failed to add event', true);
@@ -1444,23 +1520,17 @@ async function confirmCleaning() {
       projectNumber: projectNumber,
       vesselTag: config.vesselTag || 'TTN'
     };
-    
-    const res = await API.apiCall('/api/events', {
-      method: 'POST',
-      body: JSON.stringify(body),
-      action: 'add cleaning events'
-    });
-    
-    closeConfirmationModal();
-    await refreshEverything();
-    await renderHeatmap();
-    await refreshStatsFiltered();
-    const count = Array.isArray(res?.created) ? res.created.length : 1;
-    if (count === 2) {
-      showSuccessToast('Events added', '2 events added (active + tail).');
-    } else {
-      showSuccessToast('Event added', 'Cleaning event saved.');
+
+    const recentClean = checkRecentCleanings(streamerId, actualStart, actualEnd, cleanedAt);
+    if (recentClean) {
+      setIsFinalizing(false);
+      closeConfirmationModal();
+      showRecentCleanWarning(recentClean, body);
+      return;
     }
+
+    closeConfirmationModal();
+    await proceedWithCleaning(body);
   } catch (err) {
     console.error(err);
     showErrorToast('Save Failed', 'Failed to save cleaning event. Please try again.');
@@ -1902,6 +1972,20 @@ function setupEventListeners() {
     if (btn && inp) btn.disabled = inp.value.trim() !== 'DELETE';
   });
   safeGet('btn-force-delete-project-confirm')?.addEventListener('click', () => Projects.confirmForceDeleteProject());
+
+  // Modal - Recent Clean Warning
+  safeGet('btn-recent-clean-close')?.addEventListener('click', () => closeModal('recent-clean-warning-modal'));
+  safeGet('btn-recent-clean-cancel')?.addEventListener('click', () => closeModal('recent-clean-warning-modal'));
+  document.querySelector('#recent-clean-warning-modal .modal-overlay')
+    ?.addEventListener('click', () => closeModal('recent-clean-warning-modal'));
+  safeGet('btn-recent-clean-confirm')?.addEventListener('click', async () => {
+    closeModal('recent-clean-warning-modal');
+    if (pendingCleaningPayload) {
+      const payload = pendingCleaningPayload;
+      pendingCleaningPayload = null;
+      await proceedWithCleaning(payload);
+    }
+  });
 
   // Modal - Edit
   safeGet('btn-edit-close')?.addEventListener('click', closeEditModal);
