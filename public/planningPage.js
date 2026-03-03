@@ -29,34 +29,28 @@ function getTooltip() {
   if (!tooltipEl) {
     tooltipEl = document.createElement("div");
     tooltipEl.className = "section-tooltip";
-    tooltipEl.style.display = "none";
     document.body.appendChild(tooltipEl);
   }
   return tooltipEl;
 }
 
+// Mirrors positionTooltipNearCursor in app.js exactly.
+// .section-tooltip uses position:fixed, so coordinates are viewport-relative —
+// never add window.scrollX/scrollY here.
 function positionTooltip(el, event) {
-  const GAP = 12;
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-
-  el.style.visibility = "hidden";
-  el.style.display = "block";
+  const baseX = event.clientX + 15;
+  const baseY = event.clientY + 15;
 
   const rect = el.getBoundingClientRect();
-  let left = event.clientX + GAP;
-  let top = event.clientY + GAP;
+  const x = baseX + rect.width > window.innerWidth ? baseX - rect.width - 30 : baseX;
+  const y = baseY + rect.height > window.innerHeight ? baseY - rect.height - 30 : baseY;
 
-  if (left + rect.width > vw - GAP) left = event.clientX - rect.width - GAP;
-  if (top + rect.height > vh - GAP) top = event.clientY - rect.height - GAP;
-
-  el.style.left = `${left + window.scrollX}px`;
-  el.style.top = `${top + window.scrollY}px`;
-  el.style.visibility = "visible";
+  el.style.left = `${x}px`;
+  el.style.top = `${y}px`;
 }
 
 function hideTooltip() {
-  if (tooltipEl) tooltipEl.style.display = "none";
+  if (tooltipEl) tooltipEl.classList.remove("show");
 }
 
 function attachSectionTooltips(container, lastCleaned) {
@@ -89,11 +83,13 @@ function attachSectionTooltips(container, lastCleaned) {
         html += `<div class="tooltip-row">Never cleaned</div>`;
       }
       tip.innerHTML = html;
+      // Show first so getBoundingClientRect() returns real dimensions for clamping
+      tip.classList.add("show");
       positionTooltip(tip, e);
     });
 
     cell.addEventListener("mousemove", (e) => {
-      if (tooltipEl && tooltipEl.style.display === "block") {
+      if (tooltipEl && tooltipEl.classList.contains("show")) {
         positionTooltip(tooltipEl, e);
       }
     });
