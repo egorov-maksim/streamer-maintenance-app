@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Statistics – Streamer Maintenance Tracker</title>
+  <title>Cleaning Planning – Streamer Maintenance Tracker</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -14,33 +14,33 @@
       <div class="login-header">
         <div class="login-logo">🌊</div>
         <h1>Streamers Scraping Tracker</h1>
-        <p class="login-subtitle">Sign in to access the statistics dashboard</p>
+        <p class="login-subtitle">Sign in to access the planning dashboard</p>
       </div>
-      
+
       <form id="login-form" class="login-form" method="post" action="#" onsubmit="return false;">
         <div class="form-group">
           <label for="login-username">Username</label>
           <div class="input-wrapper">
             <span class="input-icon">👤</span>
-            <input 
-              type="text" 
-              id="login-username" 
-              name="username" 
+            <input
+              type="text"
+              id="login-username"
+              name="username"
               placeholder="Enter your username"
               autocomplete="username"
               required
             >
           </div>
         </div>
-        
+
         <div class="form-group">
           <label for="login-password">Password</label>
           <div class="input-wrapper">
             <span class="input-icon">🔒</span>
-            <input 
-              type="password" 
-              id="login-password" 
-              name="password" 
+            <input
+              type="password"
+              id="login-password"
+              name="password"
               placeholder="Enter your password"
               autocomplete="current-password"
               required
@@ -48,15 +48,15 @@
             <button type="button" class="password-toggle" id="password-toggle">👁️</button>
           </div>
         </div>
-        
+
         <div id="login-error" class="login-error"></div>
-        
+
         <button type="button" class="login-btn" id="login-submit">
           <span class="btn-text">Sign In</span>
           <span class="btn-loader hidden">⏳</span>
         </button>
       </form>
-      
+
       <div class="login-footer">
         <p>Access Levels:</p>
         <div class="access-info">
@@ -80,7 +80,7 @@
       </div>
       <div class="user-header-actions">
         <a href="/" class="back-to-main-btn"><span>←</span> Back to main</a>
-        <a href="/planning" class="back-to-main-btn"><span>📋</span> Planning</a>
+        <a href="/stats" class="back-to-main-btn"><span>📊</span> Statistics</a>
         <a href="/config" class="back-to-main-btn superuser-only"><span>⚙️</span> Config</a>
         <button class="logout-btn" id="logout-btn">
           <span>🚪</span> Logout
@@ -90,8 +90,8 @@
 
     <div class="main-wrapper">
       <header>
-        <h1>📊 Statistics & Data Filtering</h1>
-        <div class="subheader">Analyse cleaning coverage, distances, and trends across streamers</div>
+        <h1>📋 Cleaning Planning View</h1>
+        <div class="subheader">Days since last scraping per section — use to plan upcoming cleaning operations</div>
       </header>
 
       <main>
@@ -101,68 +101,30 @@
           <h2 class="card-title">🗂️ Project Filter</h2>
           <div class="grid grid-2">
             <label>Select Project
-              <select id="stats-project-filter">
+              <select id="planning-project-filter">
                 <option value="">-- All Projects --</option>
               </select>
             </label>
           </div>
         </section>
 
-        <!-- Statistics & Data Filtering -->
-        <section id="stats-section" class="card">
-          <h2 class="card-title">📈 Statistics & Data Filtering</h2>
+        <!-- Planning Heat Map -->
+        <section class="card streamers-card">
+          <h2 class="card-title">📋 Days Since Last Scraping</h2>
 
-          <!-- Date Filter Controls -->
-          <div class="grid grid-2 filter-controls">
-            <label>Start Date <input type="date" id="filter-start"></label>
-            <label>End Date <input type="date" id="filter-end"></label>
-          </div>
-          <div class="actions">
-            <button class="btn btn-primary" id="btn-apply-filter">Apply Filter</button>
-            <button class="btn btn-secondary" id="btn-reset-filter">Reset Filter</button>
-          </div>
-
-          <!-- Streamer Maintenance Overview -->
-          <div class="streamer-overview-section">
-            <h3 class="section-subtitle">📊 Streamer Maintenance Overview</h3>
-            <div id="streamer-cards-container" class="streamer-cards"></div>
+          <!-- Legend -->
+          <div class="legend mb-16">
+            <div class="badge"><span class="legend-swatch legend-swatch-fresh"></span> 0–3 days (fresh)</div>
+            <div class="badge"><span class="legend-swatch legend-swatch-4plus"></span> 4–6 days</div>
+            <div class="badge"><span class="legend-swatch legend-swatch-7plus"></span> 7–9 days</div>
+            <div class="badge"><span class="legend-swatch legend-swatch-10plus"></span> 10–13 days</div>
+            <div class="badge"><span class="legend-swatch legend-swatch-14plus"></span> 14+ days (needs cleaning)</div>
+            <div class="badge"><span class="legend-swatch legend-swatch-never"></span> Never cleaned</div>
+            <div class="badge"><span class="legend-swatch legend-swatch-module"></span> EB Module</div>
           </div>
 
-          <!-- Statistics KPIs -->
-          <div class="kpis">
-            <div class="kpi">
-              <div class="kpi-title">Coverage</div>
-              <div class="kpi-value" id="kpi-coverage">0%</div>
-              <div class="kpi-sub" id="kpi-coverage-sub">0 / 0 sections</div>
-              <div class="kpi-breakdown" id="kpi-breakdown"></div>
-            </div>
-            <div class="kpi">
-              <div class="kpi-title">Total Distance</div>
-              <div class="kpi-value" id="kpi-distance">0.0 km</div>
-              <div class="kpi-sub" id="kpi-distance-sub">0 meters cleaned</div>
-            </div>
-            <div class="kpi">
-              <div class="kpi-title">Cleaning Events</div>
-              <div class="kpi-value" id="kpi-events">0</div>
-              <div class="kpi-sub" id="kpi-events-sub">0 log entries</div>
-            </div>
-            <div class="kpi">
-              <div class="kpi-title">Last Cleaning</div>
-              <div class="kpi-value text-sm" id="kpi-last">—</div>
-              <div class="kpi-sub" id="kpi-last-sub">No events</div>
-            </div>
-          </div>
-
-          <div id="deploy-days-breakdown" class="method-breakdown"></div>
-          <div id="method-breakdown" class="method-breakdown"></div>
+          <div id="planning-heatmap-container" class="hm-grid-container"></div>
         </section>
-
-        <div class="actions mt-20">
-          <button id="generatePdfBtn" class="btn btn-primary">
-            📄 Generate PDF Report
-          </button>
-        </div>
-        <div id="pdf-status" class="status"></div>
 
       </main>
     </div>
@@ -172,7 +134,6 @@
   <!-- Toast Notification Container -->
   <div id="toast-container" class="toast-container"></div>
 
-  <script src="/libs/jspdf.umd.min.js"></script>
-  <script type="module" src="/statsPage.js"></script>
+  <script type="module" src="/planningPage.js"></script>
 </body>
 </html>
