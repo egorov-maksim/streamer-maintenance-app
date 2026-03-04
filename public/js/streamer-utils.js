@@ -54,6 +54,72 @@ export function formatEB(num) {
   return `EB${String(num).padStart(2, "0")}`;
 }
 
+/**
+ * Calculate EB range label for a contiguous section range (active sections only).
+ * Ports the logic from backend/utils/eb.js to run client-side without an API call.
+ * Returns "—" for tail sections (startSection >= sectionsPerCable).
+ * @param {number} startSection - 0-based start section index
+ * @param {number} endSection - 0-based end section index
+ * @param {Object} cfg - config with moduleFrequency and sectionsPerCable
+ * @returns {string}
+ */
+export function getEBRangeForSectionRange(startSection, endSection, cfg) {
+  const moduleFreq = cfg?.moduleFrequency || 4;
+  const sectionsPerCable = cfg?.sectionsPerCable || 107;
+
+  if (startSection >= sectionsPerCable || endSection >= sectionsPerCable) {
+    return "—";
+  }
+
+  const allModules = [{ num: 1, section: 0 }];
+  for (let si = moduleFreq; si < sectionsPerCable; si += moduleFreq) {
+    allModules.push({ num: Math.floor(si / moduleFreq) + 1, section: si });
+  }
+  const lastBuilt = allModules[allModules.length - 1];
+  if (lastBuilt.section !== sectionsPerCable - 1) {
+    allModules.push({ num: lastBuilt.num + 1, section: sectionsPerCable - 1 });
+  }
+
+  const before = allModules
+    .filter((m) => m.section <= startSection)
+    .sort((a, b) => b.section - a.section)[0];
+  const after = allModules
+    .filter((m) => m.section >= endSection)
+    .sort((a, b) => a.section - b.section)[0];
+  const effectiveAfter = after || allModules[allModules.length - 1];
+
+  if (before && effectiveAfter) {
+    if (before.num === effectiveAfter.num) return formatEB(before.num);
+    return `${formatEB(Math.max(before.num, effectiveAfter.num))} – ${formatEB(Math.min(before.num, effectiveAfter.num))}`;
+  } else if (before) {
+    return `Tail Adaptor – ${formatEB(before.num)}`;
+  } else if (effectiveAfter) {
+    return formatEB(effectiveAfter.num);
+  }
+  return "—";
+}
+
+/**
+ * Calculate channel range label for a contiguous section range (active sections only).
+ * Returns "—" for tail sections (startSection >= sectionsPerCable).
+ * @param {number} startSection - 0-based start section index
+ * @param {number} endSection - 0-based end section index
+ * @param {Object} cfg - config with channelsPerSection and sectionsPerCable
+ * @returns {string}
+ */
+export function getChannelRangeForSectionRange(startSection, endSection, cfg) {
+  const channelsPerSection = cfg?.channelsPerSection || 8;
+  const sectionsPerCable = cfg?.sectionsPerCable || 107;
+
+  if (startSection >= sectionsPerCable || endSection >= sectionsPerCable) {
+    return "—";
+  }
+
+  const startCh = startSection * channelsPerSection + 1;
+  const endCh = (endSection + 1) * channelsPerSection;
+  return `Ch ${startCh}–${endCh}`;
+}
+
 export function getConfigForProject(projectNumber) {
   const projectNumberTrimmed = (projectNumber || "").trim();
   if (projectNumberTrimmed && Array.isArray(projects)) {

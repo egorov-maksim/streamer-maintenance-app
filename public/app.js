@@ -644,7 +644,6 @@ async function updateEvent(id, body) {
     showAccessDeniedToast('edit events');
     return;
   }
-  
   try {
     await API.apiCall(`api/events/${id}`, {
       method: 'PUT',

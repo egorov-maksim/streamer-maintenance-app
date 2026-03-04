@@ -210,11 +210,36 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
       }
       const sectionType = body_section_type ?? existing?.sectionType ?? "active";
       const config = await loadConfig();
+      // Derive effective config for this event's project (matches POST handler logic).
+      const projectNumberFromBody =
+        project_number !== undefined && project_number !== null && project_number !== ""
+          ? project_number
+          : null;
+      const effectiveProjectNumber = projectNumberFromBody || existing.projectNumber || null;
+      let eventConfig = config;
+      if (effectiveProjectNumber) {
+        const projectRow = await getOneCamelized(
+          "SELECT * FROM projects WHERE project_number = ?",
+          [effectiveProjectNumber]
+        );
+        if (projectRow) {
+          eventConfig = {
+            ...config,
+            sectionsPerCable: projectRow.sectionsPerCable ?? config.sectionsPerCable,
+            useRopeForTail:
+              projectRow.useRopeForTail === 1
+                ? true
+                : projectRow.useRopeForTail === 0
+                ? false
+                : config.useRopeForTail,
+          };
+        }
+      }
       const validation = validateRangeForType(
         section_index_start,
         section_index_end,
         sectionType,
-        config
+        eventConfig
       );
       if (!validation.valid) {
         return sendError(res, 400, validation.message);

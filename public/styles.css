@@ -2606,3 +2606,42 @@
   background: #fef2f2;
   border-color: #ef4444;
 }
+
+/* =========================
+   Cleaning Suggestions Table — urgency badges
+   ========================= */
+
+.suggestion-days-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.suggestion-days-4plus {
+  background: #ecfccb;
+  color: #365314;
+}
+
+.suggestion-days-7plus {
+  background: #fef9c3;
+  color: #713f12;
+}
+
+.suggestion-days-10plus {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.suggestion-days-14plus {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.suggestion-days-never {
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
