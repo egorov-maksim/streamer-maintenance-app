@@ -21,6 +21,7 @@ import {
 } from "./js/state.js";
 import {
   ageBucket,
+  formatEB,
   formatSectionLabel,
   getEBRangeForSectionRange,
   getChannelRangeForSectionRange,
