@@ -94,18 +94,17 @@
         <div class="subheader">Days since last scraping per section — use to plan upcoming cleaning operations</div>
       </header>
 
+      <!-- Shown to grandsuperuser; all other sections are hidden -->
+      <section id="planning-restricted" class="card hidden">
+        <p>The Planning page is not available for Global accounts. Log in with a vessel-specific account to use this page.</p>
+      </section>
+
       <main>
 
-        <!-- Project Filter -->
+        <!-- Active Project (fixed to vessel's active project) -->
         <section class="card">
-          <h2 class="card-title">🗂️ Project Filter</h2>
-          <div class="grid grid-2">
-            <label>Select Project
-              <select id="planning-project-filter">
-                <option value="">-- All Projects --</option>
-              </select>
-            </label>
-          </div>
+          <h2 class="card-title">🗂️ Active Project</h2>
+          <p id="planning-active-project-display" class="muted">Loading…</p>
         </section>
 
         <!-- Cleaning Suggestions Table -->

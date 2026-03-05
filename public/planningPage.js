@@ -9,6 +9,7 @@ import {
   handleLogout,
   updateUIForRole,
   setupPasswordToggle,
+  isGrandSuperUser,
 } from "./js/auth.js";
 import * as Projects from "./js/projects.js";
 import * as API from "./js/api.js";
@@ -29,7 +30,9 @@ import {
   formatSectionLabel,
   getEBRangeForSectionRange,
   getChannelRangeForSectionRange,
+  getConfigForProject,
 } from "./js/streamer-utils.js";
+import { validateNoiseCsv } from "./js/noise-validation.js";
 
 /* ------------ Noise utilities ------------ */
 
@@ -728,6 +731,14 @@ function initNoiseControls() {
 
     try {
       const text = await file.text();
+
+      const effectiveConfig = getConfigForProject(selectedProjectFilter);
+      const validation = validateNoiseCsv(text, effectiveConfig);
+      if (!validation.valid) {
+        showErrorToast("CSV validation failed", validation.errors.join(" | "));
+        return;
+      }
+
       const parsedNoise = parseNoiseCsv(text);
 
       const label = file.name.replace(/\.csv$/i, "");
@@ -743,36 +754,21 @@ function initNoiseControls() {
   });
 }
 
-/* ------------ Project filter ------------ */
+/* ------------ Active project display ------------ */
 
-function populateProjectFilter() {
-  const selector = safeGet("planning-project-filter");
-  if (!selector) return;
-
-  selector.innerHTML = '<option value="">-- All Projects --</option>';
-  projects.forEach((p) => {
-    const option = document.createElement("option");
-    option.value = p.projectNumber;
-    option.textContent = p.projectName
-      ? `${p.projectNumber} - ${p.projectName}`
-      : p.projectNumber;
-    if (p.isActive === true) option.textContent += " (Active)";
-    selector.appendChild(option);
-  });
-
+function showActiveProject() {
+  const display = safeGet("planning-active-project-display");
+  if (!display) return;
   const activeProject = getActiveProject();
   if (activeProject) {
-    selector.value = activeProject.projectNumber;
+    const label = activeProject.projectName
+      ? `${activeProject.projectNumber} – ${activeProject.projectName}`
+      : String(activeProject.projectNumber);
+    display.textContent = label;
     setSelectedProjectFilter(String(activeProject.projectNumber));
+  } else {
+    display.textContent = "No active project set for this vessel.";
   }
-}
-
-function setupFilterListener() {
-  safeGet("planning-project-filter")?.addEventListener("change", async (e) => {
-    setSelectedProjectFilter(e.target.value || null);
-    // refreshNoiseForProject calls renderPlanningHeatmap internally
-    await refreshNoiseForProject(selectedProjectFilter);
-  });
 }
 
 /* ------------ Bootstrap ------------ */
@@ -782,8 +778,14 @@ async function initPlanningApp() {
   await Projects.loadConfig();
   await Projects.loadProjects();
 
-  populateProjectFilter();
-  setupFilterListener();
+  if (isGrandSuperUser()) {
+    safeGet("planning-restricted")?.classList.remove("hidden");
+    document.querySelectorAll("main > section").forEach((s) => s.classList.add("hidden"));
+    updateUIForRole();
+    return;
+  }
+
+  showActiveProject();
   initNoiseControls(); // registers event listeners only (no async data loading)
 
   // Initial data load — refreshNoiseForProject calls renderPlanningHeatmap internally
