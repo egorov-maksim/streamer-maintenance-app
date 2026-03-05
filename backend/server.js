@@ -18,6 +18,7 @@ const { createConfigRouter } = require("./routes/config");
 const { createProjectsRouter } = require("./routes/projects");
 const { createEventsRouter } = require("./routes/events");
 const { createStatsRouter } = require("./routes/stats");
+const { createNoiseRouter } = require("./routes/noise");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -84,6 +85,7 @@ const configRouter = createConfigRouter(authMiddleware, superUserOnly);
 const projectsRouter = createProjectsRouter(authMiddleware, superUserOnly);
 const eventsRouter = createEventsRouter(authMiddleware, adminOrAbove);
 const statsRouter = createStatsRouter(authMiddleware);
+const noiseRouter = createNoiseRouter(authMiddleware, adminOrAbove);
 
 app.use("/", authRouter);
 app.use("/", backupsRouter);
@@ -91,6 +93,7 @@ app.use("/", configRouter);
 app.use("/", projectsRouter);
 app.use("/", eventsRouter);
 app.use("/", statsRouter);
+app.use("/", noiseRouter);
 
 // fallback
 app.get("*", (_req, res) => {

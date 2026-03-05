@@ -1,4 +1,4 @@
-import { safeGet, showErrorToast } from "./js/ui.js";
+import { safeGet, showErrorToast, showSuccessToast } from "./js/ui.js";
 import {
   setOnShowAppCallback,
   loadSession,
@@ -18,6 +18,10 @@ import {
   setSelectedProjectFilter,
   selectedProjectFilter,
   getActiveProject,
+  noiseData,
+  setNoiseData,
+  noiseUploads,
+  setNoiseUploads,
 } from "./js/state.js";
 import {
   ageBucket,
@@ -26,6 +30,159 @@ import {
   getEBRangeForSectionRange,
   getChannelRangeForSectionRange,
 } from "./js/streamer-utils.js";
+
+/* ------------ Noise utilities ------------ */
+
+/**
+ * Parse the standard RMS CSV file.
+ * CSV format: first column is section number (1-based), remaining columns are cables.
+ * Zero values mean the section is not deployed on that cable — excluded from results.
+ * @param {string} text - raw CSV text
+ * @returns {{ [cableNum: string]: { [sectionNum: string]: number } }}
+ */
+function parseNoiseCsv(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) throw new Error("CSV has no data rows");
+
+  // Parse header: "Active,Cable 01,Cable 02,..." → map column index → cable number
+  const headers = lines[0].split(",");
+  const cableColumns = []; // [{ colIndex, cableNum }]
+  for (let i = 1; i < headers.length; i++) {
+    const cableNum = parseInt(headers[i].replace(/[^0-9]/g, ""), 10);
+    if (!isNaN(cableNum)) cableColumns.push({ colIndex: i, cableNum });
+  }
+
+  const result = {};
+  for (let r = 1; r < lines.length; r++) {
+    const cols = lines[r].split(",");
+    const sectionNum = parseInt(cols[0], 10);
+    if (isNaN(sectionNum)) continue;
+
+    for (const { colIndex, cableNum } of cableColumns) {
+      const rms = parseFloat(cols[colIndex]);
+      if (isNaN(rms) || rms <= 0) continue;
+      const cableKey = String(cableNum);
+      if (!result[cableKey]) result[cableKey] = {};
+      result[cableKey][String(sectionNum)] = rms;
+    }
+  }
+  return result;
+}
+
+/**
+ * Convert an RMS value to a background colour using a two-segment gradient:
+ *   0 → dark blue (#1e3a8a), 5 → white (#ffffff), 20+ → deep red (#dc2626)
+ * Returns null for zero/missing values (no data).
+ * @param {number} rms
+ * @returns {string|null}
+ */
+function rmsToColor(rms) {
+  if (!rms || rms <= 0) return null;
+  const val = Math.min(rms, 20);
+  if (val <= 5) {
+    const t = val / 5;
+    const r = Math.round(30 + t * (255 - 30));
+    const g = Math.round(58 + t * (255 - 58));
+    const b = Math.round(138 + t * (255 - 138));
+    return `rgb(${r},${g},${b})`;
+  }
+  const t = (val - 5) / 15;
+  const r = Math.round(255 + t * (220 - 255));
+  const g = Math.round(255 + t * (38 - 255));
+  const b = Math.round(255 + t * (38 - 255));
+  return `rgb(${r},${g},${b})`;
+}
+
+/**
+ * Pick a readable text colour for a given RMS value.
+ * @param {number} rms
+ * @returns {string}
+ */
+function rmsTextColor(rms) {
+  if (!rms || rms <= 0) return "#6b7280";
+  if (rms <= 2.5) return "#ffffff"; // dark blue bg
+  if (rms <= 8) return "#1a1a1a";   // near-white / light-orange bg
+  return "#ffffff";                   // orange-red bg
+}
+
+/**
+ * Apply noise-overlay colours and RMS text to all active section cells.
+ * @param {HTMLElement} container
+ * @param {{ [cableNum: string]: number[] }} nd - noiseData from state
+ */
+function applyNoiseOverlay(container, nd) {
+  const cells = container.querySelectorAll(".hm-vcell.hm-active-section.hm-planning-cell");
+  cells.forEach(cell => {
+    const streamerId = cell.dataset.streamer;
+    const sectionIndex = parseInt(cell.dataset.section, 10);
+    const rms = nd?.[streamerId]?.[sectionIndex] ?? 0;
+    const bg = rmsToColor(rms);
+    if (bg) {
+      cell.style.backgroundColor = bg;
+      cell.style.color = rmsTextColor(rms);
+      cell.style.borderColor = bg;
+      cell.textContent = rms.toFixed(1);
+    } else {
+      cell.style.backgroundColor = "#e5e7eb";
+      cell.style.color = "#6b7280";
+      cell.style.borderColor = "#d1d5db";
+      cell.textContent = "—";
+    }
+  });
+}
+
+/**
+ * Remove noise overlay and restore age-mode colours and days text.
+ * @param {HTMLElement} container
+ */
+function removeNoiseOverlay(container) {
+  const cells = container.querySelectorAll(".hm-vcell.hm-active-section.hm-planning-cell");
+  cells.forEach(cell => {
+    cell.style.backgroundColor = "";
+    cell.style.color = "";
+    cell.style.borderColor = "";
+    cell.textContent = cell.dataset.daysText ?? "—";
+  });
+}
+
+/* ------------ Noise UI helpers ------------ */
+
+/**
+ * Populate the upload-history selector with past uploads.
+ * @param {Array<{ id: number, label: string|null, uploadedAt: string }>} uploads
+ */
+function populateUploadSelector(uploads) {
+  const selector = safeGet("noise-upload-selector");
+  if (!selector) return;
+
+  selector.innerHTML = "";
+  uploads.forEach(u => {
+    const opt = document.createElement("option");
+    opt.value = u.id;
+    const date = new Date(u.uploadedAt).toLocaleDateString();
+    opt.textContent = u.label ? `${date} — ${u.label}` : date;
+    selector.appendChild(opt);
+  });
+}
+
+function setNoiseSelectorValue(uploadId) {
+  const selector = safeGet("noise-upload-selector");
+  if (selector && uploadId != null) selector.value = String(uploadId);
+}
+
+function isNoiseToggleOn() {
+  const toggle = safeGet("noise-toggle");
+  return toggle ? toggle.checked : false;
+}
+
+function enableNoiseToggle(hasData) {
+  const toggle = safeGet("noise-toggle");
+  const label = safeGet("noise-toggle-label");
+  if (toggle) toggle.disabled = !hasData;
+  if (label) label.title = hasData
+    ? "Switch heatmap to RMS noise coloring"
+    : "Upload a noise CSV to enable this overlay";
+}
 
 /* ------------ Tooltip ------------ */
 
@@ -88,6 +245,15 @@ function attachSectionTooltips(container, lastCleaned) {
       } else {
         html += `<div class="tooltip-row">Never cleaned</div>`;
       }
+
+      // Append RMS noise value if data is available for this active section
+      if (!isTail && noiseData) {
+        const rms = noiseData[streamerId]?.[sectionIndex] ?? 0;
+        if (rms > 0) {
+          html += `<div class="tooltip-row">RMS noise: <strong>${rms.toFixed(2)}</strong></div>`;
+        }
+      }
+
       tip.innerHTML = html;
       // Show first so getBoundingClientRect() returns real dimensions for clamping
       tip.classList.add("show");
@@ -183,7 +349,24 @@ function buildSuggestion(streamerId, startSection, endSection, isTail, rangeDays
   const ebRange = isTail ? "—" : getEBRangeForSectionRange(startSection, endSection, cfg);
   const channelRange = isTail ? "—" : getChannelRangeForSectionRange(startSection, endSection, cfg);
 
-  return { streamerId, startSection, endSection, isTail, maxDays, sectionsRange, ebRange, channelRange };
+  // Compute average noise for this range from current noise state
+  let avgNoise = null;
+  if (!isTail && noiseData) {
+    const cableKey = String(streamerId);
+    const cableNoise = noiseData[cableKey];
+    if (cableNoise) {
+      const values = [];
+      for (let s = startSection; s <= endSection; s++) {
+        const rms = cableNoise[s];
+        if (rms && rms > 0) values.push(rms);
+      }
+      if (values.length > 0) {
+        avgNoise = values.reduce((sum, v) => sum + v, 0) / values.length;
+      }
+    }
+  }
+
+  return { streamerId, startSection, endSection, isTail, maxDays, sectionsRange, ebRange, channelRange, avgNoise };
 }
 
 function formatDaysCell(maxDays) {
@@ -196,19 +379,26 @@ function formatDaysCell(maxDays) {
 
 function renderCleaningSuggestions(suggestions) {
   const tbody = safeGet("cleaning-suggestions-tbody");
+  const table = safeGet("cleaning-suggestions-table");
   if (!tbody) return;
+
+  // Show or hide the noise column based on whether noise data is loaded
+  const hasNoise = !!noiseData;
+  if (table) table.classList.toggle("has-noise-data", hasNoise);
 
   tbody.innerHTML = "";
 
   if (suggestions.length === 0) {
+    const colspan = hasNoise ? 6 : 5;
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="5" style="text-align:center;color:var(--muted)">No sections due for cleaning — all fresh (within ${DAYS_THRESHOLD - 1} days).</td>`;
+    tr.innerHTML = `<td colspan="${colspan}" style="text-align:center;color:var(--muted)">No sections due for cleaning — all fresh (within ${DAYS_THRESHOLD - 1} days).</td>`;
     tbody.appendChild(tr);
     return;
   }
 
-  suggestions.forEach(({ streamerId, isTail, maxDays, sectionsRange, ebRange, channelRange }) => {
+  suggestions.forEach(({ streamerId, isTail, maxDays, sectionsRange, ebRange, channelRange, avgNoise }) => {
     const { text: daysText, bucket } = formatDaysCell(maxDays);
+    const noiseCellHtml = buildNoiseBadgeHtml(avgNoise, isTail);
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td><span class="suggestion-days-badge suggestion-days-${bucket}">${daysText}</span></td>
@@ -216,9 +406,17 @@ function renderCleaningSuggestions(suggestions) {
       <td>${sectionsRange}</td>
       <td>${ebRange}</td>
       <td>${channelRange}</td>
+      <td class="noise-col">${noiseCellHtml}</td>
     `;
     tbody.appendChild(tr);
   });
+}
+
+function buildNoiseBadgeHtml(avgNoise, isTail) {
+  if (isTail || avgNoise === null) return '<span style="color:var(--muted)">—</span>';
+  const bg = rmsToColor(avgNoise) || "#e5e7eb";
+  const color = rmsTextColor(avgNoise);
+  return `<span class="noise-rms-badge" style="background:${bg};color:${color}">${avgNoise.toFixed(1)}</span>`;
 }
 
 /* ------------ Heat map rendering ------------ */
@@ -331,8 +529,10 @@ async function renderPlanningHeatmap() {
         cell.dataset.streamer = streamerId;
         cell.dataset.section = s;
         cell.dataset.age = bucket;
-        // Show days number; 0 is valid (cleaned today)
-        cell.textContent = days !== null ? String(days) : "—";
+        // Store days text so noise toggle can restore it
+        const daysText = days !== null ? String(days) : "—";
+        cell.dataset.daysText = daysText;
+        cell.textContent = daysText;
 
         col.appendChild(cell);
 
@@ -367,7 +567,9 @@ async function renderPlanningHeatmap() {
         tailCell.dataset.section = tailIdx;
         tailCell.dataset.isTail = "true";
         tailCell.dataset.age = bucket;
-        tailCell.textContent = days !== null ? String(days) : "—";
+        const tailDaysText = days !== null ? String(days) : "—";
+        tailCell.dataset.daysText = tailDaysText;
+        tailCell.textContent = tailDaysText;
 
         col.appendChild(tailCell);
       }
@@ -378,10 +580,167 @@ async function renderPlanningHeatmap() {
     container.appendChild(wrapper);
     attachSectionTooltips(container, lastCleaned);
 
+    // Re-apply noise overlay if the toggle is currently active
+    if (isNoiseToggleOn() && noiseData) {
+      applyNoiseOverlay(container, noiseData);
+    }
+
   } catch (err) {
     console.error("renderPlanningHeatmap failed:", err);
     showErrorToast(err.message || "Failed to load planning heat map");
   }
+}
+
+/* ------------ Noise data loading ------------ */
+
+async function loadNoiseData(uploadId, projectNumber) {
+  try {
+    const result = await API.getNoiseData(uploadId, projectNumber);
+    setNoiseData(result.noiseData || null);
+    return result;
+  } catch (err) {
+    console.error("loadNoiseData failed:", err);
+    setNoiseData(null);
+    return null;
+  }
+}
+
+async function loadNoiseUploads(projectNumber) {
+  try {
+    const uploads = await API.getNoiseUploads(projectNumber);
+    setNoiseUploads(uploads);
+    return uploads;
+  } catch (err) {
+    console.error("loadNoiseUploads failed:", err);
+    setNoiseUploads([]);
+    return [];
+  }
+}
+
+/**
+ * Reload all noise controls for the given project.
+ * Called on init and whenever the project filter changes.
+ * @param {string|null} projectNumber
+ */
+async function refreshNoiseForProject(projectNumber) {
+  const selector = safeGet("noise-upload-selector");
+  const toggle = safeGet("noise-toggle");
+
+  if (!projectNumber) {
+    // No project selected — clear noise state and disable controls
+    setNoiseData(null);
+    setNoiseUploads([]);
+    selector?.classList.add("hidden");
+    enableNoiseToggle(false);
+    // Turn off toggle visually and restore age overlay if it was active
+    if (toggle?.checked) {
+      toggle.checked = false;
+      const container = safeGet("planning-heatmap-container");
+      if (container) {
+        removeNoiseOverlay(container);
+        safeGet("age-legend")?.classList.remove("hidden");
+        safeGet("noise-legend")?.classList.add("hidden");
+      }
+    }
+    await renderPlanningHeatmap();
+    return;
+  }
+
+  const uploads = await loadNoiseUploads(projectNumber);
+
+  if (uploads.length > 0) {
+    populateUploadSelector(uploads);
+    selector?.classList.remove("hidden");
+
+    const latest = await loadNoiseData(null, projectNumber);
+    if (latest?.uploadId) setNoiseSelectorValue(latest.uploadId);
+
+    enableNoiseToggle(true);
+  } else {
+    setNoiseData(null);
+    selector?.classList.add("hidden");
+    enableNoiseToggle(false);
+    // Turn off toggle if it was on
+    if (toggle?.checked) {
+      toggle.checked = false;
+      const container = safeGet("planning-heatmap-container");
+      if (container) {
+        removeNoiseOverlay(container);
+        safeGet("age-legend")?.classList.remove("hidden");
+        safeGet("noise-legend")?.classList.add("hidden");
+      }
+    }
+  }
+
+  await renderPlanningHeatmap();
+}
+
+/**
+ * Set up noise control event listeners (called once on page init).
+ */
+function initNoiseControls() {
+  const selector = safeGet("noise-upload-selector");
+  const toggle = safeGet("noise-toggle");
+
+  // Toggle handler
+  toggle?.addEventListener("change", () => {
+    const container = safeGet("planning-heatmap-container");
+    if (!container) return;
+    const ageLegend = safeGet("age-legend");
+    const noiseLegend = safeGet("noise-legend");
+
+    if (toggle.checked) {
+      if (noiseData) {
+        applyNoiseOverlay(container, noiseData);
+        ageLegend?.classList.add("hidden");
+        noiseLegend?.classList.remove("hidden");
+      } else {
+        toggle.checked = false;
+        showErrorToast("No noise data available. Upload a noise CSV first.");
+      }
+    } else {
+      removeNoiseOverlay(container);
+      ageLegend?.classList.remove("hidden");
+      noiseLegend?.classList.add("hidden");
+    }
+  });
+
+  // Upload selector handler — load chosen batch and re-render
+  selector?.addEventListener("change", async (e) => {
+    const uploadId = e.target.value;
+    if (!uploadId) return;
+    await loadNoiseData(uploadId, selectedProjectFilter);
+    await renderPlanningHeatmap();
+  });
+
+  // Upload CSV handler
+  const csvInput = safeGet("noise-csv-input");
+  csvInput?.addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    csvInput.value = ""; // reset so same file can be re-uploaded
+
+    if (!selectedProjectFilter) {
+      showErrorToast("Select a project first before uploading noise data.");
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const parsedNoise = parseNoiseCsv(text);
+
+      const label = file.name.replace(/\.csv$/i, "");
+      await API.uploadNoiseData({ projectNumber: selectedProjectFilter, label, noiseData: parsedNoise });
+      showSuccessToast("Noise data uploaded", `Saved ${Object.keys(parsedNoise).length} cables from "${label}"`);
+
+      // Refresh the upload list and load the new batch for the current project
+      await refreshNoiseForProject(selectedProjectFilter);
+    } catch (err) {
+      console.error("Noise CSV upload failed:", err);
+      showErrorToast(err.message || "Failed to upload noise data");
+    }
+  });
 }
 
 /* ------------ Project filter ------------ */
@@ -411,7 +770,8 @@ function populateProjectFilter() {
 function setupFilterListener() {
   safeGet("planning-project-filter")?.addEventListener("change", async (e) => {
     setSelectedProjectFilter(e.target.value || null);
-    await renderPlanningHeatmap();
+    // refreshNoiseForProject calls renderPlanningHeatmap internally
+    await refreshNoiseForProject(selectedProjectFilter);
   });
 }
 
@@ -424,8 +784,10 @@ async function initPlanningApp() {
 
   populateProjectFilter();
   setupFilterListener();
+  initNoiseControls(); // registers event listeners only (no async data loading)
 
-  await renderPlanningHeatmap();
+  // Initial data load — refreshNoiseForProject calls renderPlanningHeatmap internally
+  await refreshNoiseForProject(selectedProjectFilter);
 
   updateUIForRole();
 }

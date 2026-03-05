@@ -75,3 +75,24 @@ CREATE TABLE IF NOT EXISTS streamer_deployments (
 
 -- Index for streamer_deployments
 CREATE INDEX IF NOT EXISTS idx_streamer_deployments_project ON streamer_deployments(project_id);
+
+-- Noise data: one row per CSV upload (batch header), scoped to a project
+CREATE TABLE IF NOT EXISTS noise_uploads (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_number TEXT NOT NULL,
+  vessel_tag TEXT NOT NULL,
+  label TEXT,
+  uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY(project_number) REFERENCES projects(project_number) ON DELETE CASCADE
+);
+
+-- Noise data: per-section RMS measurements linked to a batch
+CREATE TABLE IF NOT EXISTS noise_data (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  upload_id INTEGER NOT NULL REFERENCES noise_uploads(id) ON DELETE CASCADE,
+  cable_number INTEGER NOT NULL,
+  section_number INTEGER NOT NULL,
+  rms_value REAL NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_noise_data_upload ON noise_data(upload_id);

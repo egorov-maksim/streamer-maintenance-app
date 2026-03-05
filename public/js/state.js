@@ -22,6 +22,9 @@ export let dragState = {
 
 export let isFinalizing = false;
 
+export let noiseData = null;
+export let noiseUploads = [];
+
 export function setConfig(val) {
   config = val;
 }
@@ -56,6 +59,14 @@ export function setDragState(updates) {
 
 export function setIsFinalizing(val) {
   isFinalizing = val;
+}
+
+export function setNoiseData(val) {
+  noiseData = val;
+}
+
+export function setNoiseUploads(val) {
+  noiseUploads = val;
 }
 
 export function getActiveProject() {

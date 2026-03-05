@@ -113,7 +113,7 @@
           <h2 class="card-title">🧹 Suggested Ranges to Clean</h2>
           <p class="subheader mb-12">Sorted by days since last scraping — most urgent first. Use for batch planning.</p>
           <div class="table-wrapper">
-            <table>
+            <table id="cleaning-suggestions-table">
               <thead>
                 <tr>
                   <th>Days Since Scraped</th>
@@ -121,6 +121,7 @@
                   <th>Sections</th>
                   <th>EB Range</th>
                   <th>Channel Range</th>
+                  <th class="noise-col">Avg Noise (RMS)</th>
                 </tr>
               </thead>
               <tbody id="cleaning-suggestions-tbody">
@@ -132,10 +133,28 @@
 
         <!-- Planning Heat Map -->
         <section class="card streamers-card">
-          <h2 class="card-title">📋 Days Since Last Scraping</h2>
+          <div class="noise-controls-row">
+            <h2 class="card-title">📋 Days Since Last Scraping</h2>
+            <div class="noise-controls">
+              <!-- Noise toggle (always visible once data loaded) -->
+              <label class="noise-toggle-label" id="noise-toggle-label" title="Switch heatmap to RMS noise coloring">
+                <input type="checkbox" id="noise-toggle" disabled>
+                <span class="noise-toggle-track"><span class="noise-toggle-thumb"></span></span>
+                <span class="noise-toggle-text">Noise overlay</span>
+              </label>
+              <!-- Upload selector (shows past uploads) -->
+              <select id="noise-upload-selector" class="noise-upload-selector hidden" title="Select a historical noise upload to display">
+              </select>
+              <!-- Upload button (admin+, hidden from viewers) -->
+              <label class="btn btn-secondary btn-sm noise-upload-btn admin-only" title="Upload RMS noise CSV from current sequence">
+                Upload noise CSV
+                <input type="file" id="noise-csv-input" accept=".csv" class="hidden">
+              </label>
+            </div>
+          </div>
 
-          <!-- Legend -->
-          <div class="legend mb-16">
+          <!-- Age-mode legend (default) -->
+          <div class="legend mb-16" id="age-legend">
             <div class="badge"><span class="legend-swatch legend-swatch-fresh"></span> 0–3 days (fresh)</div>
             <div class="badge"><span class="legend-swatch legend-swatch-4plus"></span> 4–6 days</div>
             <div class="badge"><span class="legend-swatch legend-swatch-7plus"></span> 7–9 days</div>
@@ -143,6 +162,23 @@
             <div class="badge"><span class="legend-swatch legend-swatch-14plus"></span> 14+ days (needs cleaning)</div>
             <div class="badge"><span class="legend-swatch legend-swatch-never"></span> Never cleaned</div>
             <div class="badge"><span class="legend-swatch legend-swatch-module"></span> EB Module</div>
+          </div>
+
+          <!-- Noise-mode legend (hidden by default) -->
+          <div class="noise-legend mb-16 hidden" id="noise-legend">
+            <div class="noise-legend-bar">
+              <span class="noise-legend-tick" style="left:0%">0</span>
+              <span class="noise-legend-tick" style="left:25%">5</span>
+              <span class="noise-legend-tick" style="left:50%">10</span>
+              <span class="noise-legend-tick" style="left:75%">15</span>
+              <span class="noise-legend-tick" style="left:100%">20+</span>
+            </div>
+            <div class="noise-legend-labels">
+              <span>Clean</span>
+              <span style="text-align:center">Threshold (10)</span>
+              <span style="text-align:right">Noisy</span>
+            </div>
+            <div class="badge mt-8"><span class="legend-swatch" style="background:#9ca3af"></span> No data / not deployed</div>
           </div>
 
           <div id="planning-heatmap-container" class="hm-grid-container"></div>

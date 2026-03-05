@@ -2645,3 +2645,169 @@
   color: #374151;
   border: 1px solid #d1d5db;
 }
+
+/* =========================
+   Noise overlay — planning page
+   ========================= */
+
+/* Noise column: hidden by default, shown when table has class has-noise-data */
+.noise-col {
+  display: none;
+}
+
+table.has-noise-data .noise-col {
+  display: table-cell;
+}
+
+/* Header row: title + noise controls side-by-side */
+.noise-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.noise-controls-row .card-title {
+  margin-bottom: 0;
+}
+
+.noise-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Toggle switch */
+.noise-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.noise-toggle-label input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.noise-toggle-label input[type="checkbox"]:disabled ~ .noise-toggle-track {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.noise-toggle-label input[type="checkbox"]:disabled ~ .noise-toggle-text {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.noise-toggle-track {
+  position: relative;
+  display: inline-block;
+  width: 38px;
+  height: 22px;
+  background: #d1d5db;
+  border-radius: 999px;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+}
+
+.noise-toggle-label input[type="checkbox"]:checked ~ .noise-toggle-track {
+  background: var(--primary);
+}
+
+.noise-toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.noise-toggle-label input[type="checkbox"]:checked ~ .noise-toggle-track .noise-toggle-thumb {
+  transform: translateX(16px);
+}
+
+/* Upload selector */
+.noise-upload-selector {
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card-bg, #fff);
+  color: var(--text);
+  max-width: 220px;
+}
+
+/* Upload button — styled as a file label */
+.noise-upload-btn {
+  font-size: 12px;
+  padding: 5px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* Noise gradient legend */
+.noise-legend {
+  margin-bottom: 8px;
+}
+
+.noise-legend-bar {
+  position: relative;
+  height: 18px;
+  border-radius: 6px;
+  background: linear-gradient(
+    to right,
+    #1e3a8a 0%,
+    #ffffff 25%,
+    #fed7aa 50%,
+    #f97316 62%,
+    #dc2626 100%
+  );
+  margin-bottom: 4px;
+  max-width: 480px;
+}
+
+.noise-legend-tick {
+  position: absolute;
+  top: 22px;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: var(--muted, #6b7280);
+  white-space: nowrap;
+}
+
+.noise-legend-labels {
+  display: flex;
+  justify-content: space-between;
+  max-width: 480px;
+  font-size: 11px;
+  color: var(--muted, #6b7280);
+  margin-top: 28px;
+}
+
+/* Noise value badge in the suggestions table */
+.noise-rms-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Utility: small margin-top */
+.mt-8 {
+  margin-top: 8px;
+}

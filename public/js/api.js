@@ -230,3 +230,26 @@ export async function restoreBackup(filename) {
     action: "restore backup",
   });
 }
+
+// --- Noise data ---
+
+export async function getNoiseUploads(projectNumber) {
+  if (!projectNumber) return [];
+  return apiCall(`api/noise-data/uploads?project=${encodeURIComponent(projectNumber)}`);
+}
+
+export async function getNoiseData(uploadId, projectNumber) {
+  const params = new URLSearchParams();
+  if (uploadId) params.set("uploadId", uploadId);
+  if (projectNumber) params.set("project", projectNumber);
+  const query = params.toString();
+  return apiCall(`api/noise-data${query ? "?" + query : ""}`);
+}
+
+export async function uploadNoiseData(payload) {
+  return apiCall("api/noise-data", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    action: "upload noise data",
+  });
+}
