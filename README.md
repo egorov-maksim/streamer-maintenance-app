@@ -13,7 +13,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 - **Compliance**: Comprehensive reporting for operational audits and vessel documentation
 - **Analytics**: Identify cleaning patterns and optimize maintenance schedules
 - **Multi-Project Support**: Manage multiple projects with independent configurations
-- **Access Control**: Role-based access (Admin/Viewer) with secure authentication
+- **Access Control**: Role-based access (four levels: GrandSuperUser/SuperUser/Admin/Viewer) with vessel-scoped authentication
 
 ---
 
@@ -57,7 +57,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
   - ⚪ **Never**: Gray - Never cleaned
 - **Module Integration**: eBird module positions displayed directly on heatmap
 - **Real-Time Updates**: Heatmap refreshes immediately after logging events
-- **Hover Tooltips**: Section hover shows age, method, distance, EB range; **streamer column header hover** shows deployment date, days from deployment to first scraping, coating status, total cleanings, and last cleaned date
+- **Hover Tooltips**: Section hover shows last cleaned method & date, days since last clean, total times cleaned, and the last 5 cleanings with dates and methods; **streamer column header hover** shows deployment date, days from deployment to first scraping, coating status, total cleanings, and last cleaned date
 
 ### 🖱️ Drag-to-Select Cleaning Interface
 - **One-Click Logging**: Click and drag across sections to mark them as cleaned
@@ -83,17 +83,30 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
   - Vessel tag identifier
 - **Real-Time Updates**: Configuration changes immediately update the heatmap
 - **Collapse/Expand UI**: Fold configuration section for cleaner interface
-- **Cleanup Orphaned Streamers**: When streamer count is reduced, SuperUser can remove events and deployments for hidden streamers via "Cleanup orphaned streamers"
+- **Cleanup Orphaned Streamers**: When streamer count is reduced, GrandSuperUser (or global SuperUser) can remove events and deployments for hidden streamers via "Cleanup orphaned streamers"
 
 ### ⚙️ Config Page (Dedicated Dashboard)
 - **Separate Configuration UI**: Full-screen dashboard at `/config` for managing projects and streamer settings without cluttering the main heatmap view
 - **Access**: SuperUser and GrandSuperUser only; link "⚙️ Config" appears in the main app header when permitted
+- **Independent login**: the page has its own login form, same as the `/stats` and `/planning` pages
 - **Project & Streamer Configuration**: Active project banner, project comments (superuser-editable), project selector, and streamer parameters (count, sections, length, eBird frequency, tail option, etc.) with Save and "Cleanup orphaned streamers"
 - **Per-Streamer Deployment**: Set deployment date and coating (Coated/Uncoated/Unknown) per streamer; bulk actions to set all dates, set all coating, or clear all/single streamer config
 - **Vessel Project Overview**: Table of vessels with active project and project name; SuperUsers can change the active project per vessel from dropdowns
 - **Project Management**: Create new project, set active project, clear active project; list of all projects with actions (activate, force-delete with confirmation)
-- **Backup & Restore**: Create manual backup, refresh backup list, restore from backup (Admin/SuperUser)
+- **Backup & Restore**: Create manual backup, refresh backup list, restore from backup (restore requires GrandSuperUser or a global SuperUser; requires server restart after restore)
 - **Back to Main**: Header link returns to the main app at `/`
+
+### 🗺️ Planning Page (Dedicated Maintenance Planning View)
+- **Separate page** at `/planning` — read-only heatmap focused on upcoming cleaning decisions; scoped to per-vessel users (GrandSuperUser is intentionally blocked with a "restricted" notice)
+- **Heatmap**: displays *days since last cleaning* per section instead of section numbers; includes a **channel reference column** (CH) showing the channel range for each section row
+- **Cleaning Suggestions table**: automatically computes all contiguous section ranges where `days_since_last_clean ≥ 4` (or never cleaned), sorted by urgency (most overdue first)
+  - Columns: Days Since (color-coded badge), Streamer, Section Range, EB Range, Channel Range, Avg RMS Noise (hidden when no noise data is loaded)
+  - Badge colors: 4–6d yellow → 7–9d orange → 10–13d red → 14+d dark red → never gray
+  - Active and tail sections are kept as separate groups (never merged across the boundary)
+- **RMS Noise overlay**: same upload/toggle controls as the main page (see RMS Noise section below); when enabled, replaces age-bucket coloring with a RMS gradient and shows numeric values in cells
+- **Section tooltips**: show last cleaned date, days since, and RMS noise value on hover
+- **Independent login**: the page has its own login form; no separate tab or account needed
+- **Scoped automatically** to the vessel's active project on load; no project switching UI
 
 ### 📊 Comprehensive Statistics Dashboard
 - **Coverage Metrics**:
@@ -111,6 +124,8 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
   - Distance cleaned by each method
   - Visualization of method distribution
 - **Streamer Overview Cards**: Quick stats for each individual cable (distance, coverage %)
+- **Days to First Scraping per Streamer**: Horizontal bar chart showing how many days elapsed from each streamer's deployment date to its first recorded cleaning event; only shown when the active project has deployment dates configured and at least some cleaning events recorded
+- **Available as standalone page**: The stats dashboard is also accessible at `/stats` with its own independent login form
 
 ### 📝 Cleaning History Log
 - **Detailed Event Table** with sortable columns:
@@ -123,6 +138,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
   - Total distance cleaned (meters)
   - Cleaning method used
   - Cleaning count
+  - **Added By**: username of the person who logged the event (automatically recorded on create; preserved on CSV import)
   - Edit/Delete actions
 - **Chronological Tracking**: Events listed newest first
 - **Sortable Columns**: Click headers to sort by any field
@@ -166,8 +182,8 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 - **Auto-Naming**: Reports named with generation date
 
 ### 📤 CSV Import/Export
-- **Export Events**: Download all cleaning events as CSV file (includes Section Type: active or tail)
-- **Import Events**: Bulk upload previously saved events; supports both legacy format and Section Type column
+- **Export Events**: Download all cleaning events as CSV file (includes Section Type: active or tail, and Added By column); when a project filter is active the filename includes the project number suffix (e.g. `streamer-cleaning-events-PRJ001-2026-03-05.csv`)
+- **Import Events**: Bulk upload previously saved events; supports both legacy format and Section Type column; the `addedByUsertag` column is preserved on import
 - **Backup Capability**: Create data backups for offline storage
 - **Data Migration**: Transfer data between systems or backup locations
 - **Format Preservation**: Maintains data integrity during import/export
@@ -190,6 +206,17 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 - **Uncleaned Sections**: List sections that have never been cleaned
 - **Toast Notifications**: Real-time feedback for actions (success/error/warning)
 - **Duplicate-Clean Guard**: When logging a new event over a section already cleaned within the last 24 hours, a warning modal interrupts the save — showing which prior event overlaps, how long ago it was cleaned (e.g. "3 hrs 22 min ago"), and offering Cancel or Save Anyway
+- **Adjacent Event Merge**: When a newly logged range is immediately adjacent (end+1 = proposed start, or vice versa) to an existing event on the same streamer with the same cleaning method and logged within 1 hour, a merge modal appears showing the existing range, the new range, and the combined merged range — the user can choose Merge (extends the existing event) or Keep Separate (saves as a new event)
+- **Clear All Events**: SuperUser+ can bulk-delete all events for the active project (or globally if no active project for GrandSuperUser) via a confirmation modal that requires typing `DELETE` to proceed
+
+### 📡 RMS Noise Data Upload & Overlay
+- **CSV Upload**: Upload per-section RMS noise measurements from a CSV file (Admin+); the file is validated client-side before upload
+  - Expected format: first column = 1-based section number; remaining columns = `Active, Cable 01, Cable 02, …` with values per streamer
+  - The number of data columns must match the project's `numCables` and `sectionsPerCable` settings
+- **Multi-Batch History**: multiple upload batches are stored per project; a dropdown selector lets you switch between historical uploads
+- **Noise Overlay Toggle**: a toggle switch on the heatmap replaces age-bucket coloring with a two-stop RMS gradient (dark blue → white at 5 µV → deep red at 20+ µV) and renders numeric RMS values inside each cell
+- **Cleaning Suggestions integration**: when noise data is loaded, the Planning Page suggestions table gains an **Avg RMS Noise** column
+- **Section tooltips**: planning page hover tooltips include the RMS value for each section when data is active
 
 ### 📊 eBird Module Tracking
 - **Intelligent Calculation**: Automatically calculates EB module ranges affected by cleaning
@@ -208,7 +235,14 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 ### 🗄️ Database Schema (Fresh Install)
 - **Streamer IDs**: All streamer references use `streamer_id` (INTEGER 1–12). No migration from legacy `cable_id`.
 - **Cascade Deletes**: Deleting a project removes its events and deployment configs automatically.
-- **Tables**: `cleaning_events` (streamer_id, project_number FK CASCADE), `projects`, `streamer_deployments` (streamer_id, project_id FK CASCADE), `app_config`.
+- **Tables**:
+  - `cleaning_events` — streamer_id, project_number FK CASCADE, added_by_usertag
+  - `projects` — project metadata, vessel_tag
+  - `streamer_deployments` — deployment date & coating per streamer, project_id FK CASCADE
+  - `app_config` — key/value configuration store (scoped by vessel_tag)
+  - `vessel_context` — per-vessel active-project mapping
+  - `noise_uploads` — RMS noise upload batch metadata (project, label, created_at)
+  - `noise_data` — per-section RMS measurements linked to an upload batch
 
 ### 🔐 Data Security & Persistence
 - **SQLite Database**: Local database with WAL mode for reliability
@@ -224,7 +258,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 ## 🚀 Getting Started
 
 ### Prerequisites
-- **Node.js** 14.0 or higher
+- **Node.js** 20.0 or higher
 - **npm** 6.0 or higher
 - **git** (for cloning the repository)
 - **jsPDF library** (4.x) - Required for PDF report generation; see [INSTALL.md](INSTALL.md) for download
@@ -285,7 +319,7 @@ AUTH_USERS=TTNOBS:Password:admin:TTN:true,TTNView:Password:viewer:TTN,TTNNav:Pas
 
 #### 2. **Select or Create Project**
 - Choose active project from project list
-- Or create new project (Admin only)
+- Or create new project (SuperUser/GrandSuperUser only)
 - New projects inherit current configuration
 
 #### 3. **Review Current Status**
@@ -320,10 +354,10 @@ AUTH_USERS=TTNOBS:Password:admin:TTN:true,TTNView:Password:viewer:TTN,TTNNav:Pas
 - Click "Export to CSV" to download events
 - Use for backup or analysis in spreadsheets
 
-#### 9. **Manage Backups** (Admin only)
+#### 9. **Manage Backups** (SuperUser+ for listing/creating; GrandSuperUser / global SuperUser for restore)
 - View list of automatic backups
 - Create manual backups anytime
-- Restore from previous backups if needed
+- Restore from previous backups if needed (server restart required after restore)
 
 ### Configuration
 
@@ -334,7 +368,7 @@ Configuration is changed on the dedicated **Config page** (SuperUser only); ther
 - After login, the dashboard shows:
   - **Active project** and project comments (editable by superuser)
   - **Project selector** and "Set as Active" to switch the active project
-  - **Streamer configuration** (number of streamers, sections, section length, eBird frequency, tail option, etc.) — Save applies to the active project; "Cleanup orphaned streamers" removes events/deployments for streamers above the current count
+  - **Streamer configuration** (number of streamers, sections, section length, eBird frequency, tail option, etc.) — Save applies to the active project; "Cleanup orphaned streamers" removes events/deployments for streamers above the current count (GrandSuperUser / global SuperUser only)
   - **Per-streamer deployment** (deployment date and coating per streamer; bulk Set All Date / Set All Coating / Clear All)
   - **Vessel Project Overview** — see which project is active per vessel; superusers can change active project per vessel from the table
   - **Create New Project** (project number, name, vessel tag)
@@ -348,7 +382,7 @@ Configuration is changed on the dedicated **Config page** (SuperUser only); ther
 |---------|---------|---------|
 | Number of Cables | 12 | Total streamers in array |
 | Sections per Cable | 107 | Active sensor sections |
-| Section Length (m) | 25 | Length of each section for distance calculation |
+| Section Length (m) | 75 | Length of each section for distance calculation |
 | eBird Frequency | 4 | EB module spacing (every N sections) |
 | Use Rope for Tail | true | Use rope (true) or add 5 tail sections (false) |
 | Channels per Section | 6 | Sensor channels per section |
@@ -374,7 +408,7 @@ The PDF report includes:
 
 ### Report Layout
 
-- **Orientation**: Landscape (A4)
+- **Orientation**: Landscape (A3)
 - **Scale**: Optimized for 12 cables × 107+ sections
 - **Legend**: Color-coded age buckets
 - **EB Ranges**: Sensor module locations marked
@@ -402,31 +436,45 @@ The PDF report includes:
 ### Projects
 - `GET /api/projects` - List all projects
 - `GET /api/projects/active` - Get active project
-- `POST /api/projects` - Create new project (Admin only)
-- `PUT /api/projects/:id` - Update project (Admin only)
-- `DELETE /api/projects/:id` - Delete project (Admin only)
+- `POST /api/projects` - Create new project (SuperUser+)
+- `PUT /api/projects/:id` - Update project (SuperUser+)
+- `DELETE /api/projects/:id` - Delete project; returns 409 if events/deployments exist (SuperUser+)
+- `DELETE /api/projects/:id/force` - Force-delete project with all events and deployments (SuperUser+)
+- `PUT /api/projects/:id/activate` - Set project as active for its vessel (SuperUser+)
+- `POST /api/projects/deactivate` - Clear active project for the vessel (SuperUser+)
 - `GET /api/projects/stats` - Get event counts by project
+- `GET /api/projects/:id/streamer-deployments` - Get per-streamer deployment config
+- `PUT /api/projects/:id/streamer-deployments` - Save per-streamer deployment config (upsert, SuperUser+)
+- `DELETE /api/projects/:id/streamer-deployments/:streamerId` - Clear a single streamer deployment
+- `POST /api/cleanup-streamers` - Delete events/deployments for streamers above configured max (GrandSuperUser+)
 
 ### Cleaning Events
-- `GET /api/events` - Get all events
-- `POST /api/events` - Create new event
-- `PUT /api/events/:id` - Update event (Admin only)
-- `DELETE /api/events/:id` - Delete event (Admin only)
-- `GET /api/events/export` - Export events as CSV
+- `GET /api/events` - Get all events (supports `?project=X`, `?start=`, `?end=` query params)
+- `POST /api/events` - Create new event (Admin+); stores `addedByUsertag` from the authenticated user
+- `PUT /api/events/:id` - Update event (Admin+)
+- `DELETE /api/events/:id` - Delete single event (Admin+)
+- `DELETE /api/events` - Bulk clear events; accepts optional `?project=X` param (Admin+)
+- `GET /api/events/export` - Export events as CSV (includes Added By column; filename includes project suffix when filtered)
+- `POST /api/events/import` - Bulk import events from CSV (Admin+)
 
 ### Statistics
-- `GET /api/stats` - Get overall statistics
-- `GET /api/stats/filter` - Get filtered statistics
-- `GET /api/last-cleaned` - Get last cleaned data for heatmap
-- `GET /api/last-cleaned-filtered` - Get filtered heatmap data
+- `GET /api/stats` - Get overall statistics (supports `?project=X`)
+- `GET /api/stats/filter` - Get filtered statistics (supports `?start=`, `?end=`, `?project=X`)
+- `GET /api/last-cleaned` - Get last cleaned data for heatmap (supports `?project=X`)
+- `GET /api/last-cleaned-filtered` - Get filtered heatmap data (supports `?start=`, `?end=`, `?project=X`)
 
 ### Utilities
-- `GET /api/eb-range` - Calculate EB module range for sections
+- `GET /api/eb-range` - Calculate EB range for active sections (supports `?sectionType=tail`, returns `"—"` for tails)
 
-### Backups (Admin only)
+### RMS Noise Data
+- `GET /api/noise-data/uploads` - List upload batches for a project (`?project=X`)
+- `GET /api/noise-data` - Fetch RMS measurements for a batch or latest for project (`?project=X[&uploadId=Y]`)
+- `POST /api/noise-data` - Upload new RMS noise CSV batch (Admin+)
+
+### Backups (SuperUser+; restore requires GrandSuperUser / global SuperUser)
 - `GET /api/backups` - List available backups
 - `POST /api/backups` - Create manual backup
-- `POST /api/backups/:filename/restore` - Restore from backup
+- `POST /api/backups/:filename/restore` - Restore from backup (server restart required after)
 
 ---
 
@@ -529,40 +577,50 @@ streamer_id,section_index_start,section_index_end,cleaning_method,cleaned_at,pro
 streamer-maintenance-app/
 ├── backend/
 │   ├── server.js          # Express server & API entry
-│   ├── db.js              # SQLite database setup
+│   ├── db.js              # SQLite database setup & backup scheduler
 │   ├── config.js          # App config (port, CORS, etc.)
 │   ├── schema.sql         # Database schema
+│   ├── activeProject.js   # Per-vessel active-project lookup
 │   ├── middleware/
 │   │   └── auth.js        # Session auth & role middleware
 │   ├── routes/
 │   │   ├── auth.js        # Login / session endpoints
 │   │   ├── backups.js     # Backup list / create / restore
 │   │   ├── config.js      # App & streamer config API
-│   │   ├── events.js      # Cleaning events CRUD
-│   │   ├── projects.js    # Projects CRUD
+│   │   ├── events.js      # Cleaning events CRUD & bulk clear
+│   │   ├── noise.js       # RMS noise upload batches & per-section data
+│   │   ├── projects.js    # Projects CRUD, deployments, cleanup
 │   │   └── stats.js       # Statistics & aggregates
 │   └── utils/
-│       ├── eb.js          # eBird module helpers
-│       ├── errors.js      # Error response helpers
-│       ├── queryHelpers.js
-│       └── validation.js
+│       ├── eb.js          # eBird module range calculator (pure)
+│       ├── errors.js      # sendError() response helper
+│       ├── queryHelpers.js # Dynamic SQL WHERE clause builder
+│       ├── sectionType.js  # Active/tail section split & validation (pure)
+│       └── validation.js  # toInt(), requireValidId() guards
 ├── public/
 │   ├── index.html         # Main UI (heatmap, events, stats)
+│   ├── app.js             # Frontend entry & orchestration
 │   ├── config.html        # Config page (projects, streamer config, backups)
 │   ├── configPage.js      # Config page logic (SuperUser only)
-│   ├── app.js             # Frontend entry & orchestration
-│   ├── styles.css         # UI styling
-│   ├── pdf-generator.js   # PDF report generation
+│   ├── stats.html         # Standalone stats page at /stats
+│   ├── statsPage.js       # Stats page entry (independent login)
+│   ├── planning.html      # Standalone planning page at /planning
+│   ├── planningPage.js    # Planning page entry (independent login; per-vessel only)
+│   ├── styles.css         # Single global stylesheet
+│   ├── pdf-generator.js   # PDF report generation (A3 landscape via jsPDF)
 │   ├── libs/
 │   │   └── jspdf.umd.min.js  # jsPDF 4.x (see INSTALL.md)
 │   └── js/
-│       ├── api.js         # API client
-│       ├── auth.js        # Auth state & login
-│       ├── modals.js      # Modal UI
-│       ├── projects.js    # Project UI logic
-│       ├── state.js       # App state
-│       ├── streamer-utils.js
-│       └── ui.js          # UI helpers
+│       ├── api.js              # All fetch() wrappers; handles 401/403 centrally
+│       ├── auth.js             # Auth state & login
+│       ├── modals.js           # Modal UI
+│       ├── noise-validation.js # Pure CSV validation for noise uploads
+│       ├── projects.js         # Project UI logic
+│       ├── state.js            # Single source of truth for frontend state
+│       ├── stats.js            # Shared stats rendering (app.js & statsPage.js)
+│       ├── streamer-tooltip.js # Heatmap column header tooltip
+│       ├── streamer-utils.js   # Section label helpers
+│       └── ui.js               # DOM helpers, toasts, status indicators
 ├── backup/                # Automated backup directory (created at runtime)
 ├── .env                   # Environment config (copy from .env.example)
 ├── .env.example           # Example env template
@@ -589,21 +647,22 @@ streamer-maintenance-app/
 
 ## 📝 Latest Updates (March 2026)
 
+- ✅ **Planning page** (`/planning`): dedicated read-only heatmap with cleaning suggestions table, channel reference column, and urgency-ranked section ranges — scoped to per-vessel users only
+- ✅ **RMS Noise overlay**: upload per-section RMS noise CSVs, toggle noise coloring on the heatmap, view Avg RMS Noise in the cleaning suggestions table, multi-batch upload history
+- ✅ **Adjacent Event Merge**: when a new range is immediately adjacent to an existing same-method event within 1 hour, a merge modal offers to extend the prior event instead of creating a new one
+- ✅ **Added By tracking**: every cleaning event records the username that created it; shown in the event log and CSV export
+- ✅ **Days to First Scraping chart**: horizontal bar chart per streamer showing elapsed days from deployment to first cleaning; visible on main and `/stats` pages
+- ✅ **Clear All Events**: SuperUser+ bulk-delete with `DELETE` confirmation; scoped to active project or global
+- ✅ **Project delete safeguard**: `DELETE /api/projects/:id` returns 409 when data exists; force-delete requires a separate confirmation with typed `DELETE`
+- ✅ **Standalone stats page** (`/stats`): full statistics dashboard with its own independent login form
 - ✅ **Duplicate-clean guard**: warning modal when logging a cleaning event over an area already cleaned within the last 24 hours
 - ✅ **Config page** (`/config`): dedicated SuperUser dashboard for project & streamer configuration, vessel–project overview, per-streamer deployment, backups, and project management
-- ✅ Multi-project support with project creation and management
-- ✅ User authentication with role-based access control (Admin/Viewer)
+- ✅ Multi-project support with project creation and management (SuperUser+)
+- ✅ Four-role RBAC: GrandSuperUser / SuperUser / Admin / Viewer with vessel scoping
 - ✅ Session management with localStorage persistence
-- ✅ Project-specific streamer configuration
-- ✅ Automated database backups (every 12 hours)
-- ✅ Manual backup creation and restore functionality
-- ✅ Vessel tag tracking per project
-- ✅ Enhanced EB module range calculation
-- ✅ Toast notifications for user feedback
-- ✅ Improved error handling and validation
-- ✅ API endpoint documentation
-- ✅ CSV import/export with project support
-- ✅ Professional PDF report generation
+- ✅ Automated database backups every 12 hours; manual backups on demand
+- ✅ CSV import/export with Added By column and project-suffixed filename
+- ✅ PDF report generation (A3 landscape)
 
 ---
 
@@ -613,9 +672,9 @@ This project is provided as-is for TGS marine survey operations.
 
 ---
 
-**Version**: 1.3.0  
+**Version**: 1.4.0  
 **Last Updated**: March 2026  
-**Node.js Required**: 14.0+  
+**Node.js Required**: 20.0+  
 **Author**: Maksim Egorov  
 **Vessel**: Ramform Titan, Brazil  
 
