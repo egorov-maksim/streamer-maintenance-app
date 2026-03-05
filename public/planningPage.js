@@ -278,6 +278,10 @@ function attachSectionTooltips(container, lastCleaned) {
 const DAYS_THRESHOLD = 4;
 const NEVER_DAYS = 9999;
 
+// Persists the last-computed suggestions so header clicks can re-sort without refetching.
+let currentSuggestions = [];
+let sortState = { column: null, direction: "asc" };
+
 /**
  * Build an array of contiguous section ranges that need cleaning, sorted by
  * urgency (most days since last scraping first).
@@ -380,6 +384,102 @@ function formatDaysCell(maxDays) {
   return { text: `${maxDays}d`, bucket: "4plus" };
 }
 
+/**
+ * Parse the start channel number from a channelRange string like "Ch 1–240".
+ * Returns Infinity for tail "—" rows so they sort to the end.
+ * @param {string} channelRange
+ * @returns {number}
+ */
+function parseChannelRangeStart(channelRange) {
+  if (!channelRange || channelRange === "—") return Infinity;
+  const match = channelRange.match(/(\d+)/);
+  return match ? parseInt(match[1], 10) : Infinity;
+}
+
+/**
+ * Sort suggestions array by the given column and direction.
+ * Returns a new sorted array; does not mutate the input.
+ * @param {Array} suggestions
+ * @param {string|null} column - "streamer" | "channelRange" | "avgNoise" | null
+ * @param {"asc"|"desc"} direction
+ * @returns {Array}
+ */
+function sortSuggestions(suggestions, column, direction) {
+  if (!column) return suggestions;
+
+  const dir = direction === "asc" ? 1 : -1;
+
+  return [...suggestions].sort((a, b) => {
+    let va, vb;
+
+    if (column === "streamer") {
+      va = a.streamerId;
+      vb = b.streamerId;
+    } else if (column === "channelRange") {
+      va = parseChannelRangeStart(a.channelRange);
+      vb = parseChannelRangeStart(b.channelRange);
+    } else if (column === "avgNoise") {
+      // Null noise (no data) sorts to the end regardless of direction
+      if (a.avgNoise === null && b.avgNoise === null) return 0;
+      if (a.avgNoise === null) return 1;
+      if (b.avgNoise === null) return -1;
+      va = a.avgNoise;
+      vb = b.avgNoise;
+    } else {
+      return 0;
+    }
+
+    if (va < vb) return -1 * dir;
+    if (va > vb) return 1 * dir;
+    return 0;
+  });
+}
+
+/**
+ * Update the visual sort indicators in the suggestions table header.
+ * @param {string|null} activeColumn
+ * @param {"asc"|"desc"} direction
+ */
+function updateSortIcons(activeColumn, direction) {
+  const table = safeGet("cleaning-suggestions-table");
+  if (!table) return;
+
+  table.querySelectorAll("th[data-sort]").forEach(th => {
+    const col = th.dataset.sort;
+    const icon = th.querySelector(".sort-icon");
+    if (col === activeColumn) {
+      th.classList.add("sorted");
+      if (icon) icon.textContent = direction === "asc" ? "↑" : "↓";
+    } else {
+      th.classList.remove("sorted");
+      if (icon) icon.textContent = "↕";
+    }
+  });
+}
+
+/**
+ * Attach click listeners to sortable column headers in the suggestions table.
+ * Safe to call once on page init.
+ */
+function initSuggestionsSortHandlers() {
+  const table = safeGet("cleaning-suggestions-table");
+  if (!table) return;
+
+  table.querySelectorAll("th[data-sort]").forEach(th => {
+    th.addEventListener("click", () => {
+      const col = th.dataset.sort;
+      if (sortState.column === col) {
+        sortState.direction = sortState.direction === "asc" ? "desc" : "asc";
+      } else {
+        sortState.column = col;
+        sortState.direction = "asc";
+      }
+      const sorted = sortSuggestions(currentSuggestions, sortState.column, sortState.direction);
+      renderCleaningSuggestions(sorted);
+    });
+  });
+}
+
 function renderCleaningSuggestions(suggestions) {
   const tbody = safeGet("cleaning-suggestions-tbody");
   const table = safeGet("cleaning-suggestions-table");
@@ -388,6 +488,8 @@ function renderCleaningSuggestions(suggestions) {
   // Show or hide the noise column based on whether noise data is loaded
   const hasNoise = !!noiseData;
   if (table) table.classList.toggle("has-noise-data", hasNoise);
+
+  updateSortIcons(sortState.column, sortState.direction);
 
   tbody.innerHTML = "";
 
@@ -445,8 +547,9 @@ async function renderPlanningHeatmap() {
       useRopeForTail: config.useRopeForTail,
       numCables: config.numCables,
     };
-    const suggestions = computeCleaningSuggestions(lastCleaned, effectiveCfg);
-    renderCleaningSuggestions(suggestions);
+    currentSuggestions = computeCleaningSuggestions(lastCleaned, effectiveCfg);
+    const toRender = sortSuggestions(currentSuggestions, sortState.column, sortState.direction);
+    renderCleaningSuggestions(toRender);
 
     const sectionsPerCable = config.sectionsPerCable;
     const cableCount = config.numCables;
@@ -787,6 +890,7 @@ async function initPlanningApp() {
 
   showActiveProject();
   initNoiseControls(); // registers event listeners only (no async data loading)
+  initSuggestionsSortHandlers();
 
   // Initial data load — refreshNoiseForProject calls renderPlanningHeatmap internally
   await refreshNoiseForProject(selectedProjectFilter);
