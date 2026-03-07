@@ -5,8 +5,8 @@
 
 import { safeGet, setStatus } from "./js/ui.js";
 import { config, getActiveProject } from "./js/state.js";
-import { formatAS, formatSectionLabel, eventDistance, fmtKm, ageBucket, formatEB } from "./js/streamer-utils.js";
-import { getAuthHeaders, getEBRange } from "./js/api.js";
+import { formatAS, formatSectionLabel, eventDistance, fmtKm, ageBucket, formatEB, getEBRangeForSectionRange } from "./js/streamer-utils.js";
+import { getAuthHeaders } from "./js/api.js";
 
 // Color map for heatmap
 const AGE_COLOR_MAP = {
@@ -514,21 +514,11 @@ async function addAllEventsSection(doc, startDate, endDate) {
   doc.line(15, yPos, 195, yPos);
   yPos += 5;
 
-  // Fetch all EB ranges in parallel for performance, normalizing to display strings
-  const ebRanges = await Promise.all(
-    eventsToShow.map((evt) =>
-      evt.sectionType === "tail"
-        ? Promise.resolve("—")
-        : getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd).then((r) => {
-            if (r && typeof r === "object" && "ebRange" in r) {
-              return r.ebRange ?? "—";
-            }
-            if (typeof r === "string") {
-              return r;
-            }
-            return "—";
-          })
-    )
+  // Calculate EB ranges locally using already-loaded config — no network calls needed
+  const ebRanges = eventsToShow.map((evt) =>
+    evt.sectionType === "tail"
+      ? "—"
+      : getEBRangeForSectionRange(evt.sectionIndexStart, evt.sectionIndexEnd, config)
   );
 
   for (let i = 0; i < eventsToShow.length; i++) {

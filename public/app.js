@@ -68,6 +68,7 @@ const getConfigForProject = StreamerUtils.getConfigForProject;
 const getSectionsPerCableWithTail = StreamerUtils.getSectionsPerCableWithTail;
 const getMaxSectionIndex = StreamerUtils.getMaxSectionIndex;
 const validateStreamerAndSections = StreamerUtils.validateStreamerAndSections;
+const getEBRangeForSectionRange = StreamerUtils.getEBRangeForSectionRange;
 
 /* ------------ Heatmap ------------ */
 /* ============================================================================
@@ -533,9 +534,9 @@ async function deleteEvent(id) {
 
   const ebRangeRaw = sectionType === 'tail'
     ? '—'
-    : await API.getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd);
+    : getEBRangeForSectionRange(evt.sectionIndexStart, evt.sectionIndexEnd, config);
 
-  safeGet('delete-eb-display').textContent = sectionType === 'tail' ? '—' : ebRangeRaw;
+  safeGet('delete-eb-display').textContent = ebRangeRaw;
   safeGet('delete-method-display').textContent = evt.cleaningMethod;
   safeGet('delete-date-display').textContent = formatDateTime(evt.cleanedAt);
   safeGet('delete-distance-display').textContent = `${eventDistance(evt)} m`;
@@ -826,9 +827,18 @@ async function handleCsvFile(file) {
       return;
     }
 
-    const dataLines = lines.slice(1);
+    const importBtn = safeGet('btn-import-csv');
+    const progressEl = safeGet('csv-import-progress');
+    const dataLines = lines.slice(1).filter(l => l.trim());
+    const total = dataLines.length;
     let successCount = 0;
     let errorCount = 0;
+
+    if (importBtn) importBtn.disabled = true;
+    if (progressEl) {
+      progressEl.classList.remove('hidden');
+      progressEl.textContent = `Importing 0 / ${total}...`;
+    }
 
     const hasSectionTypeColumn = dataLines.length > 0 && (() => {
       const firstParts = parseCsvLine(dataLines[0].trim());
@@ -838,6 +848,8 @@ async function handleCsvFile(file) {
     for (let i = 0; i < dataLines.length; i++) {
       const line = dataLines[i].trim();
       if (!line) continue;
+
+      if (progressEl) progressEl.textContent = `Importing ${i + 1} / ${total}...`;
 
       const parts = parseCsvLine(line);
       let streamerNum, startSection, endSection, method, dateTimeStr, projectNumber, vesselTag, sectionType;
@@ -908,6 +920,9 @@ async function handleCsvFile(file) {
       }
     }
 
+    if (importBtn) importBtn.disabled = false;
+    if (progressEl) progressEl.classList.add('hidden');
+
     await refreshEverything();
     await renderHeatmap();
     await refreshStatsFiltered();
@@ -932,13 +947,12 @@ async function renderLog() {
   
   const isAdminUser = isAdminOrAbove();
 
-  // Fetch EB ranges for active events only; tail shows "—"
-  const ebRangePromises = events.map(evt =>
+  // Calculate EB ranges locally using already-loaded config — no network calls needed
+  const ebRanges = events.map(evt =>
     evt.sectionType === 'tail'
-      ? Promise.resolve('—')
-      : API.getEBRange(evt.sectionIndexStart, evt.sectionIndexEnd)
+      ? '—'
+      : getEBRangeForSectionRange(evt.sectionIndexStart, evt.sectionIndexEnd, config)
   );
-  const ebRanges = await Promise.all(ebRangePromises);
 
   events.forEach((evt, idx) => {
     const tr = document.createElement('tr');

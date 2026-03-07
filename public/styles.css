@@ -723,6 +723,13 @@
     font-family: monospace;
     font-size: 12px;
   }
+
+  .csv-import-progress {
+    font-size: 13px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    align-self: center;
+  }
   
   /* =========================
      Left Sidebar Navigation
