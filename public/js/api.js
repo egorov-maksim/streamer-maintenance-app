@@ -1,10 +1,21 @@
 /**
  * API client: getAuthHeaders, apiCall, and all backend API wrappers.
- * Uses relative URLs (e.g. api/config). 401/403 trigger showAccessDeniedToast.
+ * Uses relative URLs (e.g. api/config).
+ *
+ * 401 → session expired: clears storage, saves return URL, calls the registered
+ *       unauthorized handler (set by app.js via setUnauthorizedHandler).
+ * 403 → permission denied: shows an access-denied toast (existing behaviour).
  */
 
 import { authToken, setCurrentUser } from "./state.js";
 import { showAccessDeniedToast } from "./ui.js";
+
+/** Registered by app.js — called whenever any authenticated request gets a 401. */
+let unauthorizedHandler = null;
+
+export function setUnauthorizedHandler(fn) {
+  unauthorizedHandler = fn;
+}
 
 export function getAuthHeaders() {
   const headers = { "Content-Type": "application/json" };
@@ -24,10 +35,22 @@ export async function apiCall(url, options = {}) {
     },
   });
 
-  if (res.status === 401 || res.status === 403) {
+  if (res.status === 401) {
+    // Session is gone (e.g. server restarted). Save the current location so
+    // the user can be returned here after re-logging in, then force to login.
+    sessionStorage.setItem("redirectAfterLogin", window.location.href);
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("currentUser");
+    if (typeof unauthorizedHandler === "function") {
+      unauthorizedHandler();
+    }
+    throw new Error("Session expired");
+  }
+
+  if (res.status === 403) {
     const action = options.action || "perform this action";
     showAccessDeniedToast(action);
-    throw new Error("Unauthorized");
+    throw new Error("Forbidden");
   }
 
   const data = await res.json();

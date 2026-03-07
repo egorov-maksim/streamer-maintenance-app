@@ -82,6 +82,14 @@
 
   <!-- Main App Container (hidden until logged in) -->
   <div id="app-container" class="app-container hidden">
+
+    <!-- Full-page loading overlay — shown during initApp(), removed in finally{} -->
+    <div id="app-loading-overlay" class="app-loading-overlay hidden" aria-hidden="true">
+      <div class="app-loading-spinner">
+        <div class="spinner-ring"></div>
+        <p class="spinner-label">Loading data…</p>
+      </div>
+    </div>
     
     <!-- User Header Bar -->
     <div class="user-header">
@@ -204,6 +212,8 @@
             <tbody id="log-body"></tbody>
           </table>
         </div>
+        <!-- Pagination controls — populated by renderLogPagination() in app.js -->
+        <div id="log-pagination" class="log-pagination"></div>
       </section>
 
       <!-- Manual Entry -->

@@ -35,6 +35,7 @@ import {
   setOnShowAppCallback,
   loadSession,
   validateSession,
+  clearSession,
   showLogin,
   showApp,
   handleLogin,
@@ -944,28 +945,35 @@ async function renderLog() {
   if (!tbody) return;
 
   tbody.innerHTML = '';
-  
-  const isAdminUser = isAdminOrAbove();
 
-  // Calculate EB ranges locally using already-loaded config — no network calls needed
-  const ebRanges = events.map(evt =>
-    evt.sectionType === 'tail'
-      ? '—'
-      : getEBRangeForSectionRange(evt.sectionIndexStart, evt.sectionIndexEnd, config)
+  const isAdminUser = isAdminOrAbove();
+  const allEvents = getFilteredEvents();
+  const totalRows = allEvents.length;
+
+  // Clamp current page so it never points past the last page after a filter change.
+  const totalPages = Math.max(1, Math.ceil(totalRows / logPageSize));
+  if (logPage > totalPages) logPage = totalPages;
+
+  const pageEvents = allEvents.slice(
+    (logPage - 1) * logPageSize,
+    logPage * logPageSize
   );
 
-  events.forEach((evt, idx) => {
+  // Calculate EB ranges locally using already-loaded config — no network calls needed
+  pageEvents.forEach((evt) => {
     const tr = document.createElement('tr');
     const streamerNum = evt.streamerId;
     const sectionType = evt.sectionType || 'active';
     const rangeLabel = `${formatSectionLabel(evt.sectionIndexEnd, sectionType)}–${formatSectionLabel(evt.sectionIndexStart, sectionType)}`;
-    const ebRange = ebRanges[idx];
+    const ebRange = sectionType === 'tail'
+      ? '—'
+      : getEBRangeForSectionRange(evt.sectionIndexStart, evt.sectionIndexEnd, config);
     const distance = eventDistance(evt);
     const projectDisplay = evt.projectNumber || '<span style="color:#9ca3af">—</span>';
     const vesselDisplay = evt.vesselTag || 'TTN';
     const addedByDisplay = evt.addedByUsertag || '—';
 
-    const actionButtons = isAdminUser 
+    const actionButtons = isAdminUser
       ? `<button class="btn btn-outline btn-edit" data-id="${evt.id}">✏️</button>
          <button class="btn btn-outline btn-delete" data-id="${evt.id}">🗑️</button>`
       : '<span class="view-only-badge">View Only</span>';
@@ -995,6 +1003,8 @@ async function renderLog() {
       btn.addEventListener('click', () => deleteEvent(parseInt(btn.dataset.id)));
     });
   }
+
+  renderLogPagination(totalRows);
 }
 
 /* ------------ Method selection ------------ */
@@ -1613,10 +1623,64 @@ async function confirmCleaning() {
 /* ------------ Statistics (imported from js/stats.js) ------------ */
 
 async function refreshEverything(preloadedLastCleaned = null) {
+  // A filter change always brings the user back to page 1 of the log.
+  logPage = 1;
   await loadEvents();
   await renderLog();
   await renderAlerts(preloadedLastCleaned);
   await renderStreamerCards(null, null, preloadedLastCleaned);
+}
+
+/* ------------ Log Pagination ------------ */
+
+// TODO: migrate to server-side LIMIT/OFFSET pagination on GET /api/events
+//       once the dataset grows large enough to make the full fetch expensive.
+//       Client-side pagination is a temporary layer — all events are already
+//       in memory, so slicing here adds no network cost.
+
+let logPage = 1;
+let logPageSize = 50;
+
+/**
+ * Renders the Previous / Next controls + page indicator + page-size selector
+ * into #log-pagination. Called by renderLog() after each render.
+ */
+function renderLogPagination(totalRows) {
+  const container = document.getElementById("log-pagination");
+  if (!container) return;
+
+  const totalPages = Math.max(1, Math.ceil(totalRows / logPageSize));
+  const start = totalRows === 0 ? 0 : (logPage - 1) * logPageSize + 1;
+  const end = Math.min(logPage * logPageSize, totalRows);
+
+  container.innerHTML = `
+    <span class="pagination-info">
+      ${totalRows === 0 ? "No events" : `${start}–${end} of ${totalRows}`}
+    </span>
+    <span class="page-size-label">Rows per page:</span>
+    <select id="log-page-size">
+      <option value="25" ${logPageSize === 25 ? "selected" : ""}>25</option>
+      <option value="50" ${logPageSize === 50 ? "selected" : ""}>50</option>
+      <option value="100" ${logPageSize === 100 ? "selected" : ""}>100</option>
+    </select>
+    <button class="btn btn-secondary" id="btn-log-prev" ${logPage <= 1 ? "disabled" : ""}>← Prev</button>
+    <span>${logPage} / ${totalPages}</span>
+    <button class="btn btn-secondary" id="btn-log-next" ${logPage >= totalPages ? "disabled" : ""}>Next →</button>
+  `;
+
+  document.getElementById("log-page-size")?.addEventListener("change", (e) => {
+    logPageSize = Number(e.target.value);
+    logPage = 1;
+    renderLog();
+  });
+
+  document.getElementById("btn-log-prev")?.addEventListener("click", () => {
+    if (logPage > 1) { logPage--; renderLog(); }
+  });
+
+  document.getElementById("btn-log-next")?.addEventListener("click", () => {
+    if (logPage < totalPages) { logPage++; renderLog(); }
+  });
 }
 
 /* ------------ Sorting ------------ */
@@ -1672,6 +1736,7 @@ async function sortTable(column) {
     return 0;
   });
 
+  logPage = 1;
   setEvents(sortedEvents);
   await renderLog();
   updateSortIcons();
@@ -1912,7 +1977,30 @@ function setupProjectCollapse() {
 
 /* ------------ Init ------------ */
 
+function showAppLoadingOverlay() {
+  const overlay = document.getElementById("app-loading-overlay");
+  if (overlay) overlay.classList.remove("hidden");
+}
+
+function hideAppLoadingOverlay() {
+  const overlay = document.getElementById("app-loading-overlay");
+  if (overlay) overlay.classList.add("hidden");
+}
+
 async function initApp() {
+  showAppLoadingOverlay();
+  // Enforce a minimum visible time so the overlay never flashes on fast connections.
+  const minVisible = new Promise((resolve) => setTimeout(resolve, 300));
+
+  try {
+    await initAppContent();
+  } finally {
+    await minVisible;
+    hideAppLoadingOverlay();
+  }
+}
+
+async function initAppContent() {
   Projects.initProjects({
     refreshEverything,
     renderHeatmap,
@@ -1981,6 +2069,13 @@ async function initApp() {
 /* ------------ Initialization ------------ */
 
 async function init() {
+  // Any authenticated request that gets a 401 (server restart wiped the session
+  // Map) will call this — skip initApp entirely and drop back to the login screen.
+  API.setUnauthorizedHandler(() => {
+    clearSession();
+    showLogin();
+  });
+
   setOnShowAppCallback(async () => {
     await initApp();
   });
