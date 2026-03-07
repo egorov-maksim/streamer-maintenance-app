@@ -18,9 +18,25 @@ const AGE_COLOR_MAP = {
   '14plus': [153, 27, 27]
 };
 
+/**
+ * Dynamically injects the local jspdf UMD script the first time it is needed,
+ * then resolves. Subsequent calls resolve immediately via the window.jspdf guard.
+ */
+function loadJspdf() {
+  if (window.jspdf) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'libs/jspdf.umd.min.js';
+    script.onload = resolve;
+    script.onerror = () => reject(new Error('Failed to load jspdf library'));
+    document.head.appendChild(script);
+  });
+}
+
 async function generatePDFReport() {
   const statusEl = safeGet('pdf-status');
   try {
+    await loadJspdf();
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'landscape', format: 'a3' });
 

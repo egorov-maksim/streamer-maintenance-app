@@ -13,18 +13,21 @@ import * as API from "./api.js";
 import { safeGet } from "./ui.js";
 import { fmtKm } from "./streamer-utils.js";
 
-export async function renderStreamerCards(startDate = null, endDate = null) {
+export async function renderStreamerCards(startDate = null, endDate = null, preloadedLastCleaned = null) {
   const container = safeGet("streamer-cards-container");
   if (!container) return;
 
   container.innerHTML = "";
 
   try {
-    let url = "api/last-cleaned";
-    if (selectedProjectFilter) {
-      url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
+    let data;
+    if (preloadedLastCleaned) {
+      data = preloadedLastCleaned;
+    } else {
+      let url = "api/last-cleaned";
+      if (selectedProjectFilter) url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
+      data = await API.apiCall(url);
     }
-    const data = await API.apiCall(url);
     const lastCleaned = data.lastCleaned;
 
     const cableCount = config.numCables;
@@ -91,22 +94,35 @@ export async function renderStreamerCards(startDate = null, endDate = null) {
   }
 }
 
-export async function refreshStatsFiltered() {
+export async function refreshStatsFiltered(
+  preloadedLastCleaned = null,
+  preloadedDeployments = null,
+  preloadedStats = null,
+  preloadedFilterStats = null
+) {
   const startDate = safeGet("filter-start")?.value;
   const endDate = safeGet("filter-end")?.value;
 
   try {
-    const statsParams = new URLSearchParams();
-    if (selectedProjectFilter) statsParams.append("project", selectedProjectFilter);
+    let overallStats;
+    if (preloadedStats) {
+      overallStats = preloadedStats;
+    } else {
+      const statsParams = new URLSearchParams();
+      if (selectedProjectFilter) statsParams.append("project", selectedProjectFilter);
+      overallStats = await API.apiCall(`/api/stats?${statsParams}`);
+    }
 
-    const overallStats = await API.apiCall(`/api/stats?${statsParams}`);
-
-    const params = new URLSearchParams();
-    if (startDate) params.append("start", startDate);
-    if (endDate) params.append("end", endDate);
-    if (selectedProjectFilter) params.append("project", selectedProjectFilter);
-
-    const data = await API.apiCall(`/api/stats/filter?${params}`);
+    let data;
+    if (preloadedFilterStats) {
+      data = preloadedFilterStats;
+    } else {
+      const params = new URLSearchParams();
+      if (startDate) params.append("start", startDate);
+      if (endDate) params.append("end", endDate);
+      if (selectedProjectFilter) params.append("project", selectedProjectFilter);
+      data = await API.apiCall(`/api/stats/filter?${params}`);
+    }
 
     const totalActiveSections = overallStats.totalAvailableSections;
     const totalTailSections = overallStats.totalAvailableTail;
@@ -179,9 +195,9 @@ export async function refreshStatsFiltered() {
             );
           }
 
-          const streamerDeployments = await API.apiCall(
-            `/api/projects/${activeProject.id}/streamer-deployments`
-          );
+          const streamerDeployments = preloadedDeployments
+            ? preloadedDeployments
+            : await API.apiCall(`/api/projects/${activeProject.id}/streamer-deployments`);
 
           const streamerDays = [];
           let maxDays = 0;
@@ -267,7 +283,7 @@ export async function refreshStatsFiltered() {
       });
     }
 
-    await renderStreamerCards(startDate, endDate);
+    await renderStreamerCards(startDate, endDate, preloadedLastCleaned);
   } catch (err) {
     console.error("refreshStatsFiltered failed", err);
   }

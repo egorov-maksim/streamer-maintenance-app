@@ -1008,18 +1008,21 @@ function selectMethod(method) {
 
 /* ------------ Alerts ------------ */
 
-async function renderAlerts() {
+async function renderAlerts(preloadedLastCleaned = null) {
   const container = safeGet('alerts-container');
   if (!container) return;
 
   container.innerHTML = '';
 
   try {
-    let url = 'api/last-cleaned';
-    if (selectedProjectFilter) {
-      url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
+    let data;
+    if (preloadedLastCleaned) {
+      data = preloadedLastCleaned;
+    } else {
+      let url = 'api/last-cleaned';
+      if (selectedProjectFilter) url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
+      data = await API.apiCall(url);
     }
-    const data = await API.apiCall(url);
     const lastCleaned = data.lastCleaned;
 
     let critical = 0;
@@ -1084,28 +1087,35 @@ async function renderAlerts() {
 
 /* ------------ Heat-map rendering ------------ */
 
-async function renderHeatmap() {
+async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments = null) {
   const container = safeGet('heatmap-container');
   if (!container) return;
 
   container.innerHTML = '';
 
   try {
-    let url = 'api/last-cleaned';
-    if (selectedProjectFilter) {
-      url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
+    let data;
+    if (preloadedLastCleaned) {
+      data = preloadedLastCleaned;
+    } else {
+      let url = 'api/last-cleaned';
+      if (selectedProjectFilter) url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
+      data = await API.apiCall(url);
     }
-    const data = await API.apiCall(url);
     const lastCleaned = data.lastCleaned;
 
     let deployments = {};
     const activeProject = projects.find(p => p.isActive);
     if (activeProject) {
-      try {
-        deployments = await API.apiCall(`/api/projects/${activeProject.id}/streamer-deployments`);
-      } catch (error) {
-        // Deployment data optional for heatmap; log for debugging if needed
-        console.debug('Streamer deployments fetch skipped:', error?.message ?? error);
+      if (preloadedDeployments) {
+        deployments = preloadedDeployments;
+      } else {
+        try {
+          deployments = await API.apiCall(`/api/projects/${activeProject.id}/streamer-deployments`);
+        } catch (error) {
+          // Deployment data optional for heatmap; log for debugging if needed
+          console.debug('Streamer deployments fetch skipped:', error?.message ?? error);
+        }
       }
     }
 
@@ -1602,11 +1612,11 @@ async function confirmCleaning() {
 
 /* ------------ Statistics (imported from js/stats.js) ------------ */
 
-async function refreshEverything() {
+async function refreshEverything(preloadedLastCleaned = null) {
   await loadEvents();
   await renderLog();
-  await renderAlerts();
-  await renderStreamerCards(); // No filters = show all data
+  await renderAlerts(preloadedLastCleaned);
+  await renderStreamerCards(null, null, preloadedLastCleaned);
 }
 
 /* ------------ Sorting ------------ */
@@ -1738,7 +1748,7 @@ function setupEventListeners() {
   });
 
   // Filter stats
-  safeGet('btn-apply-filter')?.addEventListener('click', refreshStatsFiltered);
+  safeGet('btn-apply-filter')?.addEventListener('click', () => refreshStatsFiltered());
   safeGet('btn-reset-filter')?.addEventListener('click', resetFilter);
 
   // Project management
@@ -1908,10 +1918,9 @@ async function initApp() {
     renderHeatmap,
     refreshStatsFiltered,
   });
-  // Load config so heatmap / stats have correct streamer layout,
-  // even though editing is done on /config.
-  await Projects.loadConfig();
-  await Projects.loadProjects();
+
+  // Load config and projects in parallel — they are independent requests.
+  await Promise.all([Projects.loadConfig(), Projects.loadProjects()]);
 
   // Default project filter to the active project for this user/vessel,
   // so heatmap, stats and log are scoped to that project instead of
@@ -1920,9 +1929,34 @@ async function initApp() {
   if (active?.projectNumber) {
     setSelectedProjectFilter(String(active.projectNumber));
   }
-  await refreshEverything();
-  await renderHeatmap();
-  await refreshStatsFiltered();
+
+  // Build all request URLs now that the project filter is known.
+  const projectParam = selectedProjectFilter ? encodeURIComponent(selectedProjectFilter) : null;
+  const lastCleanedUrl = projectParam
+    ? `api/last-cleaned?project=${projectParam}`
+    : 'api/last-cleaned';
+  const statsUrl = projectParam ? `/api/stats?project=${projectParam}` : '/api/stats';
+  const statsFilterUrl = projectParam
+    ? `/api/stats/filter?project=${projectParam}`
+    : '/api/stats/filter';
+  const deploymentsPromise = active
+    ? API.apiCall(`/api/projects/${active.id}/streamer-deployments`).catch(() => ({}))
+    : Promise.resolve({});
+
+  // Fetch events, last-cleaned, deployments, and stats all in parallel.
+  const [, lastCleanedData, deployments, overallStats, filterStats] = await Promise.all([
+    loadEvents(),
+    API.apiCall(lastCleanedUrl),
+    deploymentsPromise,
+    API.apiCall(statsUrl),
+    API.apiCall(statsFilterUrl),
+  ]);
+
+  // Render using pre-fetched data — no duplicate network calls.
+  await renderLog();
+  await renderAlerts(lastCleanedData);
+  await renderHeatmap(lastCleanedData, deployments);
+  await refreshStatsFiltered(lastCleanedData, deployments, overallStats, filterStats);
 
   // Set default date/time for manual entry
   const now = new Date();
