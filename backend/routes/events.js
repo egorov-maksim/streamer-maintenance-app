@@ -303,6 +303,135 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
     }
   });
 
+  /**
+   * POST /api/events/bulk
+   * Accepts { rows: [...] } where each row has the same shape as POST /api/events.
+   * Processes rows sequentially using the same validation + split logic.
+   * Returns { successCount, errorCount, errors[] } — never throws on partial failure.
+   */
+  router.post("/api/events/bulk", authMiddleware, adminOrAbove, async (req, res) => {
+    try {
+      const { rows } = req.body;
+      if (!Array.isArray(rows) || rows.length === 0) {
+        return sendError(res, 400, "rows must be a non-empty array");
+      }
+
+      const config = await loadConfig();
+      let successCount = 0;
+      const errors = [];
+
+      for (const row of rows) {
+        try {
+          const bodyData = humps.decamelizeKeys(row);
+          const {
+            streamer_id,
+            section_index_start,
+            section_index_end,
+            section_type: body_section_type,
+            cleaning_method,
+            cleaned_at,
+            cleaning_count,
+            project_number,
+            vessel_tag,
+            added_by_usertag,
+          } = bodyData;
+
+          if (
+            !Number.isFinite(streamer_id) ||
+            !Number.isFinite(section_index_start) ||
+            !Number.isFinite(section_index_end) ||
+            typeof cleaning_method !== "string" ||
+            typeof cleaned_at !== "string"
+          ) {
+            errors.push({ row, reason: "Invalid payload" });
+            continue;
+          }
+
+          let finalProjectNumber = project_number ?? null;
+          let finalVesselTag = vessel_tag || "TTN";
+          let activeProject = null;
+
+          if (finalProjectNumber === null || finalProjectNumber === undefined) {
+            const vesselTagForResolve = req.vesselScope || config.vesselTag || "TTN";
+            activeProject = vesselTagForResolve
+              ? await getActiveProjectForVessel(vesselTagForResolve)
+              : null;
+            if (!activeProject) {
+              errors.push({ row, reason: "No active project for this vessel" });
+              continue;
+            }
+            finalProjectNumber = activeProject.projectNumber;
+            finalVesselTag = activeProject.vesselTag || "TTN";
+          }
+
+          if (req.vesselScope) finalVesselTag = req.vesselScope;
+
+          const projectRow = activeProject ||
+            await getOneCamelized("SELECT * FROM projects WHERE project_number = ?", [finalProjectNumber]);
+
+          const eventConfig = {
+            ...config,
+            sectionsPerCable: projectRow?.sectionsPerCable ?? config.sectionsPerCable,
+            useRopeForTail: projectRow != null
+              ? projectRow.useRopeForTail === 1
+              : config.useRopeForTail,
+          };
+
+          const count = Number.isFinite(cleaning_count) ? cleaning_count : 1;
+          const addedBy = added_by_usertag != null
+            ? String(added_by_usertag).trim() || null
+            : (req.user?.username ?? null);
+
+          const insertOne = async (sectionType, start, end) => {
+            await runAsync(
+              `INSERT INTO cleaning_events
+                (streamer_id, section_index_start, section_index_end, section_type,
+                 cleaning_method, cleaned_at, cleaning_count, project_number, vessel_tag, added_by_usertag)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [streamer_id, start, end, sectionType, cleaning_method, cleaned_at,
+               count, finalProjectNumber, finalVesselTag, addedBy]
+            );
+          };
+
+          const explicitType =
+            body_section_type === "active" || body_section_type === "tail"
+              ? body_section_type
+              : null;
+
+          if (explicitType) {
+            const validation = validateRangeForType(
+              section_index_start, section_index_end, explicitType, eventConfig
+            );
+            if (!validation.valid) {
+              errors.push({ row, reason: validation.message });
+              continue;
+            }
+            await insertOne(explicitType, section_index_start, section_index_end);
+          } else {
+            const { active, tail } = splitSectionRange(
+              section_index_start, section_index_end, eventConfig
+            );
+            if (!active && !tail) {
+              errors.push({ row, reason: "Section range out of bounds" });
+              continue;
+            }
+            if (active) await insertOne("active", active.start, active.end);
+            if (tail) await insertOne("tail", tail.start, tail.end);
+          }
+
+          successCount++;
+        } catch (rowErr) {
+          errors.push({ row, reason: rowErr.message || "Insert failed" });
+        }
+      }
+
+      res.json({ successCount, errorCount: errors.length, errors });
+    } catch (err) {
+      console.error(err);
+      sendError(res, 500, "Bulk import failed");
+    }
+  });
+
   router.delete("/api/events", authMiddleware, adminOrAbove, async (req, res) => {
     try {
       const project = req.query.project;

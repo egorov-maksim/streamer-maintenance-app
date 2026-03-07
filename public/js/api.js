@@ -182,6 +182,14 @@ export async function createEvent(body) {
   });
 }
 
+export async function bulkCreateEvents(rows) {
+  return apiCall("api/events/bulk", {
+    method: "POST",
+    body: JSON.stringify({ rows }),
+    action: "import CSV data",
+  });
+}
+
 export async function updateEvent(id, body) {
   return apiCall(`api/events/${id}`, {
     method: "PUT",

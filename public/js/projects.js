@@ -31,6 +31,7 @@ export async function loadConfig() {
     updateConfigProjectLabel();
   } catch (err) {
     console.error(err);
+    showErrorToast("Config Error", "Failed to load configuration. Some settings may be unavailable.");
   }
 }
 
@@ -217,6 +218,7 @@ export async function loadProjects() {
     updateConfigProjectLabel();
   } catch (err) {
     console.error("Failed to load projects:", err);
+    showErrorToast("Projects Error", "Failed to load projects. Please refresh the page.");
   }
 }
 
@@ -472,6 +474,17 @@ export function updateActiveProjectBanner() {
 
 export function setProjectFilter(projectNumber) {
   setSelectedProjectFilter(projectNumber ? String(projectNumber) : null);
+
+  // Sync the filter to the URL so bookmarking/sharing preserves the context.
+  // Use replaceState (not pushState) — filter changes should not pollute history.
+  // Preserve the current pathname (section nav) when writing or clearing the param.
+  const currentPath = window.location.pathname;
+  if (projectNumber) {
+    history.replaceState(null, '', `${currentPath}?project=${encodeURIComponent(projectNumber)}`);
+  } else {
+    history.replaceState(null, '', currentPath);
+  }
+
   if (refreshCallbacks.refreshEverything) refreshCallbacks.refreshEverything();
   if (refreshCallbacks.renderHeatmap) refreshCallbacks.renderHeatmap();
   if (refreshCallbacks.refreshStatsFiltered) refreshCallbacks.refreshStatsFiltered();
@@ -496,6 +509,7 @@ export async function renderStreamerDeploymentGrid() {
     deployments = await API.fetchStreamerDeployments(activeProject.id);
   } catch (err) {
     console.error("Failed to load streamer deployments", err);
+    showErrorToast("Deployments Error", "Failed to load streamer deployment data.");
   }
   container.innerHTML = "";
   for (let streamerNum = 1; streamerNum <= numCables; streamerNum++) {
@@ -794,26 +808,42 @@ export async function createBackup() {
   }
 }
 
-export async function restoreBackup(filename) {
+export function restoreBackup(filename) {
   if (!isSuperUser()) {
     showAccessDeniedToast("restore backups");
     return;
   }
-  const confirmed = confirm(
-    `⚠️ WARNING: Restoring from backup will replace ALL current data!\n\nAre you sure you want to restore from:\n${filename}?`
-  );
-  if (!confirmed) return;
-  const statusEl = safeGet("backup-status");
-  try {
-    setStatus(statusEl, "Restoring backup...", false);
-    await API.restoreBackup(filename);
-    setStatus(statusEl, "✅ Backup restored");
-    showSuccessToast("Restore Successful", "Database has been restored. Please restart the server for changes to take full effect.");
-    await loadBackups();
-    await refresh();
-  } catch (err) {
-    console.error(err);
-    setStatus(statusEl, "Failed to restore backup", true);
-    showErrorToast("Restore Failed", err.message || "Failed to restore backup. Please try again.");
-  }
+
+  const filenameEl = safeGet("restore-confirm-filename");
+  if (filenameEl) filenameEl.textContent = filename;
+
+  openModal("restore-confirm-modal");
+
+  // Wire close/cancel buttons — also { once: true } to avoid stacking.
+  const closeBtn = safeGet("btn-restore-confirm-close");
+  const cancelBtn = safeGet("btn-restore-cancel");
+  const closeHandler = () => closeModal("restore-confirm-modal");
+  closeBtn?.addEventListener("click", closeHandler, { once: true });
+  cancelBtn?.addEventListener("click", closeHandler, { once: true });
+
+  const confirmBtn = safeGet("btn-restore-confirm");
+  confirmBtn?.addEventListener("click", async () => {
+    closeModal("restore-confirm-modal");
+    const statusEl = safeGet("backup-status");
+    try {
+      setStatus(statusEl, "Restoring backup...", false);
+      await API.restoreBackup(filename);
+      setStatus(statusEl, "✅ Backup restored");
+      showSuccessToast(
+        "Restore Successful",
+        "Database has been restored. Please restart the server for changes to take full effect."
+      );
+      await loadBackups();
+      await refresh();
+    } catch (err) {
+      console.error(err);
+      setStatus(statusEl, "Failed to restore backup", true);
+      showErrorToast("Restore Failed", err.message || "Failed to restore backup. Please try again.");
+    }
+  }, { once: true });
 }

@@ -324,6 +324,12 @@
     border-color: var(--primary);
     background: var(--primary-100);
   }
+
+  .method-tile:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: 8px;
+  }
   
   .method-name {
     margin-top: 8px;
@@ -628,11 +634,19 @@
     overflow-x: auto;
     max-height: 400px;
     overflow-y: auto;
+    /* Right-edge shadow hints that the table scrolls horizontally */
+    box-shadow: inset -20px 0 16px -16px rgba(0, 0, 0, 0.07);
+    border-radius: 0 0 8px 8px;
   }
   
   table {
     border-collapse: collapse;
     width: 100%;
+  }
+
+  /* Prevent the log table columns from being squished on narrow viewports */
+  #events-table {
+    min-width: 820px;
   }
   
   th,
@@ -781,6 +795,13 @@
   
   .nav-item.active .nav-label {
     color: var(--primary);
+  }
+
+  /* Keyboard focus — visible ring, not removed for mouse users */
+  .nav-item:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+    border-radius: 4px;
   }
   
   .main-wrapper {
@@ -2817,6 +2838,67 @@ table.has-noise-data .noise-col {
 /* Utility: small margin-top */
 .mt-8 {
   margin-top: 8px;
+}
+
+/* =========================
+   Mobile sidebar nav
+   ========================= */
+
+/* Hamburger — hidden on desktop */
+.nav-toggle-btn {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+  padding: 6px 10px;
+  color: var(--text);
+  line-height: 1;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.nav-toggle-btn:hover {
+  background: var(--primary-100);
+}
+
+@media (max-width: 768px) {
+  /* Show hamburger button */
+  .nav-toggle-btn {
+    display: flex;
+    align-items: center;
+  }
+
+  /* Sidebar slides off-canvas to the left by default */
+  .sidebar-nav {
+    transform: translateX(-110%);
+    transition: transform 0.25s ease;
+    /* Keep the fixed positioning but let it overlay */
+    top: 0;
+    bottom: 0;
+    transform-origin: left center;
+    border-radius: 0 12px 12px 0;
+    z-index: 200;
+  }
+
+  /* Reveal sidebar when body has .nav-open */
+  body.nav-open .sidebar-nav {
+    transform: translateX(0);
+  }
+
+  /* Dim backdrop behind open sidebar */
+  body.nav-open::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 199;
+  }
+
+  /* Remove the left margin that reserves space for the sidebar */
+  .main-wrapper {
+    margin-left: 0 !important;
+  }
 }
 
 /* =========================

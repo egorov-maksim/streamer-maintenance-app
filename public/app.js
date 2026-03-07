@@ -832,106 +832,101 @@ async function handleCsvFile(file) {
     const progressEl = safeGet('csv-import-progress');
     const dataLines = lines.slice(1).filter(l => l.trim());
     const total = dataLines.length;
-    let successCount = 0;
-    let errorCount = 0;
 
-    if (importBtn) importBtn.disabled = true;
-    if (progressEl) {
-      progressEl.classList.remove('hidden');
-      progressEl.textContent = `Importing 0 / ${total}...`;
-    }
-
-    const hasSectionTypeColumn = dataLines.length > 0 && (() => {
+    const hasSectionTypeColumn = total > 0 && (() => {
       const firstParts = parseCsvLine(dataLines[0].trim());
       return firstParts.length >= 8 && (firstParts[1] === 'active' || firstParts[1] === 'tail');
     })();
 
-    for (let i = 0; i < dataLines.length; i++) {
-      const line = dataLines[i].trim();
-      if (!line) continue;
+    // Parse and client-side-validate all rows first; collect valid ones for batch send.
+    const validRows = [];
+    let parseErrorCount = 0;
 
-      if (progressEl) progressEl.textContent = `Importing ${i + 1} / ${total}...`;
+    for (const line of dataLines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
 
-      const parts = parseCsvLine(line);
+      const parts = parseCsvLine(trimmed);
       let streamerNum, startSection, endSection, method, dateTimeStr, projectNumber, vesselTag, sectionType;
+
       if (hasSectionTypeColumn && parts.length >= 8 && (parts[1] === 'active' || parts[1] === 'tail')) {
-        streamerNum = parseInt(parts[0], 10);
-        sectionType = parts[1];
-        startSection = parseInt(parts[2], 10);
-        endSection = parseInt(parts[3], 10);
-        method = parts[4];
-        dateTimeStr = parts[5].replace(/"/g, '').trim();
+        streamerNum   = parseInt(parts[0], 10);
+        sectionType   = parts[1];
+        startSection  = parseInt(parts[2], 10);
+        endSection    = parseInt(parts[3], 10);
+        method        = parts[4];
+        dateTimeStr   = parts[5].replace(/"/g, '').trim();
         projectNumber = parts[6] ? parts[6].replace(/"/g, '').trim() : null;
-        vesselTag = parts[7] ? parts[7].replace(/"/g, '').trim() : 'TTN';
+        vesselTag     = parts[7] ? parts[7].replace(/"/g, '').trim() : 'TTN';
       } else if (parts.length >= 5) {
-        streamerNum = parseInt(parts[0], 10);
-        startSection = parseInt(parts[1], 10);
-        endSection = parseInt(parts[2], 10);
-        method = parts[3];
-        dateTimeStr = parts[4].replace(/"/g, '').trim();
+        streamerNum   = parseInt(parts[0], 10);
+        startSection  = parseInt(parts[1], 10);
+        endSection    = parseInt(parts[2], 10);
+        method        = parts[3];
+        dateTimeStr   = parts[4].replace(/"/g, '').trim();
         projectNumber = parts[5] ? parts[5].replace(/"/g, '').trim() : null;
-        vesselTag = parts[6] ? parts[6].replace(/"/g, '').trim() : 'TTN';
-        sectionType = null;
+        vesselTag     = parts[6] ? parts[6].replace(/"/g, '').trim() : 'TTN';
+        sectionType   = null;
       } else {
-        errorCount++;
+        parseErrorCount++;
         continue;
       }
 
       if (
-        isNaN(streamerNum) ||
-        isNaN(startSection) ||
-        isNaN(endSection) ||
-        streamerNum < 1 ||
-        streamerNum > (config.numCables + 1)
-      ) {
-        errorCount++;
-        continue;
-      }
+        isNaN(streamerNum) || isNaN(startSection) || isNaN(endSection) ||
+        streamerNum < 1 || streamerNum > (config.numCables + 1)
+      ) { parseErrorCount++; continue; }
 
       const dateObj = new Date(dateTimeStr);
-      if (isNaN(dateObj.getTime())) {
-        errorCount++;
-        continue;
-      }
+      if (isNaN(dateObj.getTime())) { parseErrorCount++; continue; }
 
       const actualStart = Math.min(startSection, endSection) - 1;
-      const actualEnd = Math.max(startSection, endSection) - 1;
+      const actualEnd   = Math.max(startSection, endSection) - 1;
 
-      const body = {
+      const row = {
         streamerId: streamerNum,
         sectionIndexStart: actualStart,
         sectionIndexEnd: actualEnd,
         cleaningMethod: method,
         cleanedAt: dateObj.toISOString(),
         cleaningCount: 1,
-        projectNumber: projectNumber,
-        vesselTag: vesselTag,
+        projectNumber,
+        vesselTag,
       };
-      if (sectionType) body.sectionType = sectionType;
-
-      try {
-        await API.apiCall('api/events', {
-          method: 'POST',
-          body: JSON.stringify(body),
-          action: 'import CSV data'
-        });
-        successCount++;
-      } catch {
-        errorCount++;
-      }
+      if (sectionType) row.sectionType = sectionType;
+      validRows.push(row);
     }
 
-    if (importBtn) importBtn.disabled = false;
-    if (progressEl) progressEl.classList.add('hidden');
+    if (validRows.length === 0) {
+      showErrorToast('Import Failed', `No valid rows found. ${parseErrorCount} row(s) could not be parsed.`);
+      return;
+    }
 
-    await refreshEverything();
-    await renderHeatmap();
-    await refreshStatsFiltered();
+    if (importBtn) importBtn.disabled = true;
+    if (progressEl) {
+      progressEl.classList.remove('hidden');
+      progressEl.textContent = `Importing ${validRows.length} events…`;
+    }
 
-    if (errorCount === 0) {
-      showSuccessToast('Import Complete', `${successCount} events imported successfully.`);
-    } else {
-      showWarningToast('Import Complete', `${successCount} events imported, ${errorCount} errors occurred.`);
+    try {
+      const result = await API.bulkCreateEvents(validRows);
+      const successCount = result.successCount ?? validRows.length;
+      const errorCount = (result.errorCount ?? 0) + parseErrorCount;
+
+      await refreshEverything();
+      await renderHeatmap();
+      await refreshStatsFiltered();
+
+      if (errorCount === 0) {
+        showSuccessToast('Import Complete', `${successCount} events imported successfully.`);
+      } else {
+        showWarningToast('Import Complete', `${successCount} imported, ${errorCount} failed.`);
+      }
+    } catch (err) {
+      showErrorToast('Import Failed', err.message || 'Failed to import events. Please try again.');
+    } finally {
+      if (importBtn) importBtn.disabled = false;
+      if (progressEl) progressEl.classList.add('hidden');
     }
   };
 
@@ -1092,6 +1087,7 @@ async function renderAlerts(preloadedLastCleaned = null) {
     }
   } catch (err) {
     console.error(err);
+    showErrorToast("Alerts Error", "Failed to load maintenance alert data.");
   }
 }
 
@@ -1101,7 +1097,9 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
   const container = safeGet('heatmap-container');
   if (!container) return;
 
-  container.innerHTML = '';
+  // Do NOT clear the container here — keep the previous render visible while
+  // data loads so there is no blank-flash on re-render. innerHTML is cleared
+  // below, after all data has been fetched.
 
   try {
     let data;
@@ -1128,6 +1126,9 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
         }
       }
     }
+
+    // All data is ready — clear old render now to avoid a blank intermediate state.
+    container.innerHTML = '';
 
     const sectionsPerCable = config.sectionsPerCable;
     const cableCount = config.numCables;
@@ -1229,6 +1230,15 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
         const bucket = ageBucket(days);
         cell.dataset.age = bucket;
 
+        // Accessible label so screen readers and keyboard users are not
+        // reliant on color alone to understand cleaning age.
+        const ageText = days === null
+          ? 'never cleaned'
+          : days === 0 ? 'cleaned today' : `cleaned ${days} day${days === 1 ? '' : 's'} ago`;
+        const cellLabel = `Streamer ${streamerId}, Section ${s + 1}: ${ageText}`;
+        cell.title = cellLabel;
+        cell.setAttribute('aria-label', cellLabel);
+
         col.appendChild(cell);
         rowIndex++;
 
@@ -1268,6 +1278,13 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
         }
         tailCell.dataset.age = bucket;
 
+        const tailAgeText = days === null
+          ? 'never cleaned'
+          : days === 0 ? 'cleaned today' : `cleaned ${days} day${days === 1 ? '' : 's'} ago`;
+        const tailLabel = `Streamer ${streamerId}, Tail ${formatSectionLabel(t, 'tail')}: ${tailAgeText}`;
+        tailCell.title = tailLabel;
+        tailCell.setAttribute('aria-label', tailLabel);
+
         col.appendChild(tailCell);
       }
 
@@ -1295,6 +1312,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
     attachStreamerHeaderTooltips(wrapper, lastCleaned, deployments);
   } catch (err) {
     console.error(err);
+    showErrorToast("Heatmap Error", "Failed to render the heatmap. Please try refreshing.");
   }
 }
 
@@ -1625,10 +1643,26 @@ async function confirmCleaning() {
 async function refreshEverything(preloadedLastCleaned = null) {
   // A filter change always brings the user back to page 1 of the log.
   logPage = 1;
-  await loadEvents();
-  await renderLog();
-  await renderAlerts(preloadedLastCleaned);
-  await renderStreamerCards(null, null, preloadedLastCleaned);
+
+  // Fetch events + last-cleaned data in parallel (last-cleaned is needed by both
+  // renderAlerts and renderStreamerCards, so fetch once and share the result).
+  const lastCleanedPromise = preloadedLastCleaned
+    ? Promise.resolve(preloadedLastCleaned)
+    : API.fetchLastCleaned(selectedProjectFilter ? { project: selectedProjectFilter } : {});
+
+  const [, lastCleanedData] = await Promise.all([
+    loadEvents(),
+    lastCleanedPromise,
+  ]);
+
+  // Render log, alerts, and streamer cards in parallel — they use already-loaded
+  // state and touch separate DOM regions. allSettled so one failure doesn't cancel
+  // the other renders.
+  await Promise.allSettled([
+    renderLog(),
+    renderAlerts(lastCleanedData),
+    renderStreamerCards(null, null, lastCleanedData),
+  ]);
 }
 
 /* ------------ Log Pagination ------------ */
@@ -1757,21 +1791,109 @@ function updateSortIcons() {
 
 /* ------------ Sidebar Navigation ------------ */
 
+// ---------------------------------------------------------------------------
+// Section routing — History API
+//
+// Maps sidebar section IDs ↔ clean URL paths.
+// NOTE: /stats, /planning, /config are taken by server-side standalone pages,
+// so the main-page stats section uses /overview to avoid a reload conflict.
+// The server catch-all (app.get("*")) already serves index.html for unmatched
+// paths, so /log and /overview work correctly on hard reload without any
+// additional server changes.
+// ---------------------------------------------------------------------------
+const SECTION_TO_PATH = {
+  'heatmap-section': '/',
+  'log-section':     '/log',
+  'stats-section':   '/overview',
+};
+const PATH_TO_SECTION = {
+  '/':        'heatmap-section',
+  '/log':     'log-section',
+  '/overview': 'stats-section',
+};
+const DEFAULT_SECTION = 'heatmap-section';
+
+/**
+ * Scrolls to a section, updates the active nav state, and writes the URL.
+ * @param {string} sectionId  - data-target value, e.g. 'log-section'
+ * @param {object} opts
+ * @param {boolean} opts.smooth   - smooth vs instant scroll (default true)
+ * @param {boolean} opts.push     - pushState vs replaceState (default true)
+ */
+function activateNavSection(sectionId, { smooth = true, push = true } = {}) {
+  const targetSection = document.getElementById(sectionId);
+  if (!targetSection) return;
+
+  targetSection.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant', block: 'start' });
+
+  document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+  const navItem = document.querySelector(`.nav-item[data-target="${sectionId}"]`);
+  if (navItem) navItem.classList.add('active');
+
+  const path = SECTION_TO_PATH[sectionId] ?? '/';
+  // Preserve any existing query params (e.g. ?project=) when updating the path.
+  const fullPath = path + window.location.search;
+  if (push) {
+    history.pushState({ section: sectionId }, '', fullPath);
+  } else {
+    history.replaceState({ section: sectionId }, '', fullPath);
+  }
+}
+
+function closeMobileNav() {
+  document.body.classList.remove('nav-open');
+  const toggle = document.getElementById('nav-toggle');
+  if (toggle) toggle.setAttribute('aria-expanded', 'false');
+}
+
 function setupSidebarNavigation() {
+  // Hamburger toggle for mobile
+  const toggle = document.getElementById('nav-toggle');
+  if (toggle) {
+    toggle.addEventListener('click', () => {
+      const isOpen = document.body.classList.toggle('nav-open');
+      toggle.setAttribute('aria-expanded', String(isOpen));
+    });
+  }
+
+  // Close mobile sidebar when tapping the backdrop
+  document.addEventListener('click', (e) => {
+    if (
+      document.body.classList.contains('nav-open') &&
+      !e.target.closest('.sidebar-nav') &&
+      !e.target.closest('#nav-toggle')
+    ) {
+      closeMobileNav();
+    }
+  });
+
+  // Nav item clicks + keyboard activation (Enter / Space)
   document.querySelectorAll('.nav-item').forEach(item => {
-    item.addEventListener('click', () => {
-      const targetId = item.dataset.target;
-      const targetSection = document.getElementById(targetId);
-
-      if (targetSection) {
-        targetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-        // Update active state
-        document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-        item.classList.add('active');
-      }
+    const activate = () => {
+      activateNavSection(item.dataset.target, { smooth: true, push: true });
+      closeMobileNav();
+    };
+    item.addEventListener('click', activate);
+    item.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
     });
   });
+
+  // Browser back / forward — restore section from state or pathname
+  window.addEventListener('popstate', (e) => {
+    const sectionId =
+      e.state?.section ??
+      PATH_TO_SECTION[window.location.pathname] ??
+      DEFAULT_SECTION;
+    // replaceState so we don't stack a new entry on top of the one being restored
+    activateNavSection(sectionId, { smooth: false, push: false });
+  });
+
+  // Initial page load — read the URL and activate the matching section.
+  // Use replaceState so this does not add an extra history entry.
+  const initialSection =
+    PATH_TO_SECTION[window.location.pathname] ?? DEFAULT_SECTION;
+  activateNavSection(initialSection, { smooth: false, push: false });
 }
 
 /* ------------ Event Listeners Setup ------------ */
@@ -1781,9 +1903,13 @@ function setupEventListeners() {
   safeGet('btn-save-config')?.addEventListener('click', Projects.saveConfig);
   safeGet('btn-cleanup-streamers')?.addEventListener('click', Projects.cleanupOrphanedStreamers);
 
-  // Method tiles
+  // Method tiles — click + keyboard activation
   document.querySelectorAll('.method-tile').forEach(tile => {
-    tile.addEventListener('click', () => selectMethod(tile.dataset.method));
+    const activate = () => selectMethod(tile.dataset.method);
+    tile.addEventListener('click', activate);
+    tile.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
+    });
   });
 
   // Manual event entry
@@ -2001,6 +2127,11 @@ async function initApp() {
 }
 
 async function initAppContent() {
+  // Read ?project= from the URL immediately — before any history.replaceState call
+  // (setupSidebarNavigation does a replaceState on init). Capturing it here ensures
+  // the param is never lost even if replaceState runs before we process it.
+  const urlProjectParam = new URLSearchParams(window.location.search).get('project');
+
   Projects.initProjects({
     refreshEverything,
     renderHeatmap,
@@ -2010,12 +2141,20 @@ async function initAppContent() {
   // Load config and projects in parallel — they are independent requests.
   await Promise.all([Projects.loadConfig(), Projects.loadProjects()]);
 
-  // Default project filter to the active project for this user/vessel,
-  // so heatmap, stats and log are scoped to that project instead of
-  // aggregating all projects on the same vessel.
+  // Determine the project filter. URL param takes priority over the active-project
+  // default so that bookmarked/shared URLs open in the correct context.
   const active = getActiveProject();
-  if (active?.projectNumber) {
+  if (urlProjectParam) {
+    setSelectedProjectFilter(urlProjectParam);
+  } else if (active?.projectNumber) {
     setSelectedProjectFilter(String(active.projectNumber));
+  }
+
+  // Sync the project selector dropdown to the resolved filter value so the UI
+  // reflects the URL on a hard reload.
+  const selectorEl = safeGet('project-selector');
+  if (selectorEl && selectedProjectFilter) {
+    selectorEl.value = selectedProjectFilter;
   }
 
   // Build all request URLs now that the project filter is known.

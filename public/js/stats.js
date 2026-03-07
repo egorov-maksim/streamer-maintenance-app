@@ -10,7 +10,7 @@
 
 import { config, events, projects, selectedProjectFilter } from "./state.js";
 import * as API from "./api.js";
-import { safeGet } from "./ui.js";
+import { safeGet, showErrorToast } from "./ui.js";
 import { fmtKm } from "./streamer-utils.js";
 
 export async function renderStreamerCards(startDate = null, endDate = null, preloadedLastCleaned = null) {
@@ -91,6 +91,7 @@ export async function renderStreamerCards(startDate = null, endDate = null, prel
     }
   } catch (err) {
     console.error("renderStreamerCards failed", err);
+    showErrorToast("Stats Error", "Failed to render streamer overview cards.");
   }
 }
 
@@ -286,6 +287,7 @@ export async function refreshStatsFiltered(
     await renderStreamerCards(startDate, endDate, preloadedLastCleaned);
   } catch (err) {
     console.error("refreshStatsFiltered failed", err);
+    showErrorToast("Stats Error", "Failed to load statistics. Please try again.");
   }
 }
 

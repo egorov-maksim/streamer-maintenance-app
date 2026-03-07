@@ -93,6 +93,14 @@
     
     <!-- User Header Bar -->
     <div class="user-header">
+      <!-- Hamburger — visible only on mobile (≤768px) -->
+      <button
+        class="nav-toggle-btn"
+        id="nav-toggle"
+        aria-label="Open navigation"
+        aria-expanded="false"
+        aria-controls="sidebar-nav"
+      >☰</button>
       <div class="user-info">
         <span class="user-avatar">👤</span>
         <span class="user-name" id="user-display-name">User</span>
@@ -109,16 +117,16 @@
     </div>
 
   <!-- Left Sidebar Navigation -->
-  <nav class="sidebar-nav">
-    <div class="nav-item active" data-target="heatmap-section">
+  <nav class="sidebar-nav" id="sidebar-nav">
+    <div class="nav-item active" data-target="heatmap-section" tabindex="0" role="button" aria-label="Navigate to Heatmap section">
       <div class="nav-icon">🗺️</div>
       <div class="nav-label">Heatmap</div>
     </div>
-    <div class="nav-item" data-target="log-section">
+    <div class="nav-item" data-target="log-section" tabindex="0" role="button" aria-label="Navigate to Log section">
       <div class="nav-icon">📜</div>
       <div class="nav-label">Log</div>
     </div>
-    <div class="nav-item" data-target="stats-section">
+    <div class="nav-item" data-target="stats-section" tabindex="0" role="button" aria-label="Navigate to Stats section">
       <div class="nav-icon">📊</div>
       <div class="nav-label">Stats</div>
     </div>
@@ -140,23 +148,23 @@
         <h2 class="card-title">🧹 Cleaning Method Selection</h2>
         <p class="mb-12">Select a cleaning method to use</p>
         <div class="method-tiles">
-          <div class="method-tile" data-method="rope">
+          <div class="method-tile" data-method="rope" tabindex="0" role="button" aria-label="Select Rope cleaning method">
             <div class="method-icon">🪢</div>
             <div class="method-name">Rope</div>
           </div>
-          <div class="method-tile" data-method="scraper">
+          <div class="method-tile" data-method="scraper" tabindex="0" role="button" aria-label="Select Scraper cleaning method">
             <div class="method-icon">🛠️</div>
             <div class="method-name">Scraper</div>
           </div>
-          <div class="method-tile active" data-method="scraper-rope">
+          <div class="method-tile active" data-method="scraper-rope" tabindex="0" role="button" aria-label="Select Scraper and Rope cleaning method">
             <div class="method-icon">🪢🛠️</div>
             <div class="method-name">Scraper&Rope</div>
           </div>
-          <div class="method-tile" data-method="scue">
+          <div class="method-tile" data-method="scue" tabindex="0" role="button" aria-label="Select SCUE cleaning method">
             <div class="method-icon">⚙️</div>
             <div class="method-name">SCUE</div>
           </div>
-          <div class="method-tile" data-method="knife">
+          <div class="method-tile" data-method="knife" tabindex="0" role="button" aria-label="Select Knife cleaning method">
             <div class="method-icon">🔪</div>
             <div class="method-name">Knife</div>
           </div>
@@ -301,11 +309,11 @@
   </div>
 
   <!-- Confirmation Modal -->
-  <div id="confirmation-modal" class="modal">
-    <div id="modal-overlay" class="modal-overlay"></div>
+  <div id="confirmation-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
+    <div id="modal-overlay" class="modal-overlay" aria-hidden="true"></div>
     <div class="modal-content">
       <div class="modal-header">
-        <h3>✅ Confirm Cleaning Event</h3>
+        <h3 id="confirm-modal-title">✅ Confirm Cleaning Event</h3>
         <button class="modal-close" id="btn-modal-close">×</button>
       </div>
       <div class="modal-body">
@@ -348,11 +356,11 @@
   </div>
 
   <!-- Edit Event Modal -->
-  <div id="edit-modal" class="modal">
-    <div class="modal-overlay"></div>
+  <div id="edit-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title">
+    <div class="modal-overlay" aria-hidden="true"></div>
     <div class="modal-content">
       <div class="modal-header">
-        <h3>✏️ Edit Cleaning Event</h3>
+        <h3 id="edit-modal-title">✏️ Edit Cleaning Event</h3>
         <button class="modal-close" id="btn-edit-close">×</button>
       </div>
       <div class="modal-body">
@@ -387,11 +395,11 @@
 </div>
 
  <!-- Delete Event Modal -->
-  <div id="delete-modal" class="modal">
-    <div class="modal-overlay"></div>
+  <div id="delete-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
+    <div class="modal-overlay" aria-hidden="true"></div>
     <div class="modal-content modal-delete">
       <div class="modal-header modal-header-delete">
-        <h3>🗑️ Delete Cleaning Event</h3>
+        <h3 id="delete-modal-title">🗑️ Delete Cleaning Event</h3>
         <button class="modal-close" id="btn-delete-close">×</button>
       </div>
       <div class="modal-body">
@@ -439,11 +447,11 @@
   </div>
 
     <!-- Clear All Events Modal -->
-  <div id="clear-all-modal" class="modal">
-    <div class="modal-overlay"></div>
+  <div id="clear-all-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="clear-all-modal-title">
+    <div class="modal-overlay" aria-hidden="true"></div>
     <div class="modal-content modal-delete">
       <div class="modal-header modal-header-delete">
-        <h3>⚠️ Clear All Events</h3>
+        <h3 id="clear-all-modal-title">⚠️ Clear All Events</h3>
         <button class="modal-close" id="btn-clear-all-close">×</button>
       </div>
       
@@ -496,11 +504,11 @@
   </div> <!-- Close app-container -->
 
   <!-- Adjacent Event Merge Modal -->
-  <div id="adjacent-merge-modal" class="modal">
-    <div class="modal-overlay"></div>
+  <div id="adjacent-merge-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="adjacent-merge-modal-title">
+    <div class="modal-overlay" aria-hidden="true"></div>
     <div class="modal-content modal-delete">
       <div class="modal-header modal-header-warning">
-        <h3>Adjacent Cleaning Event</h3>
+        <h3 id="adjacent-merge-modal-title">Adjacent Cleaning Event</h3>
         <button class="modal-close" id="btn-adjacent-merge-close">×</button>
       </div>
       <div class="modal-body">
@@ -522,11 +530,11 @@
   </div>
 
   <!-- Recent Clean Warning Modal -->
-  <div id="recent-clean-warning-modal" class="modal">
-    <div class="modal-overlay"></div>
+  <div id="recent-clean-warning-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="recent-clean-modal-title">
+    <div class="modal-overlay" aria-hidden="true"></div>
     <div class="modal-content modal-delete">
       <div class="modal-header modal-header-warning">
-        <h3>Area Recently Cleaned</h3>
+        <h3 id="recent-clean-modal-title">Area Recently Cleaned</h3>
         <button class="modal-close" id="btn-recent-clean-close">×</button>
       </div>
       <div class="modal-body">
@@ -542,6 +550,37 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" id="btn-recent-clean-cancel">Cancel</button>
         <button class="btn btn-primary" id="btn-recent-clean-confirm">Save Anyway</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Backup Restore Confirm Modal -->
+  <div id="restore-confirm-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="restore-confirm-title">
+    <div class="modal-overlay" aria-hidden="true"></div>
+    <div class="modal-content modal-delete">
+      <div class="modal-header modal-header-delete">
+        <h3 id="restore-confirm-title">⚠️ Restore Backup</h3>
+        <button class="modal-close" id="btn-restore-confirm-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="delete-warning">
+          <div class="warning-icon">🔄</div>
+          <div class="warning-text">
+            <strong>This will overwrite all current data.</strong>
+            Restoring a backup is irreversible — all events, projects, and configuration
+            added since this backup was created will be lost.
+          </div>
+        </div>
+        <div class="event-details">
+          <div class="detail-row">
+            <span class="detail-label">Backup file</span>
+            <span class="detail-value" id="restore-confirm-filename">—</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer modal-footer-delete">
+        <button class="btn btn-secondary" id="btn-restore-cancel">Cancel</button>
+        <button class="btn btn-danger" id="btn-restore-confirm">🔄 Restore Database</button>
       </div>
     </div>
   </div>
