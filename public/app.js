@@ -751,16 +751,41 @@ async function confirmClearAllEvents() {
 
 /* ------------ CSV Import/Export ------------ */
 
-function exportCsv() {
-  if (!events.length) {
-    showWarningToast('No Data', 'No events available to export.');
-    return;
-  }
+/** UTC calendar date for cleanedAt — aligns with SQLite DATE(cleaned_at) on ISO timestamps. */
+function eventUtcDateKey(cleanedAt) {
+  return new Date(cleanedAt).toISOString().slice(0, 10);
+}
 
+/** Same rules as backend buildEventsWhereClause: both → inclusive range; only start/end → open bound. */
+function filterEventsByExportDateRange(eventList, startStr, endStr) {
+  const start = (startStr || '').trim();
+  const end = (endStr || '').trim();
+  return eventList.filter((evt) => {
+    const key = eventUtcDateKey(evt.cleanedAt);
+    if (start && end) return key >= start && key <= end;
+    if (start) return key >= start;
+    if (end) return key <= end;
+    return true;
+  });
+}
+
+function buildExportCsvFilename(startStr, endStr) {
+  const today = new Date().toISOString().split('T')[0];
+  const projectSuffix = selectedProjectFilter ? `-${selectedProjectFilter}` : '';
+  const s = (startStr || '').trim();
+  const e = (endStr || '').trim();
+  let range = '';
+  if (s && e) range = `-${s}-to-${e}`;
+  else if (s) range = `-from-${s}`;
+  else if (e) range = `-to-${e}`;
+  return `streamer-cleaning-events${projectSuffix}${range}-${today}.csv`;
+}
+
+function downloadEventsCsv(eventsForExport, startStr, endStr) {
   const header = 'Streamer Number,Section Type,First Section,Last Section,Cleaning Method,Date & Time,Project Number,Vessel Tag,Added By';
   const rows = [header];
 
-  events.forEach(evt => {
+  eventsForExport.forEach((evt) => {
     const streamerNum = evt.streamerId;
     const sectionType = evt.sectionType || 'active';
     const startSection = evt.sectionIndexStart + 1;
@@ -773,31 +798,58 @@ function exportCsv() {
   });
 
   const csv = rows.join('\n');
-  
-  // Create a Blob from the CSV string
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  
-  // Create a temporary download link
   const link = document.createElement('a');
   const url = URL.createObjectURL(blob);
-  
-  // Generate filename with current date and project if filtered
-  const now = new Date();
-  const dateStr = now.toISOString().split('T')[0];
-  const projectSuffix = selectedProjectFilter ? `-${selectedProjectFilter}` : '';
-  const filename = `streamer-cleaning-events${projectSuffix}-${dateStr}.csv`;
-  
+  const filename = buildExportCsvFilename(startStr, endStr);
+
   link.setAttribute('href', url);
   link.setAttribute('download', filename);
   link.style.visibility = 'hidden';
-  
-  // Trigger download
   document.body.appendChild(link);
   link.click();
-  
-  // Cleanup
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+function openExportCsvModal() {
+  const base = getFilteredEvents();
+  if (!base.length) {
+    showWarningToast('No Data', 'No events available to export.');
+    return;
+  }
+  const statsStart = safeGet('filter-start')?.value ?? '';
+  const statsEnd = safeGet('filter-end')?.value ?? '';
+  const startInput = safeGet('csv-export-start');
+  const endInput = safeGet('csv-export-end');
+  if (startInput) startInput.value = statsStart;
+  if (endInput) endInput.value = statsEnd;
+  openModal('export-csv-modal');
+}
+
+function closeExportCsvModal() {
+  closeModal('export-csv-modal');
+}
+
+function confirmExportCsv() {
+  const startStr = safeGet('csv-export-start')?.value ?? '';
+  const endStr = safeGet('csv-export-end')?.value ?? '';
+  if (startStr && endStr && startStr > endStr) {
+    showErrorToast('Invalid range', 'Start date must be on or before end date.');
+    return;
+  }
+  const base = getFilteredEvents();
+  if (!base.length) {
+    showWarningToast('No Data', 'No events available to export.');
+    return;
+  }
+  const filtered = filterEventsByExportDateRange(base, startStr, endStr);
+  if (!filtered.length) {
+    showWarningToast('No Data', 'No events fall in the selected date range.');
+    return;
+  }
+  downloadEventsCsv(filtered, startStr, endStr);
+  closeExportCsvModal();
 }
 
 function importCsv() {
@@ -1916,7 +1968,11 @@ function setupEventListeners() {
   safeGet('btn-add-event')?.addEventListener('click', addEvent);
 
   // CSV
-  safeGet('btn-export-csv')?.addEventListener('click', exportCsv);
+  safeGet('btn-export-csv')?.addEventListener('click', openExportCsvModal);
+  safeGet('btn-export-csv-confirm')?.addEventListener('click', confirmExportCsv);
+  safeGet('btn-export-csv-cancel')?.addEventListener('click', closeExportCsvModal);
+  safeGet('btn-export-csv-close')?.addEventListener('click', closeExportCsvModal);
+  document.querySelector('#export-csv-modal .modal-overlay')?.addEventListener('click', closeExportCsvModal);
   safeGet('btn-import-csv')?.addEventListener('click', importCsv);
   safeGet('csv-input')?.addEventListener('change', (e) => {
     if (e.target.files[0]) {
