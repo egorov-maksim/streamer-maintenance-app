@@ -170,6 +170,7 @@ export async function handleLogout() {
     console.error("Logout error:", err);
   }
   clearSession();
+  document.dispatchEvent(new CustomEvent("streamer-maintenance:session-end"));
   showLogin();
 }
 

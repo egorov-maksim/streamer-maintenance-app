@@ -4,6 +4,7 @@
    ========================= */
 
 import {
+  authToken,
   config,
   setConfig,
   events,
@@ -2169,6 +2170,95 @@ function hideAppLoadingOverlay() {
   if (overlay) overlay.classList.add("hidden");
 }
 
+/** How often to refresh log + heatmap + stats while the tab is visible (hybrid with visibility refresh). */
+const DASHBOARD_REFRESH_INTERVAL_MS = 45_000;
+
+let dashboardRefreshTimerId = null;
+let dashboardVisibilityHandler = null;
+let dashboardRefreshInFlight = false;
+
+/**
+ * Fetches events, last-cleaned, deployments, and KPI stats in one round-trip pattern
+ * shared by initial load and background refresh.
+ */
+async function fetchDashboardDataBundle() {
+  const projectParam = selectedProjectFilter ? encodeURIComponent(selectedProjectFilter) : null;
+  const lastCleanedUrl = projectParam
+    ? `api/last-cleaned?project=${projectParam}`
+    : "api/last-cleaned";
+  const statsUrl = projectParam ? `/api/stats?project=${projectParam}` : "/api/stats";
+  const statsFilterUrl = projectParam
+    ? `/api/stats/filter?project=${projectParam}`
+    : "/api/stats/filter";
+  const active = getActiveProject();
+  const deploymentsPromise = active
+    ? API.apiCall(`/api/projects/${active.id}/streamer-deployments`).catch(() => ({}))
+    : Promise.resolve({});
+
+  const [, lastCleanedData, deployments, overallStats, filterStats] = await Promise.all([
+    loadEvents(),
+    API.apiCall(lastCleanedUrl),
+    deploymentsPromise,
+    API.apiCall(statsUrl),
+    API.apiCall(statsFilterUrl),
+  ]);
+
+  return { lastCleanedData, deployments, overallStats, filterStats };
+}
+
+function stopDashboardAutoRefresh() {
+  if (dashboardRefreshTimerId != null) {
+    clearInterval(dashboardRefreshTimerId);
+    dashboardRefreshTimerId = null;
+  }
+  if (dashboardVisibilityHandler) {
+    document.removeEventListener("visibilitychange", dashboardVisibilityHandler);
+    dashboardVisibilityHandler = null;
+  }
+}
+
+/**
+ * Re-fetches dashboard data and re-renders log, heatmap, alerts, and stats without
+ * resetting log pagination — for background tabs returning to foreground and periodic sync.
+ */
+async function silentRefreshDashboardData() {
+  if (!authToken || document.visibilityState !== "visible") return;
+  if (dashboardRefreshInFlight) return;
+  dashboardRefreshInFlight = true;
+  try {
+    const { lastCleanedData, deployments, overallStats, filterStats } = await fetchDashboardDataBundle();
+    await Promise.allSettled([
+      renderLog(),
+      renderAlerts(lastCleanedData),
+      renderHeatmap(lastCleanedData, deployments),
+      refreshStatsFiltered(lastCleanedData, deployments, overallStats, filterStats),
+    ]);
+  } catch (err) {
+    console.debug("Background dashboard refresh failed:", err?.message ?? err);
+  } finally {
+    dashboardRefreshInFlight = false;
+  }
+}
+
+function startDashboardAutoRefresh() {
+  stopDashboardAutoRefresh();
+
+  const tick = () => {
+    if (document.visibilityState === "visible") {
+      void silentRefreshDashboardData();
+    }
+  };
+
+  dashboardVisibilityHandler = () => {
+    if (document.visibilityState === "visible") {
+      void silentRefreshDashboardData();
+    }
+  };
+  document.addEventListener("visibilitychange", dashboardVisibilityHandler);
+
+  dashboardRefreshTimerId = setInterval(tick, DASHBOARD_REFRESH_INTERVAL_MS);
+}
+
 async function initApp() {
   showAppLoadingOverlay();
   // Enforce a minimum visible time so the overlay never flashes on fast connections.
@@ -2213,27 +2303,7 @@ async function initAppContent() {
     selectorEl.value = selectedProjectFilter;
   }
 
-  // Build all request URLs now that the project filter is known.
-  const projectParam = selectedProjectFilter ? encodeURIComponent(selectedProjectFilter) : null;
-  const lastCleanedUrl = projectParam
-    ? `api/last-cleaned?project=${projectParam}`
-    : 'api/last-cleaned';
-  const statsUrl = projectParam ? `/api/stats?project=${projectParam}` : '/api/stats';
-  const statsFilterUrl = projectParam
-    ? `/api/stats/filter?project=${projectParam}`
-    : '/api/stats/filter';
-  const deploymentsPromise = active
-    ? API.apiCall(`/api/projects/${active.id}/streamer-deployments`).catch(() => ({}))
-    : Promise.resolve({});
-
-  // Fetch events, last-cleaned, deployments, and stats all in parallel.
-  const [, lastCleanedData, deployments, overallStats, filterStats] = await Promise.all([
-    loadEvents(),
-    API.apiCall(lastCleanedUrl),
-    deploymentsPromise,
-    API.apiCall(statsUrl),
-    API.apiCall(statsFilterUrl),
-  ]);
+  const { lastCleanedData, deployments, overallStats, filterStats } = await fetchDashboardDataBundle();
 
   // Render using pre-fetched data — no duplicate network calls.
   await renderLog();
@@ -2259,6 +2329,8 @@ async function initAppContent() {
   updateUIForRole();
   
   initPDFGeneration();
+
+  startDashboardAutoRefresh();
 }
 
 /* ------------ Initialization ------------ */
@@ -2267,9 +2339,12 @@ async function init() {
   // Any authenticated request that gets a 401 (server restart wiped the session
   // Map) will call this — skip initApp entirely and drop back to the login screen.
   API.setUnauthorizedHandler(() => {
+    stopDashboardAutoRefresh();
     clearSession();
     showLogin();
   });
+
+  document.addEventListener("streamer-maintenance:session-end", stopDashboardAutoRefresh);
 
   setOnShowAppCallback(async () => {
     await initApp();
