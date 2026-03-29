@@ -585,6 +585,31 @@
     </div>
   </div>
 
+  <!-- Export log CSV — optional UTC date range (matches stats / SQL DATE filtering) -->
+  <div id="export-csv-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="export-csv-modal-title">
+    <div class="modal-overlay" aria-hidden="true"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="export-csv-modal-title">📥 Export cleaning log (CSV)</h3>
+        <button type="button" class="modal-close" id="btn-export-csv-close">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-body-note">
+          Limit export by cleaning date (optional). Dates use the event timestamp in UTC and are inclusive.
+          Leave both empty to export every event currently shown in the log (respects the project filter).
+        </p>
+        <div class="grid grid-2">
+          <label>Start date <input type="date" id="csv-export-start"></label>
+          <label>End date <input type="date" id="csv-export-end"></label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btn-export-csv-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btn-export-csv-confirm">📥 Download CSV</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification Container -->
   <div id="toast-container" class="toast-container"></div>
 
