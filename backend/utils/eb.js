@@ -1,14 +1,19 @@
 // utils/eb.js
 
 /**
- * Calculate EB (Equipment Box) range for a section range.
- * Finds closest module AT OR BEFORE startSection and AT OR AFTER endSection.
+ * Maps a streamer section span to human-readable Equipment Box (EB) labels for maintenance reports and API responses.
+ * Crew reason about physical modules along the cable; this keeps server-side EB strings aligned with heatmap logic.
+ *
+ * Finds the closest module at or before the span start and at or after the span end (order-independent).
+ *
  * @param {number} startSection - Start section index (0-based)
  * @param {number} endSection - End section index (0-based)
  * @param {Object} config - Config with moduleFrequency, sectionsPerCable
  * @returns {string} Formatted EB range (e.g. "EB05 - EB02") or "-"
  */
 function calculateEBRange(startSection, endSection, config) {
+  const start = Math.min(startSection, endSection);
+  const end = Math.max(startSection, endSection);
   const moduleFreq = config.moduleFrequency || 4;
   const sectionsPerCable = config.sectionsPerCable;
 
@@ -28,11 +33,11 @@ function calculateEBRange(startSection, endSection, config) {
   }
 
   const before = allModules
-    .filter((module) => module.section <= startSection)
+    .filter((module) => module.section <= start)
     .sort((a, b) => b.section - a.section)[0];
 
   const after = allModules
-    .filter((module) => module.section >= endSection)
+    .filter((module) => module.section >= end)
     .sort((a, b) => a.section - b.section)[0];
 
   const effectiveAfter = after || allModules[allModules.length - 1];

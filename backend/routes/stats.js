@@ -38,7 +38,7 @@ async function getEffectiveConfig(req) {
 function createStatsRouter(authMiddleware) {
   const router = express.Router();
 
-  router.get("/api/eb-range", async (req, res) => {
+  router.get("/api/eb-range", authMiddleware, async (req, res) => {
     try {
       const startSection = toInt(req.query.start, NaN);
       const endSection = toInt(req.query.end, NaN);

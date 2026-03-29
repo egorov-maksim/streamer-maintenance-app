@@ -1,7 +1,8 @@
 // utils/errors.js
 
 /**
- * Send a JSON error response with the standard { error: message } shape.
+ * Keeps API error responses consistent so the SPA can always read `{ error: string }` and show toasts instead of ad-hoc JSON shapes.
+ *
  * @param {Object} res - Express response
  * @param {number} status - HTTP status code
  * @param {string} message - Error message

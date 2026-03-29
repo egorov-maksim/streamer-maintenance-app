@@ -1,7 +1,8 @@
 // utils/validation.js
 
 /**
- * Parse a value as integer with fallback.
+ * Coerces query params and JSON fields to integers safely so vessel-scoped routes do not compare strings to IDs or pass NaN into SQLite.
+ *
  * @param {*} n - Value to parse
  * @param {number} fallback - Value to return if parsing fails
  * @returns {number}
@@ -12,7 +13,8 @@ function toInt(n, fallback) {
 }
 
 /**
- * Validate req.params.id as integer; send 400 and return null if invalid.
+ * Guards REST `:id` parameters early with a consistent 400 body, avoiding duplicate NaN checks in every route handler.
+ *
  * @param {Object} req - Express request
  * @param {Object} res - Express response
  * @returns {number|null} Parsed id or null

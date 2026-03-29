@@ -111,11 +111,11 @@ function getVesselScope(user) {
 }
 
 /**
- * Create auth middleware that validates Bearer token against the given session store.
- * @param {Map<string, Object>} sessions - Session store (token -> session)
+ * Create auth middleware that validates Bearer token via sessionStore.getSession (TTL eviction).
+ * @param {{ getSession: function(string): Object|null }} sessionStore
  * @returns {function} Express middleware
  */
-function createAuthMiddleware(sessions) {
+function createAuthMiddleware(sessionStore) {
   return function authMiddleware(req, res, next) {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -123,7 +123,7 @@ function createAuthMiddleware(sessions) {
     }
 
     const token = authHeader.slice(7);
-    const session = sessions.get(token);
+    const session = sessionStore.getSession(token);
 
     if (!session) {
       return res.status(401).json({ error: "Invalid or expired session" });

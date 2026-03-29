@@ -1,7 +1,8 @@
 // utils/queryHelpers.js
 
 /**
- * Build WHERE clause and params for cleaning_events queries filtered by project and date range.
+ * Builds SQL fragments for cleaning-event history so stats and exports stay vessel- and date-filtered without duplicating WHERE logic in every route.
+ *
  * @param {{ project?: string, start?: string, end?: string }} query - project_number, start date, end date
  * @returns {{ sql: string, params: Array }} sql is " WHERE ..." or "", params for placeholders
  */

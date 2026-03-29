@@ -5,12 +5,12 @@ const { sendError } = require("../utils/errors");
 
 /**
  * Create auth router (login, logout, session).
- * @param {Map} sessions - Session store
+ * @param {{ setSession: Function, deleteSession: Function }} sessionStore
  * @param {Object} users - User credentials from loadUsersFromEnv()
  * @param {function} authMiddleware - Auth middleware for protected routes
  * @returns {express.Router}
  */
-function createAuthRouter(sessions, users, authMiddleware) {
+function createAuthRouter(sessionStore, users, authMiddleware) {
   const router = express.Router();
 
   router.post("/api/login", (req, res) => {
@@ -26,7 +26,7 @@ function createAuthRouter(sessions, users, authMiddleware) {
     }
 
     const token = generateSessionToken();
-    sessions.set(token, {
+    sessionStore.setSession(token, {
       username,
       role: user.role,
       vesselTag: user.vesselTag ?? null,
@@ -47,7 +47,7 @@ function createAuthRouter(sessions, users, authMiddleware) {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith("Bearer ")) {
       const token = authHeader.slice(7);
-      sessions.delete(token);
+      sessionStore.deleteSession(token);
     }
     res.json({ success: true, message: "Logged out successfully" });
   });

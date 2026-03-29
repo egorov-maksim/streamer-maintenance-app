@@ -1,6 +1,6 @@
 /**
  * Shared statistics logic used by both the main page (app.js) and the
- * standalone stats page (statsPage.js).
+ * standalone stats page (stats-page.js).
  *
  * All DOM element IDs referenced here must exist on any page that uses this module:
  * filter-start, filter-end, kpi-coverage, kpi-coverage-sub, kpi-breakdown,
