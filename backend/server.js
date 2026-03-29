@@ -6,6 +6,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const path = require("path");
 const { initDb } = require("./db");
+const { createSessionStore } = require("./sessionStore");
 const {
   loadUsersFromEnv,
   createAuthMiddleware,
@@ -25,8 +26,8 @@ const PORT = process.env.PORT || 3000;
 initDb();
 
 const users = loadUsersFromEnv();
-const sessions = new Map();
-const authMiddleware = createAuthMiddleware(sessions);
+const sessionStore = createSessionStore();
+const authMiddleware = createAuthMiddleware(sessionStore);
 
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
@@ -79,7 +80,7 @@ app.get("/planning", (_req, res) => {
 });
 
 // Mount route modules
-const authRouter = createAuthRouter(sessions, users, authMiddleware);
+const authRouter = createAuthRouter(sessionStore, users, authMiddleware);
 const backupsRouter = createBackupsRouter(authMiddleware, superUserOnly);
 const configRouter = createConfigRouter(authMiddleware, superUserOnly);
 const projectsRouter = createProjectsRouter(authMiddleware, superUserOnly);
