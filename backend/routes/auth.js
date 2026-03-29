@@ -26,24 +26,6 @@ function createAuthRouter(sessionStore, users, authMiddleware) {
     }
 
     const token = generateSessionToken();
-    // #region agent log
-    fetch("http://127.0.0.1:7242/ingest/67e18581-87c7-4241-aa8e-2a9878a99534", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        location: "routes/auth.js:POST /api/login",
-        message: "sessionStore API surface (pre setSession)",
-        data: {
-          hypothesisId: "H1",
-          ctor: sessionStore?.constructor?.name,
-          hasSetSession: typeof sessionStore?.setSession,
-          hasGetSession: typeof sessionStore?.getSession,
-          hasMapSet: typeof sessionStore?.set,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     sessionStore.setSession(token, {
       username,
       role: user.role,
