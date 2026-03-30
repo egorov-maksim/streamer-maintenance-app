@@ -176,15 +176,25 @@
       <section id="heatmap-section" class="card streamers-card">
         <h2 class="card-title">🗺️ Streamers Detail View</h2>
 
-        <!-- Legend -->
-        <div class="legend mb-16">
-          <div class="badge"><span class="legend-swatch legend-swatch-fresh"></span> 0 day (fresh)</div>
-          <div class="badge"><span class="legend-swatch legend-swatch-4plus"></span> 4+ days</div>
-          <div class="badge"><span class="legend-swatch legend-swatch-7plus"></span> 7+ days</div>
-          <div class="badge"><span class="legend-swatch legend-swatch-10plus"></span> 10–13 days</div>
-          <div class="badge"><span class="legend-swatch legend-swatch-14plus"></span> 14+ days (needs cleaning)</div>
-          <div class="badge"><span class="legend-swatch legend-swatch-never"></span> Never cleaned</div>
-          <div class="badge"><span class="legend-swatch legend-swatch-module"></span> EB Module</div>
+        <!-- Adjustable gradient legend -->
+        <div class="heatmap-legend-panel mb-16" id="age-legend-panel">
+          <div class="heatmap-legend-bar-wrap">
+            <div id="age-gradient-bar" class="heatmap-legend-gradient-bar"></div>
+            <div id="age-legend-ticks" class="heatmap-legend-ticks"></div>
+          </div>
+          <div class="legend">
+            <div class="badge"><span class="legend-swatch legend-swatch-never"></span> Never cleaned</div>
+            <div class="badge"><span class="legend-swatch legend-swatch-module"></span> EB Module</div>
+          </div>
+          <div class="heatmap-legend-breakpoints">
+            <span class="heatmap-legend-break-label">Thresholds (days):</span>
+            <div class="heatmap-legend-break-inputs">
+              <input type="number" id="age-break-0" class="heatmap-legend-break-input" min="1" max="99" title="First color transition">
+              <input type="number" id="age-break-1" class="heatmap-legend-break-input" min="1" max="99" title="Second color transition">
+              <input type="number" id="age-break-2" class="heatmap-legend-break-input" min="1" max="99" title="Third color transition">
+              <input type="number" id="age-break-3" class="heatmap-legend-break-input" min="1" max="99" title="Red zone start">
+            </div>
+          </div>
         </div>
 
         <div id="heatmap-container" class="hm-grid-container"></div>
@@ -305,6 +315,46 @@
       <div id="pdf-status" class="status"></div>
 
     </main>
+  </div>
+
+  <!-- PDF Events Log Inclusion Modal -->
+  <div id="pdf-events-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="pdf-events-modal-title">
+    <div id="pdf-events-modal-overlay" class="modal-overlay" aria-hidden="true"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="pdf-events-modal-title">🧾 PDF Options</h3>
+        <button class="modal-close" id="btn-pdf-events-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning">
+          <div class="alert-icon">🧾</div>
+          <div>
+            Include the cleaning events log (“All Events”) in the PDF report?
+          </div>
+        </div>
+
+        <div class="grid grid-2 mt-12">
+          <label>
+            <input type="checkbox" id="pdf-include-noise">
+            Include noise heatmap
+          </label>
+
+          <label id="pdf-noise-upload-label">
+            Noise upload
+            <select id="pdf-noise-upload-selector" disabled>
+              <option value="">Latest noise upload</option>
+            </select>
+          </label>
+        </div>
+        <div class="subheader" id="pdf-noise-upload-hint">
+          Optional: pick a previous noise CSV batch. If empty, the latest batch is used.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btn-pdf-events-skip">Skip Events Log</button>
+        <button class="btn btn-primary" id="btn-pdf-events-include">Include Events Log</button>
+      </div>
+    </div>
   </div>
 
   <!-- Confirmation Modal -->

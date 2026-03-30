@@ -49,7 +49,7 @@ function populateProjectFilter() {
 }
 
 function setupStatsEventListeners() {
-  safeGet("btn-apply-filter")?.addEventListener("click", refreshStatsFiltered);
+  safeGet("btn-apply-filter")?.addEventListener("click", () => refreshStatsFiltered());
   safeGet("btn-reset-filter")?.addEventListener("click", resetFilter);
 
   safeGet("stats-project-filter")?.addEventListener("change", async (e) => {

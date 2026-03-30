@@ -57,6 +57,14 @@ import {
   resetFilter,
   renderStreamerCards,
 } from "./js/stats.js";
+import {
+  loadHeatmapLegendPrefs,
+  saveHeatmapLegendPrefs,
+  validateAgeBreaks,
+  paintScrapingAgeCells,
+  scrapingAgeLegendGradient,
+  renderAgeTicks,
+} from "./js/heatmap-legend.js";
 
 const sectionCount = StreamerUtils.sectionCount;
 const eventDistance = StreamerUtils.eventDistance;
@@ -1282,6 +1290,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
         }
         const bucket = ageBucket(days);
         cell.dataset.age = bucket;
+        cell.dataset.scrapingDays = days !== null ? String(days) : "";
 
         // Accessible label so screen readers and keyboard users are not
         // reliant on color alone to understand cleaning age.
@@ -1330,6 +1339,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
           bucket = ageBucket(days);
         }
         tailCell.dataset.age = bucket;
+        tailCell.dataset.scrapingDays = days !== null ? String(days) : "";
 
         const tailAgeText = days === null
           ? 'never cleaned'
@@ -1363,6 +1373,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
     attachDragListeners();
     attachTooltipListeners();
     attachStreamerHeaderTooltips(wrapper, lastCleaned, deployments);
+    paintScrapingAgeCells(container, loadHeatmapLegendPrefs());
   } catch (err) {
     console.error(err);
     showErrorToast("Heatmap Error", "Failed to render the heatmap. Please try refreshing.");
@@ -2158,6 +2169,55 @@ function setupProjectCollapse() {
   }
 }
 
+/* ------------ Age legend controls ------------ */
+
+/**
+ * Populate the age gradient bar and threshold inputs from prefs, and register
+ * input listeners so heatmap cells repaint immediately when the user adjusts
+ * any breakpoint without requiring a data re-fetch.
+ */
+function initAgeLegendControls() {
+  const prefs = loadHeatmapLegendPrefs();
+
+  const barEl = safeGet("age-gradient-bar");
+  const ticksEl = safeGet("age-legend-ticks");
+
+  if (barEl) barEl.style.background = scrapingAgeLegendGradient(prefs);
+  if (ticksEl) renderAgeTicks(ticksEl, prefs);
+
+  prefs.ageBreaks.forEach((val, i) => {
+    const input = safeGet(`age-break-${i}`);
+    if (input) input.value = val;
+  });
+
+  function onBreakInput() {
+    const vals = [0, 1, 2, 3].map((i) => {
+      const el = safeGet(`age-break-${i}`);
+      return el && el.value !== "" ? Number(el.value) : NaN;
+    });
+    const valid = validateAgeBreaks(vals);
+    if (!valid) return;
+
+    valid.forEach((v, i) => {
+      const el = safeGet(`age-break-${i}`);
+      if (el && Number(el.value) !== v) el.value = v;
+    });
+
+    saveHeatmapLegendPrefs({ ageBreaks: valid });
+    const newPrefs = loadHeatmapLegendPrefs();
+
+    if (barEl) barEl.style.background = scrapingAgeLegendGradient(newPrefs);
+    if (ticksEl) renderAgeTicks(ticksEl, newPrefs);
+
+    const container = safeGet("heatmap-container");
+    if (container) paintScrapingAgeCells(container, newPrefs);
+  }
+
+  for (let i = 0; i < 4; i++) {
+    safeGet(`age-break-${i}`)?.addEventListener("input", onBreakInput);
+  }
+}
+
 /* ------------ Init ------------ */
 
 function showAppLoadingOverlay() {
@@ -2272,6 +2332,13 @@ async function initApp() {
   }
 }
 
+/**
+ * initAppContent runs on every successful showApp() (initial session or each login).
+ * These helpers use addEventListener; without a guard, listeners stack and one user
+ * action (e.g. CSV change) runs multiple times.
+ */
+let dashboardDomListenersBound = false;
+
 async function initAppContent() {
   // Read ?project= from the URL immediately — before any history.replaceState call
   // (setupSidebarNavigation does a replaceState on init). Capturing it here ensures
@@ -2320,10 +2387,14 @@ async function initAppContent() {
   if (evtDate) evtDate.value = dateStr;
   if (evtTime) evtTime.value = timeStr;
 
-  initModals();
-  setupEventListeners();
-  setupSidebarNavigation();
-  setupProjectCollapse();
+  if (!dashboardDomListenersBound) {
+    dashboardDomListenersBound = true;
+    initModals();
+    setupEventListeners();
+    setupSidebarNavigation();
+    setupProjectCollapse();
+    initAgeLegendControls();
+  }
 
   // Update UI based on role after everything is loaded
   updateUIForRole();

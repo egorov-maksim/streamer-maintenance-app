@@ -53,9 +53,29 @@ export async function apiCall(url, options = {}) {
     throw new Error("Forbidden");
   }
 
-  const data = await res.json();
+  const text = await res.text();
+  let data;
+  let parseFailed = false;
+  if (text.length > 0) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      parseFailed = true;
+    }
+  }
   if (!res.ok) {
-    throw new Error(data.error || `Request failed: ${res.status}`);
+    const msg =
+      !parseFailed &&
+      data !== undefined &&
+      typeof data === "object" &&
+      data !== null &&
+      typeof data.error === "string"
+        ? data.error
+        : `Request failed: ${res.status}`;
+    throw new Error(msg);
+  }
+  if (parseFailed) {
+    throw new Error("Invalid JSON from server");
   }
   return data;
 }

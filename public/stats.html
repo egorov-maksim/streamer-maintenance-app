@@ -169,6 +169,46 @@
 
   </div>
 
+  <!-- PDF Events Log Inclusion Modal -->
+  <div id="pdf-events-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="pdf-events-modal-title">
+    <div id="pdf-events-modal-overlay" class="modal-overlay" aria-hidden="true"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="pdf-events-modal-title">🧾 PDF Options</h3>
+        <button class="modal-close" id="btn-pdf-events-close">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning">
+          <div class="alert-icon">🧾</div>
+          <div>
+            Include the cleaning events log (“All Events”) in the PDF report?
+          </div>
+        </div>
+
+        <div class="grid grid-2 mt-12">
+          <label>
+            <input type="checkbox" id="pdf-include-noise">
+            Include noise heatmap
+          </label>
+
+          <label>
+            Noise upload
+            <select id="pdf-noise-upload-selector" disabled>
+              <option value="">Latest noise upload</option>
+            </select>
+          </label>
+        </div>
+        <div class="subheader" id="pdf-noise-upload-hint">
+          Optional: pick a previous noise CSV batch. If empty, the latest batch is used.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btn-pdf-events-skip">Skip Events Log</button>
+        <button class="btn btn-primary" id="btn-pdf-events-include">Include Events Log</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification Container -->
   <div id="toast-container" class="toast-container"></div>
 
