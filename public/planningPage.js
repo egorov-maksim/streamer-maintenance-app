@@ -902,12 +902,10 @@ function initLegendControls() {
   // --- Noise legend bar + inputs ---
   const noiseBarEl  = safeGet("noise-gradient-bar");
   const noiseTickEl = safeGet("noise-legend-ticks");
-  const pivotLabelEl = safeGet("noise-legend-pivot-label");
 
   function updateNoiseLegendBar(p) {
-    if (noiseBarEl)   noiseBarEl.style.background = noiseLegendGradient(p);
-    if (noiseTickEl)  renderNoiseTicks(noiseTickEl, p);
-    if (pivotLabelEl) pivotLabelEl.textContent = `Threshold (${p.noiseCleanPivot})`;
+    if (noiseBarEl)  noiseBarEl.style.background = noiseLegendGradient(p);
+    if (noiseTickEl) renderNoiseTicks(noiseTickEl, p);
   }
 
   updateNoiseLegendBar(prefs);

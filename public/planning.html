@@ -174,18 +174,13 @@
           </div>
 
           <!-- Noise-mode legend (hidden by default): JS-driven gradient + editable thresholds -->
-          <div class="noise-legend mb-16 hidden" id="noise-legend">
+          <div class="heatmap-legend-panel mb-16 hidden" id="noise-legend">
             <div class="heatmap-legend-bar-wrap">
               <div class="noise-legend-bar" id="noise-gradient-bar"></div>
               <div class="heatmap-legend-ticks" id="noise-legend-ticks"></div>
             </div>
-            <div class="noise-legend-labels">
-              <span>Clean</span>
-              <span id="noise-legend-pivot-label">Threshold</span>
-              <span>Noisy</span>
-            </div>
             <div class="legend">
-              <div class="badge mt-8"><span class="legend-swatch" style="background:#9ca3af"></span> No data / not deployed</div>
+              <div class="badge"><span class="legend-swatch" style="background:#9ca3af"></span> No RMS data available</div>
             </div>
             <div class="heatmap-legend-breakpoints">
               <span class="heatmap-legend-break-label">Clean pivot (RMS):</span>

@@ -2786,19 +2786,14 @@ table.has-noise-data .noise-col {
   white-space: nowrap;
 }
 
-/* Noise gradient legend */
-.noise-legend {
-  margin-bottom: 8px;
-}
-
+/* Noise gradient bar (inside .heatmap-legend-bar-wrap — same vertical rhythm as age bar) */
 .noise-legend-bar {
   position: relative;
   height: 18px;
-  border-radius: 6px;
+  border-radius: 8px;
+  width: 100%;
   /* Background is set by JS via noiseLegendGradient(); gray fallback until loaded */
   background: #e5e7eb;
-  margin-bottom: 4px;
-  max-width: 480px;
 }
 
 .noise-legend-tick {
@@ -2808,15 +2803,6 @@ table.has-noise-data .noise-col {
   font-size: 11px;
   color: var(--muted, #6b7280);
   white-space: nowrap;
-}
-
-.noise-legend-labels {
-  display: flex;
-  justify-content: space-between;
-  max-width: 480px;
-  font-size: 11px;
-  color: var(--muted, #6b7280);
-  margin-top: 28px;
 }
 
 /* =========================
