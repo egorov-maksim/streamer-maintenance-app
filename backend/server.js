@@ -60,7 +60,8 @@ app.use(
   })
 );
 
-app.use(express.json());
+// Bulk CSV import sends JSON much larger than the raw file (default limit is 100kb).
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "10mb" }));
 // serve frontend
 app.use(express.static(path.join(__dirname, "..", "public")));
 

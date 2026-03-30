@@ -2332,6 +2332,13 @@ async function initApp() {
   }
 }
 
+/**
+ * initAppContent runs on every successful showApp() (initial session or each login).
+ * These helpers use addEventListener; without a guard, listeners stack and one user
+ * action (e.g. CSV change) runs multiple times.
+ */
+let dashboardDomListenersBound = false;
+
 async function initAppContent() {
   // Read ?project= from the URL immediately — before any history.replaceState call
   // (setupSidebarNavigation does a replaceState on init). Capturing it here ensures
@@ -2380,11 +2387,14 @@ async function initAppContent() {
   if (evtDate) evtDate.value = dateStr;
   if (evtTime) evtTime.value = timeStr;
 
-  initModals();
-  setupEventListeners();
-  setupSidebarNavigation();
-  setupProjectCollapse();
-  initAgeLegendControls();
+  if (!dashboardDomListenersBound) {
+    dashboardDomListenersBound = true;
+    initModals();
+    setupEventListeners();
+    setupSidebarNavigation();
+    setupProjectCollapse();
+    initAgeLegendControls();
+  }
 
   // Update UI based on role after everything is loaded
   updateUIForRole();
