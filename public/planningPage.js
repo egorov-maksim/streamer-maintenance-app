@@ -187,6 +187,15 @@ function enableNoiseToggle(hasData) {
     : "Upload a noise CSV to enable this overlay";
 }
 
+function updatePlanningHeatmapCardTitle() {
+  const el = safeGet("planning-heatmap-card-title");
+  if (!el) return;
+  el.textContent =
+    isNoiseToggleOn() && noiseData
+      ? "📋 Average RMS per section"
+      : "📋 Days Since Last Scraping";
+}
+
 /* ------------ Tooltip ------------ */
 
 let tooltipEl = null;
@@ -691,6 +700,7 @@ async function renderPlanningHeatmap() {
       applyNoiseOverlay(container, noiseData);
     }
 
+    updatePlanningHeatmapCardTitle();
   } catch (err) {
     console.error("renderPlanningHeatmap failed:", err);
     showErrorToast(err.message || "Failed to load planning heat map");
@@ -809,6 +819,8 @@ function initNoiseControls() {
       ageLegend?.classList.remove("hidden");
       noiseLegend?.classList.add("hidden");
     }
+
+    updatePlanningHeatmapCardTitle();
   });
 
   // Upload selector handler — load chosen batch and re-render
