@@ -152,32 +152,47 @@
             </div>
           </div>
 
-          <!-- Age-mode legend (default) -->
-          <div class="legend mb-16" id="age-legend">
-            <div class="badge"><span class="legend-swatch legend-swatch-fresh"></span> 0–3 days (fresh)</div>
-            <div class="badge"><span class="legend-swatch legend-swatch-4plus"></span> 4–6 days</div>
-            <div class="badge"><span class="legend-swatch legend-swatch-7plus"></span> 7–9 days</div>
-            <div class="badge"><span class="legend-swatch legend-swatch-10plus"></span> 10–13 days</div>
-            <div class="badge"><span class="legend-swatch legend-swatch-14plus"></span> 14+ days (needs cleaning)</div>
-            <div class="badge"><span class="legend-swatch legend-swatch-never"></span> Never cleaned</div>
-            <div class="badge"><span class="legend-swatch legend-swatch-module"></span> EB Module</div>
+          <!-- Age-mode legend (default): gradient bar + editable breakpoints -->
+          <div class="heatmap-legend-panel mb-16" id="age-legend">
+            <div class="heatmap-legend-bar-wrap">
+              <div id="age-gradient-bar" class="heatmap-legend-gradient-bar"></div>
+              <div id="age-legend-ticks" class="heatmap-legend-ticks"></div>
+            </div>
+            <div class="legend">
+              <div class="badge"><span class="legend-swatch legend-swatch-never"></span> Never cleaned</div>
+              <div class="badge"><span class="legend-swatch legend-swatch-module"></span> EB Module</div>
+            </div>
+            <div class="heatmap-legend-breakpoints">
+              <span class="heatmap-legend-break-label">Thresholds (days):</span>
+              <div class="heatmap-legend-break-inputs">
+                <input type="number" id="age-break-0" class="heatmap-legend-break-input" min="1" max="99" title="First color transition">
+                <input type="number" id="age-break-1" class="heatmap-legend-break-input" min="1" max="99" title="Second color transition">
+                <input type="number" id="age-break-2" class="heatmap-legend-break-input" min="1" max="99" title="Third color transition">
+                <input type="number" id="age-break-3" class="heatmap-legend-break-input" min="1" max="99" title="Red zone start">
+              </div>
+            </div>
           </div>
 
-          <!-- Noise-mode legend (hidden by default) -->
+          <!-- Noise-mode legend (hidden by default): JS-driven gradient + editable thresholds -->
           <div class="noise-legend mb-16 hidden" id="noise-legend">
-            <div class="noise-legend-bar">
-              <span class="noise-legend-tick" style="left:0%">0</span>
-              <span class="noise-legend-tick" style="left:25%">5</span>
-              <span class="noise-legend-tick" style="left:50%">10</span>
-              <span class="noise-legend-tick" style="left:75%">15</span>
-              <span class="noise-legend-tick" style="left:100%">20+</span>
+            <div class="heatmap-legend-bar-wrap">
+              <div class="noise-legend-bar" id="noise-gradient-bar"></div>
+              <div class="heatmap-legend-ticks" id="noise-legend-ticks"></div>
             </div>
             <div class="noise-legend-labels">
               <span>Clean</span>
-              <span style="text-align:center">Threshold (10)</span>
-              <span style="text-align:right">Noisy</span>
+              <span id="noise-legend-pivot-label">Threshold</span>
+              <span>Noisy</span>
             </div>
-            <div class="badge mt-8"><span class="legend-swatch" style="background:#9ca3af"></span> No data / not deployed</div>
+            <div class="legend">
+              <div class="badge mt-8"><span class="legend-swatch" style="background:#9ca3af"></span> No data / not deployed</div>
+            </div>
+            <div class="heatmap-legend-breakpoints">
+              <span class="heatmap-legend-break-label">Clean pivot (RMS):</span>
+              <input type="number" id="noise-clean-pivot" class="heatmap-legend-break-input" min="0.5" max="50" step="0.5" title="RMS value for clean/noisy colour transition">
+              <span class="heatmap-legend-break-label">Max (RMS):</span>
+              <input type="number" id="noise-max" class="heatmap-legend-break-input" min="1" max="100" step="1" title="RMS value mapped to deepest red">
+            </div>
           </div>
 
           <div id="planning-heatmap-container" class="hm-grid-container"></div>

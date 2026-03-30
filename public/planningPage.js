@@ -33,6 +33,18 @@ import {
   getConfigForProject,
 } from "./js/streamer-utils.js";
 import { validateNoiseCsv } from "./js/noise-validation.js";
+import {
+  loadHeatmapLegendPrefs,
+  saveHeatmapLegendPrefs,
+  validateAgeBreaks,
+  rmsToColor,
+  rmsTextColor,
+  paintScrapingAgeCells,
+  scrapingAgeLegendGradient,
+  noiseLegendGradient,
+  renderAgeTicks,
+  renderNoiseTicks,
+} from "./js/heatmap-legend.js";
 
 /* ------------ Noise utilities ------------ */
 
@@ -73,56 +85,21 @@ function parseNoiseCsv(text) {
 }
 
 /**
- * Convert an RMS value to a background colour using a two-segment gradient:
- *   0 → dark blue (#1e3a8a), 5 → white (#ffffff), 20+ → deep red (#dc2626)
- * Returns null for zero/missing values (no data).
- * @param {number} rms
- * @returns {string|null}
- */
-function rmsToColor(rms) {
-  if (!rms || rms <= 0) return null;
-  const val = Math.min(rms, 20);
-  if (val <= 5) {
-    const t = val / 5;
-    const r = Math.round(30 + t * (255 - 30));
-    const g = Math.round(58 + t * (255 - 58));
-    const b = Math.round(138 + t * (255 - 138));
-    return `rgb(${r},${g},${b})`;
-  }
-  const t = (val - 5) / 15;
-  const r = Math.round(255 + t * (220 - 255));
-  const g = Math.round(255 + t * (38 - 255));
-  const b = Math.round(255 + t * (38 - 255));
-  return `rgb(${r},${g},${b})`;
-}
-
-/**
- * Pick a readable text colour for a given RMS value.
- * @param {number} rms
- * @returns {string}
- */
-function rmsTextColor(rms) {
-  if (!rms || rms <= 0) return "#6b7280";
-  if (rms <= 2.5) return "#ffffff"; // dark blue bg
-  if (rms <= 8) return "#1a1a1a";   // near-white / light-orange bg
-  return "#ffffff";                   // orange-red bg
-}
-
-/**
  * Apply noise-overlay colours and RMS text to all active section cells.
  * @param {HTMLElement} container
  * @param {{ [cableNum: string]: number[] }} nd - noiseData from state
  */
 function applyNoiseOverlay(container, nd) {
+  const prefs = loadHeatmapLegendPrefs();
   const cells = container.querySelectorAll(".hm-vcell.hm-active-section.hm-planning-cell");
   cells.forEach(cell => {
     const streamerId = cell.dataset.streamer;
     const sectionIndex = parseInt(cell.dataset.section, 10);
     const rms = nd?.[streamerId]?.[sectionIndex] ?? 0;
-    const bg = rmsToColor(rms);
+    const bg = rmsToColor(rms, prefs);
     if (bg) {
       cell.style.backgroundColor = bg;
-      cell.style.color = rmsTextColor(rms);
+      cell.style.color = rmsTextColor(rms, prefs);
       cell.style.borderColor = bg;
       cell.textContent = rms.toFixed(1);
     } else {
@@ -136,16 +113,16 @@ function applyNoiseOverlay(container, nd) {
 
 /**
  * Remove noise overlay and restore age-mode colours and days text.
+ * Re-applies the continuous scraping-age gradient so the heatmap immediately
+ * reflects any breakpoint changes made while the noise overlay was active.
  * @param {HTMLElement} container
  */
 function removeNoiseOverlay(container) {
   const cells = container.querySelectorAll(".hm-vcell.hm-active-section.hm-planning-cell");
   cells.forEach(cell => {
-    cell.style.backgroundColor = "";
-    cell.style.color = "";
-    cell.style.borderColor = "";
     cell.textContent = cell.dataset.daysText ?? "—";
   });
+  paintScrapingAgeCells(container, loadHeatmapLegendPrefs());
 }
 
 /* ------------ Noise UI helpers ------------ */
@@ -528,8 +505,9 @@ function renderCleaningSuggestions(suggestions) {
 
 function buildNoiseBadgeHtml(avgNoise, isTail) {
   if (isTail || avgNoise === null) return '<span style="color:var(--muted)">—</span>';
-  const bg = rmsToColor(avgNoise) || "#e5e7eb";
-  const color = rmsTextColor(avgNoise);
+  const prefs = loadHeatmapLegendPrefs();
+  const bg = rmsToColor(avgNoise, prefs) || "#e5e7eb";
+  const color = rmsTextColor(avgNoise, prefs);
   return `<span class="noise-rms-badge" style="background:${bg};color:${color}">${avgNoise.toFixed(1)}</span>`;
 }
 
@@ -695,9 +673,11 @@ async function renderPlanningHeatmap() {
     container.appendChild(wrapper);
     attachSectionTooltips(container, lastCleaned);
 
-    // Re-apply noise overlay if the toggle is currently active
     if (isNoiseToggleOn() && noiseData) {
       applyNoiseOverlay(container, noiseData);
+    } else {
+      // Apply continuous age gradient whenever noise overlay is not active
+      paintScrapingAgeCells(container, loadHeatmapLegendPrefs());
     }
 
     updatePlanningHeatmapCardTitle();
@@ -869,6 +849,96 @@ function initNoiseControls() {
   });
 }
 
+/* ------------ Legend controls (age + noise thresholds) ------------ */
+
+/**
+ * Populate both legend bars and threshold inputs from persisted prefs, and register
+ * input event listeners for immediate heatmap repaint and noise-overlay refresh.
+ * Called once on page init so event listeners are attached before data loads.
+ */
+function initLegendControls() {
+  const prefs = loadHeatmapLegendPrefs();
+
+  // --- Age legend bar + inputs ---
+  const ageBarEl  = safeGet("age-gradient-bar");
+  const ageTickEl = safeGet("age-legend-ticks");
+  if (ageBarEl)  ageBarEl.style.background = scrapingAgeLegendGradient(prefs);
+  if (ageTickEl) renderAgeTicks(ageTickEl, prefs);
+
+  prefs.ageBreaks.forEach((val, i) => {
+    const input = safeGet(`age-break-${i}`);
+    if (input) input.value = val;
+  });
+
+  function onAgeBreakInput() {
+    const vals = [0, 1, 2, 3].map((i) => {
+      const el = safeGet(`age-break-${i}`);
+      return el && el.value !== "" ? Number(el.value) : NaN;
+    });
+    const valid = validateAgeBreaks(vals);
+    if (!valid) return;
+
+    valid.forEach((v, i) => {
+      const el = safeGet(`age-break-${i}`);
+      if (el && Number(el.value) !== v) el.value = v;
+    });
+
+    saveHeatmapLegendPrefs({ ageBreaks: valid });
+    const newPrefs = loadHeatmapLegendPrefs();
+
+    if (ageBarEl)  ageBarEl.style.background = scrapingAgeLegendGradient(newPrefs);
+    if (ageTickEl) renderAgeTicks(ageTickEl, newPrefs);
+
+    const container = safeGet("planning-heatmap-container");
+    if (container && !isNoiseToggleOn()) {
+      paintScrapingAgeCells(container, newPrefs);
+    }
+  }
+
+  for (let i = 0; i < 4; i++) {
+    safeGet(`age-break-${i}`)?.addEventListener("input", onAgeBreakInput);
+  }
+
+  // --- Noise legend bar + inputs ---
+  const noiseBarEl  = safeGet("noise-gradient-bar");
+  const noiseTickEl = safeGet("noise-legend-ticks");
+  const pivotLabelEl = safeGet("noise-legend-pivot-label");
+
+  function updateNoiseLegendBar(p) {
+    if (noiseBarEl)   noiseBarEl.style.background = noiseLegendGradient(p);
+    if (noiseTickEl)  renderNoiseTicks(noiseTickEl, p);
+    if (pivotLabelEl) pivotLabelEl.textContent = `Threshold (${p.noiseCleanPivot})`;
+  }
+
+  updateNoiseLegendBar(prefs);
+
+  const pivotInput = safeGet("noise-clean-pivot");
+  const maxInput   = safeGet("noise-max");
+  if (pivotInput) pivotInput.value = prefs.noiseCleanPivot;
+  if (maxInput)   maxInput.value   = prefs.noisyMax;
+
+  function onNoiseInput() {
+    const pivotVal = pivotInput && pivotInput.value !== "" ? Number(pivotInput.value) : NaN;
+    const maxVal   = maxInput   && maxInput.value   !== "" ? Number(maxInput.value)   : NaN;
+
+    if (!isFinite(pivotVal) || !isFinite(maxVal)) return;
+    if (pivotVal <= 0 || maxVal <= pivotVal) return;
+
+    saveHeatmapLegendPrefs({ noiseCleanPivot: pivotVal, noisyMax: maxVal });
+    const newPrefs = loadHeatmapLegendPrefs();
+
+    updateNoiseLegendBar(newPrefs);
+
+    const container = safeGet("planning-heatmap-container");
+    if (container && isNoiseToggleOn() && noiseData) {
+      applyNoiseOverlay(container, noiseData);
+    }
+  }
+
+  pivotInput?.addEventListener("input", onNoiseInput);
+  maxInput?.addEventListener("input", onNoiseInput);
+}
+
 /* ------------ Active project display ------------ */
 
 function showActiveProject() {
@@ -901,7 +971,8 @@ async function initPlanningApp() {
   }
 
   showActiveProject();
-  initNoiseControls(); // registers event listeners only (no async data loading)
+  initLegendControls(); // populates gradient bars and attaches threshold input listeners
+  initNoiseControls();  // registers noise toggle/upload event listeners
   initSuggestionsSortHandlers();
 
   // Initial data load — refreshNoiseForProject calls renderPlanningHeatmap internally
