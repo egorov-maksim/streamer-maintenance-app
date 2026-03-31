@@ -162,6 +162,8 @@ function enableNoiseToggle(hasData) {
   if (label) label.title = hasData
     ? "Switch heatmap to RMS noise coloring"
     : "Upload a noise CSV to enable this overlay";
+  // Keep the sidebar noise shortcut visually in sync with disabled/enabled state
+  syncNoiseNavItem();
 }
 
 function updatePlanningHeatmapCardTitle() {
@@ -954,6 +956,125 @@ function showActiveProject() {
   }
 }
 
+/* ------------ Sidebar navigation ------------ */
+
+// Mirrors the interaction pattern from app.js (scroll + active state +
+// mobile drawer) but without route/history manipulation. The noise nav
+// item is a special action item — it proxies #noise-toggle so all overlay
+// validation, legend swapping, and title updates remain in initNoiseControls().
+
+const PLANNING_DEFAULT_SECTION = 'planning-active-project-section';
+
+function activatePlanningNavSection(sectionId, smooth = true) {
+  const target = document.getElementById(sectionId);
+  if (!target) return;
+
+  target.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant', block: 'start' });
+
+  document.querySelectorAll('.nav-item[data-target]').forEach(i => i.classList.remove('active'));
+  const navItem = document.querySelector(`.nav-item[data-target="${sectionId}"]`);
+  if (navItem) navItem.classList.add('active');
+}
+
+function closePlanningMobileNav() {
+  document.body.classList.remove('nav-open');
+  const toggle = document.getElementById('nav-toggle');
+  if (toggle) toggle.setAttribute('aria-expanded', 'false');
+}
+
+function syncNoiseNavItem() {
+  const noiseCheckbox = document.getElementById('noise-toggle');
+  const noiseNavItem = document.getElementById('nav-noise-toggle');
+  if (!noiseNavItem || !noiseCheckbox) return;
+
+  const isOn = noiseCheckbox.checked;
+  const isDisabled = noiseCheckbox.disabled;
+
+  noiseNavItem.classList.toggle('active', isOn);
+  noiseNavItem.setAttribute('aria-pressed', String(isOn));
+  noiseNavItem.style.opacity = isDisabled ? '0.4' : '';
+  noiseNavItem.style.cursor = isDisabled ? 'not-allowed' : '';
+}
+
+function setupPlanningNavigation() {
+  const hamburger = document.getElementById('nav-toggle');
+  if (hamburger) {
+    hamburger.addEventListener('click', () => {
+      const isOpen = document.body.classList.toggle('nav-open');
+      hamburger.setAttribute('aria-expanded', String(isOpen));
+    });
+  }
+
+  // Close mobile sidebar when tapping the backdrop
+  document.addEventListener('click', (e) => {
+    if (
+      document.body.classList.contains('nav-open') &&
+      !e.target.closest('.sidebar-nav') &&
+      !e.target.closest('#nav-toggle')
+    ) {
+      closePlanningMobileNav();
+    }
+  });
+
+  // Scroll-anchored nav items
+  document.querySelectorAll('.nav-item[data-target]').forEach(item => {
+    const activate = () => {
+      activatePlanningNavSection(item.dataset.target);
+      closePlanningMobileNav();
+    };
+    item.addEventListener('click', activate);
+    item.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
+    });
+  });
+
+  // Noise toggle action item — proxies the existing #noise-toggle checkbox
+  const noiseNavItem = document.getElementById('nav-noise-toggle');
+  if (noiseNavItem) {
+    const triggerNoiseToggle = () => {
+      const checkbox = document.getElementById('noise-toggle');
+      if (!checkbox || checkbox.disabled) return;
+      checkbox.checked = !checkbox.checked;
+      checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+      closePlanningMobileNav();
+    };
+    noiseNavItem.addEventListener('click', triggerNoiseToggle);
+    noiseNavItem.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); triggerNoiseToggle(); }
+    });
+
+    // Keep the noise nav item visual state in sync whenever the checkbox changes
+    const noiseCheckbox = document.getElementById('noise-toggle');
+    noiseCheckbox?.addEventListener('change', syncNoiseNavItem);
+  }
+
+  // Keep scroll-anchored items in sync as the user scrolls
+  const sectionIds = Array.from(document.querySelectorAll('.nav-item[data-target]'))
+    .map(i => i.dataset.target)
+    .filter(Boolean);
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          document.querySelectorAll('.nav-item[data-target]').forEach(i => i.classList.remove('active'));
+          const navItem = document.querySelector(`.nav-item[data-target="${entry.target.id}"]`);
+          if (navItem) navItem.classList.add('active');
+        }
+      }
+    },
+    { threshold: 0.25 }
+  );
+
+  sectionIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) observer.observe(el);
+  });
+
+  activatePlanningNavSection(PLANNING_DEFAULT_SECTION, false);
+  syncNoiseNavItem();
+}
+
 /* ------------ Bootstrap ------------ */
 
 async function initPlanningApp() {
@@ -972,6 +1093,7 @@ async function initPlanningApp() {
   initLegendControls(); // populates gradient bars and attaches threshold input listeners
   initNoiseControls();  // registers noise toggle/upload event listeners
   initSuggestionsSortHandlers();
+  setupPlanningNavigation(); // left-rail sidebar nav (must run after initNoiseControls)
 
   // Initial data load — refreshNoiseForProject calls renderPlanningHeatmap internally
   await refreshNoiseForProject(selectedProjectFilter);
