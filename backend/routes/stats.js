@@ -7,6 +7,12 @@ const { toInt } = require("../utils/validation");
 const { sendError } = require("../utils/errors");
 const { buildEventsWhereClause } = require("../utils/queryHelpers");
 const { calculateEBRange } = require("../utils/eb");
+const {
+  expandEventsToSectionKeys,
+  buildNoiseMap,
+  computeNoiseEfficiency,
+  computeNoiseEfficiencyByRange,
+} = require("../utils/cleaningNoiseEfficiency");
 
 /**
  * Resolve config for stats/last-cleaned: when project is in query or default vessel has active project, use that project's sectionsPerCable and useRopeForTail.
@@ -295,6 +301,169 @@ function createStatsRouter(authMiddleware) {
     } catch (err) {
       console.error(err);
       sendError(res, 500, "Failed to get filtered stats");
+    }
+  });
+
+  /**
+   * GET /api/stats/cleaning-noise-efficiency
+   *
+   * Compares RMS noise between two noise uploads for sections that were
+   * cleaned in a given date window. Only active-type events contribute;
+   * tail events do not appear in noise CSVs and are excluded.
+   *
+   * Query params:
+   *   project        - required; project_number to scope events and uploads
+   *   uploadBeforeId - optional int; defaults to second-latest upload for the project
+   *   uploadAfterId  - optional int; defaults to latest upload for the project
+   *   start          - optional ISO date (YYYY-MM-DD); lower bound for cleaned_at
+   *   end            - optional ISO date (YYYY-MM-DD); upper bound for cleaned_at
+   */
+  router.get("/api/stats/cleaning-noise-efficiency", authMiddleware, async (req, res) => {
+    try {
+      const { project, start, end } = req.query;
+      const uploadBeforeId = toInt(req.query.uploadBeforeId, NaN);
+      const uploadAfterId = toInt(req.query.uploadAfterId, NaN);
+
+      if (!project) {
+        return sendError(res, 400, "project query param is required");
+      }
+
+      // Verify project exists and apply vessel scope
+      const projectRow = await getOneCamelized(
+        "SELECT project_number, vessel_tag FROM projects WHERE project_number = ?",
+        [project]
+      );
+      if (!projectRow) {
+        return sendError(res, 404, `Project ${project} not found`);
+      }
+      if (req.vesselScope && projectRow.vesselTag !== req.vesselScope) {
+        return sendError(res, 403, "Project does not belong to your vessel");
+      }
+
+      // Build scoped upload scope conditions
+      const uploadConditions = ["project_number = ?"];
+      const uploadScopeParams = [project];
+      if (req.vesselScope) {
+        uploadConditions.push("vessel_tag = ?");
+        uploadScopeParams.push(req.vesselScope);
+      }
+      const uploadScopeWhere = " WHERE " + uploadConditions.join(" AND ");
+
+      // Resolve the two upload rows, defaulting to latest and second-latest
+      let uploadBefore, uploadAfter;
+
+      if (!Number.isNaN(uploadBeforeId) && !Number.isNaN(uploadAfterId)) {
+        // Both supplied explicitly
+        [uploadBefore, uploadAfter] = await Promise.all([
+          getOneCamelized(
+            `SELECT id, uploaded_at, label FROM noise_uploads${uploadScopeWhere} AND id = ?`,
+            [...uploadScopeParams, uploadBeforeId]
+          ),
+          getOneCamelized(
+            `SELECT id, uploaded_at, label FROM noise_uploads${uploadScopeWhere} AND id = ?`,
+            [...uploadScopeParams, uploadAfterId]
+          ),
+        ]);
+        if (!uploadBefore) return sendError(res, 404, `Upload ${uploadBeforeId} not found for this project`);
+        if (!uploadAfter) return sendError(res, 404, `Upload ${uploadAfterId} not found for this project`);
+      } else {
+        // Default: latest two uploads
+        const latestTwo = await getAllCamelized(
+          `SELECT id, uploaded_at, label FROM noise_uploads${uploadScopeWhere} ORDER BY uploaded_at DESC LIMIT 2`,
+          uploadScopeParams
+        );
+        if (latestTwo.length < 2) {
+          return res.json({
+            status: "insufficient_uploads",
+            message: "At least 2 noise uploads are required to compare. Upload a second noise file first.",
+            cellsInEvents: 0,
+            cellsPaired: 0,
+            skippedMissing: 0,
+            meanImprovementPct: null,
+            medianImprovementPct: null,
+            improvedCount: 0,
+            improvedSharePct: null,
+            meanRmsBefore: null,
+            meanRmsAfter: null,
+            uploadBefore: latestTwo[1] ?? null,
+            uploadAfter: latestTwo[0] ?? null,
+          });
+        }
+        // latestTwo[0] = newest (after), latestTwo[1] = older (before)
+        uploadAfter = latestTwo[0];
+        uploadBefore = latestTwo[1];
+      }
+
+      // Fetch active cleaning events in the date window
+      const { sql: baseWhereSql, params: baseParams } = buildEventsWhereClause({
+        project,
+        start,
+        end,
+      });
+
+      let eventWhere = baseWhereSql;
+      const eventParams = [...baseParams];
+      if (req.vesselScope) {
+        eventWhere += eventWhere ? " AND vessel_tag = ?" : " WHERE vessel_tag = ?";
+        eventParams.push(req.vesselScope);
+      }
+
+      // Only active events — tail sections are absent from noise CSVs
+      const activeCondition = eventWhere ? " AND section_type = 'active'" : " WHERE section_type = 'active'";
+      const eventSql =
+        "SELECT id, streamer_id, section_index_start, section_index_end, section_type, cleaned_at, cleaning_method " +
+        "FROM cleaning_events" +
+        eventWhere +
+        activeCondition +
+        " ORDER BY datetime(cleaned_at) DESC";
+
+      const cleaningEvents = await getAllCamelized(eventSql, eventParams);
+
+      const sectionKeys = expandEventsToSectionKeys(cleaningEvents);
+
+      if (sectionKeys.size === 0) {
+        return res.json({
+          status: "no_events",
+          message: "No active cleaning events found in the selected date window.",
+          cellsInEvents: 0,
+          cellsPaired: 0,
+          skippedMissing: 0,
+          meanImprovementPct: null,
+          medianImprovementPct: null,
+          improvedCount: 0,
+          improvedSharePct: null,
+          meanRmsBefore: null,
+          meanRmsAfter: null,
+          uploadBefore: { id: uploadBefore.id, uploadedAt: uploadBefore.uploadedAt, label: uploadBefore.label },
+          uploadAfter: { id: uploadAfter.id, uploadedAt: uploadAfter.uploadedAt, label: uploadAfter.label },
+        });
+      }
+
+      // Fetch noise data for both uploads in one query, split in memory
+      const noiseRows = await getAllCamelized(
+        "SELECT upload_id, cable_number, section_number, rms_value FROM noise_data WHERE upload_id IN (?, ?)",
+        [uploadBefore.id, uploadAfter.id]
+      );
+
+      const rowsBefore = noiseRows.filter((r) => r.uploadId === uploadBefore.id);
+      const rowsAfter = noiseRows.filter((r) => r.uploadId === uploadAfter.id);
+
+      const noiseMapBefore = buildNoiseMap(rowsBefore);
+      const noiseMapAfter = buildNoiseMap(rowsAfter);
+
+      const kpi = computeNoiseEfficiency(sectionKeys, noiseMapBefore, noiseMapAfter);
+      const ranges = computeNoiseEfficiencyByRange(cleaningEvents, noiseMapBefore, noiseMapAfter);
+
+      res.json({
+        status: "ok",
+        ...kpi,
+        ranges,
+        uploadBefore: { id: uploadBefore.id, uploadedAt: uploadBefore.uploadedAt, label: uploadBefore.label },
+        uploadAfter: { id: uploadAfter.id, uploadedAt: uploadAfter.uploadedAt, label: uploadAfter.label },
+      });
+    } catch (err) {
+      console.error("GET /api/stats/cleaning-noise-efficiency failed", err);
+      sendError(res, 500, "Failed to compute cleaning noise efficiency");
     }
   });
 

@@ -3204,3 +3204,80 @@ table.has-noise-data .noise-col {
   font-size: 12px;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
+
+/* ── Cleaning Noise Efficiency KPI ───────────────────────────────────────── */
+
+.noise-efficiency-card {
+  margin-top: 24px;
+}
+
+.noise-efficiency-desc {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0 0 16px;
+  line-height: 1.6;
+}
+
+.noise-efficiency-notice {
+  margin-bottom: 0;
+}
+
+.noise-efficiency-grid {
+  margin-bottom: 16px;
+}
+
+.ne-kpis {
+  margin: 20px 0 12px;
+}
+
+.noise-efficiency-footnote {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+  padding: 8px 12px;
+  border-left: 3px solid var(--border);
+  margin-top: 4px;
+}
+
+.ne-breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+  font-size: 13px;
+}
+
+.ne-breakdown-table th {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 2px solid var(--border);
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ne-breakdown-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.ne-breakdown-table tr:last-child td {
+  border-bottom: none;
+}
+
+.ne-breakdown-improved {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.ne-breakdown-worsened {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.ne-breakdown-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin: 20px 0 4px;
+  color: var(--text);
+}

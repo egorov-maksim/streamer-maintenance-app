@@ -163,6 +163,83 @@
           <div id="method-breakdown" class="method-breakdown"></div>
         </section>
 
+        <!-- Cleaning Noise Efficiency KPI -->
+        <section id="noise-efficiency-section" class="card noise-efficiency-card">
+          <h2 class="card-title">🔊 Cleaning Noise Efficiency</h2>
+          <p class="noise-efficiency-desc">
+            Compares RMS noise on sections that were actively cleaned within the chosen window.
+            Select two noise uploads — the earlier one as <strong>Before</strong>, the later as
+            <strong>After</strong> — then pick how many days of cleaning history to include.
+            Only active-cable sections appear in noise files; tail sections are excluded.
+          </p>
+
+          <div id="noise-efficiency-no-project" class="alert alert-warning noise-efficiency-notice">
+            <div class="alert-icon">⚠️</div>
+            <div>Select a single project above to enable this KPI.</div>
+          </div>
+
+          <div id="noise-efficiency-controls" class="hidden">
+            <div class="grid grid-3 noise-efficiency-grid">
+              <label>Before upload
+                <select id="ne-upload-before">
+                  <option value="">Loading…</option>
+                </select>
+              </label>
+              <label>After upload
+                <select id="ne-upload-after">
+                  <option value="">Loading…</option>
+                </select>
+              </label>
+              <label>Cleaning window
+                <select id="ne-window">
+                  <option value="1">Yesterday (1 day back)</option>
+                  <option value="2">Last 2 days</option>
+                  <option value="3" selected>Last 3 days</option>
+                  <option value="7">Last 7 days</option>
+                  <option value="30">Last 30 days</option>
+                  <option value="filter">Use stats filter dates</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="actions">
+              <button id="ne-calculate-btn" class="btn btn-primary">Calculate efficiency</button>
+            </div>
+
+            <div id="ne-results" class="hidden">
+              <div class="kpis ne-kpis">
+                <div class="kpi">
+                  <div class="kpi-title">Mean improvement</div>
+                  <div class="kpi-value" id="ne-mean">—</div>
+                  <div class="kpi-sub">Average RMS change across cleaned sections</div>
+                </div>
+                <div class="kpi">
+                  <div class="kpi-title">Median improvement</div>
+                  <div class="kpi-value" id="ne-median">—</div>
+                  <div class="kpi-sub">Half of sections improved more than this</div>
+                </div>
+                <div class="kpi">
+                  <div class="kpi-title">Sections improved</div>
+                  <div class="kpi-value" id="ne-improved-share">—</div>
+                  <div class="kpi-sub" id="ne-improved-count">— of — sections show lower noise</div>
+                </div>
+                <div class="kpi">
+                  <div class="kpi-title">Avg RMS before / after</div>
+                  <div class="kpi-value text-sm" id="ne-rms-pair">— / —</div>
+                  <div class="kpi-sub" id="ne-paired-count">— section-cells with paired data</div>
+                </div>
+              </div>
+              <div class="noise-efficiency-footnote" id="ne-footnote"></div>
+              <div id="ne-breakdown"></div>
+            </div>
+
+            <div id="ne-message" class="hidden alert alert-warning">
+              <div class="alert-icon">ℹ️</div>
+              <div id="ne-message-text"></div>
+            </div>
+          </div>
+        </section>
+
         <div class="actions mt-20">
           <button id="generatePdfBtn" class="btn btn-primary">
             📄 Generate PDF Report
