@@ -304,3 +304,20 @@ export async function uploadNoiseData(payload) {
     action: "upload noise data",
   });
 }
+
+// --- Cleaning noise efficiency KPI ---
+
+/**
+ * Fetch cleaning noise efficiency KPI comparing two noise upload snapshots
+ * for sections cleaned within the given date window.
+ *
+ * @param {{ project: string, uploadBeforeId?: number, uploadAfterId?: number, start?: string, end?: string }} opts
+ */
+export async function getCleaningNoiseEfficiency({ project, uploadBeforeId, uploadAfterId, start, end } = {}) {
+  const params = new URLSearchParams({ project });
+  if (uploadBeforeId != null) params.set("uploadBeforeId", uploadBeforeId);
+  if (uploadAfterId != null) params.set("uploadAfterId", uploadAfterId);
+  if (start) params.set("start", start);
+  if (end) params.set("end", end);
+  return apiCall(`api/stats/cleaning-noise-efficiency?${params}`);
+}
