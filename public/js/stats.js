@@ -6,12 +6,14 @@
  * filter-start, filter-end, kpi-coverage, kpi-coverage-sub, kpi-breakdown,
  * kpi-distance, kpi-distance-sub, kpi-events, kpi-events-sub, kpi-last,
  * kpi-last-sub, deploy-days-breakdown, method-breakdown, streamer-cards-container
+ * (daily-distance-chart exists only on /stats stats.html, not index.html)
  */
 
 import { config, events, projects, selectedProjectFilter } from "./state.js";
 import * as API from "./api.js";
 import { safeGet, showErrorToast } from "./ui.js";
 import { fmtKm } from "./streamer-utils.js";
+import { renderDailyDistanceChart } from "./daily-distance-chart.js";
 
 export async function renderStreamerCards(startDate = null, endDate = null, preloadedLastCleaned = null) {
   const container = safeGet("streamer-cards-container");
@@ -285,6 +287,7 @@ export async function refreshStatsFiltered(
     }
 
     await renderStreamerCards(startDate, endDate, preloadedLastCleaned);
+    renderDailyDistanceChart(startDate, endDate);
   } catch (err) {
     console.error("refreshStatsFiltered failed", err);
     showErrorToast("Stats Error", "Failed to load statistics. Please try again.");

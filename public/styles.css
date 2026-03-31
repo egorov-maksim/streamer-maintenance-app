@@ -3043,3 +3043,164 @@ table.has-noise-data .noise-col {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* =========================
+   Stats: daily distance chart (SVG)
+   ========================= */
+
+.stats-daily-chart-section {
+  margin-top: 24px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.stats-daily-chart-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.stats-daily-chart {
+  width: 100%;
+  min-height: 200px;
+  overflow-x: auto;
+}
+
+.stats-daily-chart-svg {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-height: 240px;
+}
+
+.stats-daily-chart-empty {
+  margin: 0;
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+.stats-daily-chart-axis {
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+
+.stats-daily-chart-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+  opacity: 0.55;
+}
+
+.stats-daily-chart-bar {
+  fill: var(--primary);
+  opacity: 0.88;
+  cursor: pointer;
+}
+
+.stats-daily-chart-bar:hover {
+  opacity: 1;
+}
+
+.stats-daily-chart-bar-idle {
+  fill: var(--muted);
+  opacity: 0.5;
+  cursor: pointer;
+}
+
+.stats-daily-chart-bar-idle:hover {
+  opacity: 0.75;
+}
+
+.stats-daily-chart-hover-tooltip {
+  position: fixed;
+  z-index: 2000;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 10px 12px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  color: var(--text);
+  pointer-events: none;
+  line-height: 1.35;
+}
+
+.stats-daily-chart-hover-tooltip[hidden] {
+  display: none;
+}
+
+.stats-daily-chart-hover-tooltip-title {
+  font-weight: 600;
+  margin: 0 0 6px;
+  color: var(--text);
+}
+
+.stats-daily-chart-hover-tooltip-total {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.stats-daily-chart-hover-tooltip-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.stats-daily-chart-hover-tooltip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.stats-daily-chart-hover-tooltip-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.stats-daily-chart-hover-tooltip-list li:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.stats-daily-chart-hover-streamer {
+  color: var(--text);
+}
+
+.stats-daily-chart-hover-dist {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.stats-daily-chart-trend {
+  stroke: var(--info);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.stats-daily-chart-tick-y,
+.stats-daily-chart-tick-x {
+  fill: var(--muted);
+  font-size: 11px;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.stats-daily-chart-axis-label {
+  fill: var(--muted);
+  font-size: 12px;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
