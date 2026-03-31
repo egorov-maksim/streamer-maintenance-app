@@ -362,9 +362,94 @@ async function initStatsApp() {
   updateUIForRole();
 }
 
+// ---------------------------------------------------------------------------
+// Stats-page sidebar navigation
+// Mirrors the interaction pattern from app.js (scroll + active state +
+// mobile drawer) but without any route/history manipulation.
+// ---------------------------------------------------------------------------
+
+const STATS_DEFAULT_SECTION = "project-filter-section";
+
+function activateStatsNavSection(sectionId, smooth = true) {
+  const target = document.getElementById(sectionId);
+  if (!target) return;
+
+  target.scrollIntoView({ behavior: smooth ? "smooth" : "instant", block: "start" });
+
+  document.querySelectorAll(".nav-item").forEach((item) => item.classList.remove("active"));
+  const navItem = document.querySelector(`.nav-item[data-target="${sectionId}"]`);
+  if (navItem) navItem.classList.add("active");
+}
+
+function closeStatsMobileNav() {
+  document.body.classList.remove("nav-open");
+  const toggle = document.getElementById("nav-toggle");
+  if (toggle) toggle.setAttribute("aria-expanded", "false");
+}
+
+function setupStatsSidebarNavigation() {
+  const toggle = document.getElementById("nav-toggle");
+  if (toggle) {
+    toggle.addEventListener("click", () => {
+      const isOpen = document.body.classList.toggle("nav-open");
+      toggle.setAttribute("aria-expanded", String(isOpen));
+    });
+  }
+
+  document.addEventListener("click", (e) => {
+    if (
+      document.body.classList.contains("nav-open") &&
+      !e.target.closest(".sidebar-nav") &&
+      !e.target.closest("#nav-toggle")
+    ) {
+      closeStatsMobileNav();
+    }
+  });
+
+  document.querySelectorAll(".nav-item").forEach((item) => {
+    const activate = () => {
+      activateStatsNavSection(item.dataset.target);
+      closeStatsMobileNav();
+    };
+
+    item.addEventListener("click", activate);
+    item.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        activate();
+      }
+    });
+  });
+
+  const sectionIds = Array.from(document.querySelectorAll(".nav-item"))
+    .map((item) => item.dataset.target)
+    .filter(Boolean);
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          document.querySelectorAll(".nav-item").forEach((item) => item.classList.remove("active"));
+          const navItem = document.querySelector(`.nav-item[data-target="${entry.target.id}"]`);
+          if (navItem) navItem.classList.add("active");
+        }
+      }
+    },
+    { threshold: 0.25 }
+  );
+
+  sectionIds.forEach((id) => {
+    const section = document.getElementById(id);
+    if (section) observer.observe(section);
+  });
+
+  activateStatsNavSection(STATS_DEFAULT_SECTION, false);
+}
+
 async function init() {
   setOnShowAppCallback(async () => {
     await initStatsApp();
+    setupStatsSidebarNavigation();
   });
 
   const loginForm = safeGet("login-form");
