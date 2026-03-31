@@ -601,11 +601,11 @@ streamer-maintenance-app/
 │   ├── index.html         # Main UI (heatmap, events, stats)
 │   ├── app.js             # Frontend entry & orchestration
 │   ├── config.html        # Config page (projects, streamer config, backups)
-│   ├── configPage.js      # Config page logic (SuperUser only)
+│   ├── config-page.js     # Config page logic (SuperUser only)
 │   ├── stats.html         # Standalone stats page at /stats
-│   ├── statsPage.js       # Stats page entry (independent login)
+│   ├── stats-page.js      # Stats page entry (independent login)
 │   ├── planning.html      # Standalone planning page at /planning
-│   ├── planningPage.js    # Planning page entry (independent login; per-vessel only)
+│   ├── planning-page.js   # Planning page entry (independent login; per-vessel only)
 │   ├── styles.css         # Single global stylesheet
 │   ├── pdf-generator.js   # PDF report generation (A3 landscape via jsPDF)
 │   ├── libs/
@@ -617,7 +617,7 @@ streamer-maintenance-app/
 │       ├── noise-validation.js # Pure CSV validation for noise uploads
 │       ├── projects.js         # Project UI logic
 │       ├── state.js            # Single source of truth for frontend state
-│       ├── stats.js            # Shared stats rendering (app.js & statsPage.js)
+│       ├── stats.js            # Shared stats rendering (app.js & stats-page.js)
 │       ├── streamer-tooltip.js # Heatmap column header tooltip
 │       ├── streamer-utils.js   # Section label helpers
 │       └── ui.js               # DOM helpers, toasts, status indicators

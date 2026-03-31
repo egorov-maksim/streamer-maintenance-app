@@ -275,7 +275,7 @@ export function renderNoiseTicks(ticksEl, prefs) {
 /**
  * Apply continuous scraping-age inline styles to all active and tail section cells.
  * Reads days from dataset.scrapingDays (set by app.js) or falls back to
- * dataset.daysText (set by planningPage.js). Both store numeric strings or "—" for never.
+ * dataset.daysText (set by planning-page.js). Both store numeric strings or "—" for never.
  * @param {Element} container - the heatmap grid container element
  * @param {{ ageBreaks: number[] }} prefs
  */
