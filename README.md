@@ -99,7 +99,8 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 ### 🗺️ Planning Page (Dedicated Maintenance Planning View)
 - **Separate page** at `/planning` — read-only heatmap focused on upcoming cleaning decisions; scoped to per-vessel users (GrandSuperUser is intentionally blocked with a "restricted" notice)
 - **Heatmap**: displays *days since last cleaning* per section instead of section numbers; includes a **channel reference column** (CH) showing the channel range for each section row
-- **Cleaning Suggestions table**: automatically computes all contiguous section ranges where `days_since_last_clean ≥ 4` (or never cleaned), sorted by urgency (most overdue first)
+- **Cleaning Suggestions table**: automatically computes all contiguous section ranges where `days_since_last_clean ≥ threshold` (or never cleaned), sorted by urgency (most overdue first)
+  - The minimum age threshold defaults to **10 days** per project and is configurable by SuperUsers via the "Min age to suggest" input above the table; the setting is stored on the project record so each project has its own threshold
   - Columns: Days Since (color-coded badge), Streamer, Section Range, EB Range, Channel Range, Avg RMS Noise (hidden when no noise data is loaded)
   - Badge colors: 4–6d yellow → 7–9d orange → 10–13d red → 14+d dark red → never gray
   - Active and tail sections are kept as separate groups (never merged across the boundary)

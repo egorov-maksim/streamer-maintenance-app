@@ -263,21 +263,27 @@ function attachSectionTooltips(container, lastCleaned) {
 
 /* ------------ Cleaning suggestions table ------------ */
 
-const DAYS_THRESHOLD = 4;
+// Fallback used when neither the active project nor config has set a threshold yet.
+const DEFAULT_DAYS_THRESHOLD = 10;
 const NEVER_DAYS = 9999;
 
 // Persists the last-computed suggestions so header clicks can re-sort without refetching.
 let currentSuggestions = [];
 let sortState = { column: null, direction: "asc" };
 
+// Cached last-cleaned data so threshold changes can recompute without re-fetching.
+let currentLastCleaned = null;
+
 /**
  * Build an array of contiguous section ranges that need cleaning, sorted by
  * urgency (most days since last scraping first).
  * @param {{ [streamerId: string]: (string|null)[] }} lastCleaned
  * @param {Object} cfg - config with sectionsPerCable, channelsPerSection, moduleFrequency, useRopeForTail, numCables
+ * @param {number} [threshold] - minimum days since last cleaning for a section to be included; defaults to DEFAULT_DAYS_THRESHOLD
  * @returns {Array<{ streamerId, startSection, endSection, isTail, maxDays, sectionsRange, ebRange, channelRange }>}
  */
-function computeCleaningSuggestions(lastCleaned, cfg) {
+function computeCleaningSuggestions(lastCleaned, cfg, threshold) {
+  const daysThreshold = (Number.isFinite(threshold) && threshold >= 1) ? threshold : DEFAULT_DAYS_THRESHOLD;
   const sectionsPerCable = cfg.sectionsPerCable || 107;
   const tailSections = cfg.useRopeForTail ? 0 : 5;
   const totalSections = sectionsPerCable + tailSections;
@@ -305,7 +311,7 @@ function computeCleaningSuggestions(lastCleaned, cfg) {
         const days = date
           ? Math.floor((Date.now() - new Date(date)) / (1000 * 60 * 60 * 24))
           : null;
-        const needsCleaning = days === null || days >= DAYS_THRESHOLD;
+        const needsCleaning = days === null || days >= daysThreshold;
 
         if (needsCleaning) {
           if (rangeStart === null) rangeStart = s;
@@ -468,6 +474,82 @@ function initSuggestionsSortHandlers() {
   });
 }
 
+/**
+ * Populate the threshold display/input from the active project config and wire the save button.
+ * The threshold is stored per project via PUT /api/projects/:id, not in global app config.
+ * For superusers the input is editable; for others the edit row is hidden via .superuser-only.
+ * Called after loadConfig() and loadProjects() complete so config and projects state are ready.
+ */
+function initSuggestionsThresholdControl() {
+  const displayEl = safeGet("suggestions-threshold-display");
+  const inputEl = safeGet("suggestions-threshold-input");
+  const saveBtn = safeGet("suggestions-threshold-save");
+
+  const currentThreshold = config?.suggestedCleaningThresholdDays ?? DEFAULT_DAYS_THRESHOLD;
+
+  if (displayEl) displayEl.textContent = `${currentThreshold}d`;
+  if (inputEl) inputEl.value = currentThreshold;
+
+  if (!saveBtn) return;
+
+  saveBtn.addEventListener("click", async () => {
+    const raw = inputEl ? Number(inputEl.value) : NaN;
+    if (!Number.isFinite(raw) || raw < 1 || raw > 365 || !Number.isInteger(raw)) {
+      showErrorToast("Invalid threshold", "Enter a whole number between 1 and 365.");
+      return;
+    }
+
+    const activeProject = getActiveProject();
+    if (!activeProject) {
+      showErrorToast("No active project", "Activate a project before changing the threshold.");
+      return;
+    }
+
+    saveBtn.disabled = true;
+    try {
+      // Persist threshold on the project record, preserving all other project fields.
+      const body = {
+        projectName: activeProject.projectName || null,
+        vesselTag: activeProject.vesselTag || "TTN",
+        numCables: activeProject.numCables ?? config.numCables,
+        sectionsPerCable: activeProject.sectionsPerCable ?? config.sectionsPerCable,
+        sectionLength: activeProject.sectionLength ?? config.sectionLength,
+        moduleFrequency: activeProject.moduleFrequency ?? config.moduleFrequency,
+        channelsPerSection: activeProject.channelsPerSection ?? config.channelsPerSection,
+        useRopeForTail: activeProject.useRopeForTail,
+        comments: activeProject.comments || null,
+        suggestedCleaningThresholdDays: raw,
+      };
+      await API.updateProject(activeProject.id, body);
+
+      // Update shared config state so computeCleaningSuggestions picks it up immediately.
+      if (config) config.suggestedCleaningThresholdDays = raw;
+      if (displayEl) displayEl.textContent = `${raw}d`;
+
+      // Recompute suggestions from cached data without re-fetching the heatmap.
+      if (currentLastCleaned) {
+        const effectiveCfg = {
+          sectionsPerCable: config.sectionsPerCable,
+          channelsPerSection: config.channelsPerSection,
+          moduleFrequency: config.moduleFrequency,
+          useRopeForTail: config.useRopeForTail,
+          numCables: config.numCables,
+        };
+        currentSuggestions = computeCleaningSuggestions(currentLastCleaned, effectiveCfg, raw);
+        const toRender = sortSuggestions(currentSuggestions, sortState.column, sortState.direction);
+        renderCleaningSuggestions(toRender);
+      }
+
+      showSuccessToast("Threshold saved", `Suggestions will now show sections not cleaned in ${raw}+ days.`);
+    } catch (err) {
+      console.error("Failed to save suggestions threshold", err);
+      showErrorToast(err.message || "Failed to save threshold");
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+}
+
 function renderCleaningSuggestions(suggestions) {
   const tbody = safeGet("cleaning-suggestions-tbody");
   const table = safeGet("cleaning-suggestions-table");
@@ -483,8 +565,9 @@ function renderCleaningSuggestions(suggestions) {
 
   if (suggestions.length === 0) {
     const colspan = hasNoise ? 6 : 5;
+    const threshold = config?.suggestedCleaningThresholdDays || DEFAULT_DAYS_THRESHOLD;
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="${colspan}" style="text-align:center;color:var(--muted)">No sections due for cleaning — all fresh (within ${DAYS_THRESHOLD - 1} days).</td>`;
+    tr.innerHTML = `<td colspan="${colspan}" style="text-align:center;color:var(--muted)">No sections due for cleaning — all fresh (within ${threshold - 1} days).</td>`;
     tbody.appendChild(tr);
     return;
   }
@@ -528,6 +611,7 @@ async function renderPlanningHeatmap() {
     }
     const data = await API.apiCall(url);
     const lastCleaned = data.lastCleaned;
+    currentLastCleaned = lastCleaned;
 
     const effectiveCfg = {
       sectionsPerCable: config.sectionsPerCable,
@@ -536,7 +620,8 @@ async function renderPlanningHeatmap() {
       useRopeForTail: config.useRopeForTail,
       numCables: config.numCables,
     };
-    currentSuggestions = computeCleaningSuggestions(lastCleaned, effectiveCfg);
+    const threshold = config?.suggestedCleaningThresholdDays || DEFAULT_DAYS_THRESHOLD;
+    currentSuggestions = computeCleaningSuggestions(lastCleaned, effectiveCfg, threshold);
     const toRender = sortSuggestions(currentSuggestions, sortState.column, sortState.direction);
     renderCleaningSuggestions(toRender);
 
@@ -1091,6 +1176,7 @@ async function initPlanningApp() {
 
   showActiveProject();
   initLegendControls(); // populates gradient bars and attaches threshold input listeners
+  initSuggestionsThresholdControl(); // populates threshold input and wires save button
   initNoiseControls();  // registers noise toggle/upload event listeners
   initSuggestionsSortHandlers();
   setupPlanningNavigation(); // left-rail sidebar nav (must run after initNoiseControls)

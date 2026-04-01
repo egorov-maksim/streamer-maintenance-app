@@ -36,6 +36,7 @@ function initDb() {
         console.error("Error applying schema:", err);
       } else {
         console.log("Database schema applied.");
+        applyMigrations();
         if (process.env.NODE_ENV !== "test") {
           startBackupScheduler();
         }
@@ -44,7 +45,26 @@ function initDb() {
   });
 }
 
-// No migration functions - fresh install only
+/**
+ * Apply incremental schema migrations for databases created before a new column was added.
+ * Each migration checks for the column's absence before altering the table, so it is safe
+ * to run on every startup without risking duplicate-column errors.
+ */
+function applyMigrations() {
+  db.all("PRAGMA table_info(projects)", [], (err, columns) => {
+    if (err) { console.error("Migration check failed:", err); return; }
+    const hasThreshold = columns.some((col) => col.name === "suggested_cleaning_threshold_days");
+    if (!hasThreshold) {
+      db.run(
+        "ALTER TABLE projects ADD COLUMN suggested_cleaning_threshold_days INTEGER DEFAULT 10",
+        (migrErr) => {
+          if (migrErr) console.error("Migration failed (add suggested_cleaning_threshold_days):", migrErr);
+          else console.log("Migration applied: added suggested_cleaning_threshold_days to projects");
+        }
+      );
+    }
+  });
+}
 
 /**
  * Creates a backup of the database file with timestamp

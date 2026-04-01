@@ -115,6 +115,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
         module_frequency,
         channels_per_section,
         use_rope_for_tail,
+        suggested_cleaning_threshold_days,
       } = bodyData;
 
       if (!project_number || typeof project_number !== "string") {
@@ -134,8 +135,9 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
       const result = await runAsync(
         `INSERT INTO projects (
         project_number, project_name, vessel_tag, created_at,
-        num_cables, sections_per_cable, section_length, module_frequency, channels_per_section, use_rope_for_tail
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        num_cables, sections_per_cable, section_length, module_frequency, channels_per_section, use_rope_for_tail,
+        suggested_cleaning_threshold_days
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           project_number,
           project_name || null,
@@ -147,6 +149,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
           toInt(module_frequency, defaultConfig.moduleFrequency),
           toInt(channels_per_section, defaultConfig.channelsPerSection),
           use_rope_for_tail === false ? 0 : 1,
+          toInt(suggested_cleaning_threshold_days, 10),
         ]
       );
 
@@ -231,6 +234,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
         module_frequency,
         channels_per_section,
         use_rope_for_tail,
+        suggested_cleaning_threshold_days,
         comments,
       } = bodyData;
 
@@ -250,6 +254,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
         module_frequency = ?,
         channels_per_section = ?,
         use_rope_for_tail = ?,
+        suggested_cleaning_threshold_days = ?,
         comments = ?
       WHERE id = ?`,
         [
@@ -261,6 +266,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
           toInt(module_frequency, defaultConfig.moduleFrequency),
           toInt(channels_per_section, defaultConfig.channelsPerSection),
           use_rope_for_tail === false ? 0 : 1,
+          toInt(suggested_cleaning_threshold_days, existing.suggestedCleaningThresholdDays ?? 10),
           comments !== undefined ? comments : null,
           id,
         ]
