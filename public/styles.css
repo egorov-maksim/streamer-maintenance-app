@@ -2822,6 +2822,14 @@ table.has-noise-data .noise-col {
   white-space: nowrap;
 }
 
+.noise-action-btn {
+  white-space: nowrap;
+}
+
+.noise-rename-input {
+  width: 100%;
+}
+
 /* Noise gradient bar (inside .heatmap-legend-bar-wrap — same vertical rhythm as age bar) */
 .noise-legend-bar {
   position: relative;

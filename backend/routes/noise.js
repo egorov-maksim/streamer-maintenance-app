@@ -2,6 +2,37 @@
 const express = require("express");
 const { runAsync, getAllCamelized, getOneCamelized } = require("../db");
 const { sendError } = require("../utils/errors");
+const { requireValidId } = require("../utils/validation");
+
+/**
+ * Restrict RMS upload mutations to vessel-scoped accounts so global users
+ * cannot rename or delete batches outside a vessel context.
+ *
+ * @param {Object} req - Express request with req.vesselScope
+ * @param {Object} res - Express response
+ * @returns {boolean} True when the request is vessel-scoped and may proceed
+ */
+function requireVesselScopedAccount(req, res) {
+  if (!req.vesselScope) {
+    sendError(res, 403, "Noise upload changes require a vessel-scoped account");
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Load a noise upload only when it belongs to the authenticated vessel scope.
+ *
+ * @param {number} uploadId - Noise upload batch id
+ * @param {string} vesselScope - Current user's vessel scope
+ * @returns {Promise<Object|null>}
+ */
+function getScopedUpload(uploadId, vesselScope) {
+  return getOneCamelized(
+    "SELECT * FROM noise_uploads WHERE id = ? AND vessel_tag = ?",
+    [uploadId, vesselScope]
+  );
+}
 
 /**
  * Create noise data router (upload RMS batch, fetch by upload ID, list batches).
@@ -168,6 +199,57 @@ function createNoiseRouter(authMiddleware, adminOrAbove) {
     } catch (err) {
       console.error("POST /api/noise-data failed", err);
       sendError(res, 500, "Failed to upload noise data");
+    }
+  });
+
+  router.patch("/api/noise-data/uploads/:id", authMiddleware, adminOrAbove, async (req, res) => {
+    const uploadId = requireValidId(req, res);
+    if (uploadId === null) return;
+
+    if (!requireVesselScopedAccount(req, res)) {
+      return;
+    }
+
+    try {
+      const label = typeof req.body?.label === "string" ? req.body.label.trim() : "";
+      if (!label) {
+        return sendError(res, 400, "label is required");
+      }
+
+      const upload = await getScopedUpload(uploadId, req.vesselScope);
+      if (!upload) {
+        return sendError(res, 404, "Noise upload not found");
+      }
+
+      await runAsync("UPDATE noise_uploads SET label = ? WHERE id = ?", [label, uploadId]);
+
+      const updatedUpload = await getScopedUpload(uploadId, req.vesselScope);
+      res.json(updatedUpload);
+    } catch (err) {
+      console.error("PATCH /api/noise-data/uploads/:id failed", err);
+      sendError(res, 500, "Failed to rename noise upload");
+    }
+  });
+
+  router.delete("/api/noise-data/uploads/:id", authMiddleware, adminOrAbove, async (req, res) => {
+    const uploadId = requireValidId(req, res);
+    if (uploadId === null) return;
+
+    if (!requireVesselScopedAccount(req, res)) {
+      return;
+    }
+
+    try {
+      const upload = await getScopedUpload(uploadId, req.vesselScope);
+      if (!upload) {
+        return sendError(res, 404, "Noise upload not found");
+      }
+
+      await runAsync("DELETE FROM noise_uploads WHERE id = ?", [uploadId]);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/noise-data/uploads/:id failed", err);
+      sendError(res, 500, "Failed to delete noise upload");
     }
   });
 

@@ -10,11 +10,14 @@ import {
   updateUIForRole,
   setupPasswordToggle,
   isGrandSuperUser,
+  isAdminOrAbove,
 } from "./js/auth.js";
 import * as Projects from "./js/projects.js";
 import * as API from "./js/api.js";
+import { closeModal, initModals, openModal } from "./js/modals.js";
 import {
   config,
+  currentUser,
   projects,
   setSelectedProjectFilter,
   selectedProjectFilter,
@@ -150,6 +153,43 @@ function setNoiseSelectorValue(uploadId) {
   if (selector && uploadId != null) selector.value = String(uploadId);
 }
 
+function getSelectedNoiseUploadId() {
+  const selector = safeGet("noise-upload-selector");
+  return selector?.value ? Number(selector.value) : null;
+}
+
+function canManageNoiseUploads() {
+  return isAdminOrAbove() && !currentUser?.isGlobal;
+}
+
+function syncNoiseActionButtons() {
+  const renameBtn = safeGet("noise-rename-btn");
+  const deleteBtn = safeGet("noise-delete-btn");
+  const canManage = canManageNoiseUploads();
+  const hasSelection = getSelectedNoiseUploadId() !== null;
+  const shouldShow = canManage && noiseUploads.length > 0;
+
+  [renameBtn, deleteBtn].forEach((btn) => {
+    if (!btn) return;
+    btn.classList.toggle("hidden", !shouldShow);
+    btn.disabled = !hasSelection;
+  });
+}
+
+function closeNoiseRenameModal() {
+  const renameInput = safeGet("noise-rename-input");
+  if (renameInput) {
+    renameInput.value = "";
+    delete renameInput.dataset.uploadId;
+  }
+  closeModal("noise-rename-modal");
+}
+
+function closeNoiseDeleteModal() {
+  pendingNoiseDeleteUploadId = null;
+  closeModal("noise-delete-modal");
+}
+
 function isNoiseToggleOn() {
   const toggle = safeGet("noise-toggle");
   return toggle ? toggle.checked : false;
@@ -270,6 +310,7 @@ const NEVER_DAYS = 9999;
 // Persists the last-computed suggestions so header clicks can re-sort without refetching.
 let currentSuggestions = [];
 let sortState = { column: null, direction: "asc" };
+let pendingNoiseDeleteUploadId = null;
 
 // Cached last-cleaned data so threshold changes can recompute without re-fetching.
 let currentLastCleaned = null;
@@ -805,7 +846,7 @@ async function loadNoiseUploads(projectNumber) {
  * Called on init and whenever the project filter changes.
  * @param {string|null} projectNumber
  */
-async function refreshNoiseForProject(projectNumber) {
+async function refreshNoiseForProject(projectNumber, preferredUploadId = null) {
   const selector = safeGet("noise-upload-selector");
   const toggle = safeGet("noise-toggle");
 
@@ -814,6 +855,7 @@ async function refreshNoiseForProject(projectNumber) {
     setNoiseData(null);
     setNoiseUploads([]);
     selector?.classList.add("hidden");
+    syncNoiseActionButtons();
     enableNoiseToggle(false);
     // Turn off toggle visually and restore age overlay if it was active
     if (toggle?.checked) {
@@ -834,9 +876,11 @@ async function refreshNoiseForProject(projectNumber) {
   if (uploads.length > 0) {
     populateUploadSelector(uploads);
     selector?.classList.remove("hidden");
-
-    const latest = await loadNoiseData(null, projectNumber);
-    if (latest?.uploadId) setNoiseSelectorValue(latest.uploadId);
+    const hasPreferredUpload = preferredUploadId != null
+      && uploads.some((upload) => upload.id === preferredUploadId);
+    const nextUploadId = hasPreferredUpload ? preferredUploadId : null;
+    const activeUpload = await loadNoiseData(nextUploadId, projectNumber);
+    if (activeUpload?.uploadId) setNoiseSelectorValue(activeUpload.uploadId);
 
     enableNoiseToggle(true);
   } else {
@@ -855,6 +899,7 @@ async function refreshNoiseForProject(projectNumber) {
     }
   }
 
+  syncNoiseActionButtons();
   await renderPlanningHeatmap();
 }
 
@@ -864,6 +909,28 @@ async function refreshNoiseForProject(projectNumber) {
 function initNoiseControls() {
   const selector = safeGet("noise-upload-selector");
   const toggle = safeGet("noise-toggle");
+  const renameBtn = safeGet("noise-rename-btn");
+  const deleteBtn = safeGet("noise-delete-btn");
+  const renameInput = safeGet("noise-rename-input");
+  const renameModalSaveBtn = safeGet("noise-rename-confirm-btn");
+  const deleteModalConfirmBtn = safeGet("noise-delete-confirm-btn");
+  const renameModalCloseIds = [
+    "noise-rename-modal-close",
+    "noise-rename-cancel-btn",
+    "noise-rename-modal-overlay",
+  ];
+  const deleteModalCloseIds = [
+    "noise-delete-modal-close",
+    "noise-delete-cancel-btn",
+    "noise-delete-modal-overlay",
+  ];
+
+  renameModalCloseIds.forEach((id) => {
+    safeGet(id)?.addEventListener("click", closeNoiseRenameModal);
+  });
+  deleteModalCloseIds.forEach((id) => {
+    safeGet(id)?.addEventListener("click", closeNoiseDeleteModal);
+  });
 
   // Toggle handler
   toggle?.addEventListener("change", () => {
@@ -893,9 +960,95 @@ function initNoiseControls() {
   // Upload selector handler — load chosen batch and re-render
   selector?.addEventListener("change", async (e) => {
     const uploadId = e.target.value;
+    syncNoiseActionButtons();
     if (!uploadId) return;
     await loadNoiseData(uploadId, selectedProjectFilter);
     await renderPlanningHeatmap();
+  });
+
+  renameBtn?.addEventListener("click", () => {
+    const uploadId = getSelectedNoiseUploadId();
+    if (!uploadId || !selectedProjectFilter) return;
+
+    const selectedUpload = noiseUploads.find((upload) => upload.id === uploadId);
+    if (!renameInput) return;
+
+    renameInput.value = selectedUpload?.label || "";
+    renameInput.dataset.uploadId = String(uploadId);
+    openModal("noise-rename-modal");
+    requestAnimationFrame(() => {
+      renameInput.focus();
+      renameInput.select();
+    });
+  });
+
+  renameModalSaveBtn?.addEventListener("click", async () => {
+    const uploadId = Number(renameInput?.dataset.uploadId || "");
+    const trimmedLabel = renameInput?.value.trim() || "";
+    if (!uploadId || !selectedProjectFilter) return;
+
+    if (!trimmedLabel) {
+      showErrorToast("Invalid name", "Enter a label for the RMS upload.");
+      renameInput?.focus();
+      return;
+    }
+
+    renameModalSaveBtn.disabled = true;
+    try {
+      await API.renameNoiseUpload(uploadId, trimmedLabel);
+      closeNoiseRenameModal();
+      await refreshNoiseForProject(selectedProjectFilter, uploadId);
+      showSuccessToast("Noise upload renamed", `Saved as "${trimmedLabel}"`);
+    } catch (err) {
+      console.error("Rename noise upload failed:", err);
+      showErrorToast("Rename failed", err.message || "Failed to rename noise upload");
+    } finally {
+      renameModalSaveBtn.disabled = false;
+      syncNoiseActionButtons();
+    }
+  });
+
+  renameInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      renameModalSaveBtn?.click();
+    }
+  });
+
+  deleteBtn?.addEventListener("click", () => {
+    const uploadId = getSelectedNoiseUploadId();
+    if (!uploadId || !selectedProjectFilter) return;
+
+    const selectedUpload = noiseUploads.find((upload) => upload.id === uploadId);
+    const uploadLabel = selectedUpload?.label || "this RMS upload";
+    const messageEl = safeGet("noise-delete-modal-message");
+    pendingNoiseDeleteUploadId = uploadId;
+    if (messageEl) {
+      messageEl.textContent = `Are you sure you want to delete "${uploadLabel}"?`;
+    }
+    openModal("noise-delete-modal");
+  });
+
+  deleteModalConfirmBtn?.addEventListener("click", async () => {
+    const uploadId = pendingNoiseDeleteUploadId;
+    if (!uploadId || !selectedProjectFilter) return;
+
+    const selectedUpload = noiseUploads.find((upload) => upload.id === uploadId);
+    const uploadLabel = selectedUpload?.label || "this RMS upload";
+
+    deleteModalConfirmBtn.disabled = true;
+    try {
+      await API.deleteNoiseUpload(uploadId);
+      closeNoiseDeleteModal();
+      await refreshNoiseForProject(selectedProjectFilter);
+      showSuccessToast("Noise upload deleted", `"${uploadLabel}" was removed.`);
+    } catch (err) {
+      console.error("Delete noise upload failed:", err);
+      showErrorToast("Delete failed", err.message || "Failed to delete noise upload");
+    } finally {
+      deleteModalConfirmBtn.disabled = false;
+      syncNoiseActionButtons();
+    }
   });
 
   // Upload CSV handler
@@ -1175,6 +1328,7 @@ async function initPlanningApp() {
   }
 
   showActiveProject();
+  initModals();
   initLegendControls(); // populates gradient bars and attaches threshold input listeners
   initSuggestionsThresholdControl(); // populates threshold input and wires save button
   initNoiseControls();  // registers noise toggle/upload event listeners
