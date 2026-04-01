@@ -33,6 +33,18 @@ import {
   getConfigForProject,
 } from "./js/streamer-utils.js";
 import { validateNoiseCsv } from "./js/noise-validation.js";
+import {
+  loadHeatmapLegendPrefs,
+  saveHeatmapLegendPrefs,
+  validateAgeBreaks,
+  rmsToColor,
+  rmsTextColor,
+  paintScrapingAgeCells,
+  scrapingAgeLegendGradient,
+  noiseLegendGradient,
+  renderAgeTicks,
+  renderNoiseTicks,
+} from "./js/heatmap-legend.js";
 
 /* ------------ Noise utilities ------------ */
 
@@ -73,56 +85,21 @@ function parseNoiseCsv(text) {
 }
 
 /**
- * Convert an RMS value to a background colour using a two-segment gradient:
- *   0 → dark blue (#1e3a8a), 5 → white (#ffffff), 20+ → deep red (#dc2626)
- * Returns null for zero/missing values (no data).
- * @param {number} rms
- * @returns {string|null}
- */
-function rmsToColor(rms) {
-  if (!rms || rms <= 0) return null;
-  const val = Math.min(rms, 20);
-  if (val <= 5) {
-    const t = val / 5;
-    const r = Math.round(30 + t * (255 - 30));
-    const g = Math.round(58 + t * (255 - 58));
-    const b = Math.round(138 + t * (255 - 138));
-    return `rgb(${r},${g},${b})`;
-  }
-  const t = (val - 5) / 15;
-  const r = Math.round(255 + t * (220 - 255));
-  const g = Math.round(255 + t * (38 - 255));
-  const b = Math.round(255 + t * (38 - 255));
-  return `rgb(${r},${g},${b})`;
-}
-
-/**
- * Pick a readable text colour for a given RMS value.
- * @param {number} rms
- * @returns {string}
- */
-function rmsTextColor(rms) {
-  if (!rms || rms <= 0) return "#6b7280";
-  if (rms <= 2.5) return "#ffffff"; // dark blue bg
-  if (rms <= 8) return "#1a1a1a";   // near-white / light-orange bg
-  return "#ffffff";                   // orange-red bg
-}
-
-/**
  * Apply noise-overlay colours and RMS text to all active section cells.
  * @param {HTMLElement} container
  * @param {{ [cableNum: string]: number[] }} nd - noiseData from state
  */
 function applyNoiseOverlay(container, nd) {
+  const prefs = loadHeatmapLegendPrefs();
   const cells = container.querySelectorAll(".hm-vcell.hm-active-section.hm-planning-cell");
   cells.forEach(cell => {
     const streamerId = cell.dataset.streamer;
     const sectionIndex = parseInt(cell.dataset.section, 10);
     const rms = nd?.[streamerId]?.[sectionIndex] ?? 0;
-    const bg = rmsToColor(rms);
+    const bg = rmsToColor(rms, prefs);
     if (bg) {
       cell.style.backgroundColor = bg;
-      cell.style.color = rmsTextColor(rms);
+      cell.style.color = rmsTextColor(rms, prefs);
       cell.style.borderColor = bg;
       cell.textContent = rms.toFixed(1);
     } else {
@@ -136,16 +113,16 @@ function applyNoiseOverlay(container, nd) {
 
 /**
  * Remove noise overlay and restore age-mode colours and days text.
+ * Re-applies the continuous scraping-age gradient so the heatmap immediately
+ * reflects any breakpoint changes made while the noise overlay was active.
  * @param {HTMLElement} container
  */
 function removeNoiseOverlay(container) {
   const cells = container.querySelectorAll(".hm-vcell.hm-active-section.hm-planning-cell");
   cells.forEach(cell => {
-    cell.style.backgroundColor = "";
-    cell.style.color = "";
-    cell.style.borderColor = "";
     cell.textContent = cell.dataset.daysText ?? "—";
   });
+  paintScrapingAgeCells(container, loadHeatmapLegendPrefs());
 }
 
 /* ------------ Noise UI helpers ------------ */
@@ -185,6 +162,17 @@ function enableNoiseToggle(hasData) {
   if (label) label.title = hasData
     ? "Switch heatmap to RMS noise coloring"
     : "Upload a noise CSV to enable this overlay";
+  // Keep the sidebar noise shortcut visually in sync with disabled/enabled state
+  syncNoiseNavItem();
+}
+
+function updatePlanningHeatmapCardTitle() {
+  const el = safeGet("planning-heatmap-card-title");
+  if (!el) return;
+  el.textContent =
+    isNoiseToggleOn() && noiseData
+      ? "📋 Average RMS per section"
+      : "📋 Days Since Last Scraping";
 }
 
 /* ------------ Tooltip ------------ */
@@ -275,21 +263,27 @@ function attachSectionTooltips(container, lastCleaned) {
 
 /* ------------ Cleaning suggestions table ------------ */
 
-const DAYS_THRESHOLD = 4;
+// Fallback used when neither the active project nor config has set a threshold yet.
+const DEFAULT_DAYS_THRESHOLD = 10;
 const NEVER_DAYS = 9999;
 
 // Persists the last-computed suggestions so header clicks can re-sort without refetching.
 let currentSuggestions = [];
 let sortState = { column: null, direction: "asc" };
 
+// Cached last-cleaned data so threshold changes can recompute without re-fetching.
+let currentLastCleaned = null;
+
 /**
  * Build an array of contiguous section ranges that need cleaning, sorted by
  * urgency (most days since last scraping first).
  * @param {{ [streamerId: string]: (string|null)[] }} lastCleaned
  * @param {Object} cfg - config with sectionsPerCable, channelsPerSection, moduleFrequency, useRopeForTail, numCables
+ * @param {number} [threshold] - minimum days since last cleaning for a section to be included; defaults to DEFAULT_DAYS_THRESHOLD
  * @returns {Array<{ streamerId, startSection, endSection, isTail, maxDays, sectionsRange, ebRange, channelRange }>}
  */
-function computeCleaningSuggestions(lastCleaned, cfg) {
+function computeCleaningSuggestions(lastCleaned, cfg, threshold) {
+  const daysThreshold = (Number.isFinite(threshold) && threshold >= 1) ? threshold : DEFAULT_DAYS_THRESHOLD;
   const sectionsPerCable = cfg.sectionsPerCable || 107;
   const tailSections = cfg.useRopeForTail ? 0 : 5;
   const totalSections = sectionsPerCable + tailSections;
@@ -317,7 +311,7 @@ function computeCleaningSuggestions(lastCleaned, cfg) {
         const days = date
           ? Math.floor((Date.now() - new Date(date)) / (1000 * 60 * 60 * 24))
           : null;
-        const needsCleaning = days === null || days >= DAYS_THRESHOLD;
+        const needsCleaning = days === null || days >= daysThreshold;
 
         if (needsCleaning) {
           if (rangeStart === null) rangeStart = s;
@@ -480,6 +474,82 @@ function initSuggestionsSortHandlers() {
   });
 }
 
+/**
+ * Populate the threshold display/input from the active project config and wire the save button.
+ * The threshold is stored per project via PUT /api/projects/:id, not in global app config.
+ * For superusers the input is editable; for others the edit row is hidden via .superuser-only.
+ * Called after loadConfig() and loadProjects() complete so config and projects state are ready.
+ */
+function initSuggestionsThresholdControl() {
+  const displayEl = safeGet("suggestions-threshold-display");
+  const inputEl = safeGet("suggestions-threshold-input");
+  const saveBtn = safeGet("suggestions-threshold-save");
+
+  const currentThreshold = config?.suggestedCleaningThresholdDays ?? DEFAULT_DAYS_THRESHOLD;
+
+  if (displayEl) displayEl.textContent = `${currentThreshold}d`;
+  if (inputEl) inputEl.value = currentThreshold;
+
+  if (!saveBtn) return;
+
+  saveBtn.addEventListener("click", async () => {
+    const raw = inputEl ? Number(inputEl.value) : NaN;
+    if (!Number.isFinite(raw) || raw < 1 || raw > 365 || !Number.isInteger(raw)) {
+      showErrorToast("Invalid threshold", "Enter a whole number between 1 and 365.");
+      return;
+    }
+
+    const activeProject = getActiveProject();
+    if (!activeProject) {
+      showErrorToast("No active project", "Activate a project before changing the threshold.");
+      return;
+    }
+
+    saveBtn.disabled = true;
+    try {
+      // Persist threshold on the project record, preserving all other project fields.
+      const body = {
+        projectName: activeProject.projectName || null,
+        vesselTag: activeProject.vesselTag || "TTN",
+        numCables: activeProject.numCables ?? config.numCables,
+        sectionsPerCable: activeProject.sectionsPerCable ?? config.sectionsPerCable,
+        sectionLength: activeProject.sectionLength ?? config.sectionLength,
+        moduleFrequency: activeProject.moduleFrequency ?? config.moduleFrequency,
+        channelsPerSection: activeProject.channelsPerSection ?? config.channelsPerSection,
+        useRopeForTail: activeProject.useRopeForTail,
+        comments: activeProject.comments || null,
+        suggestedCleaningThresholdDays: raw,
+      };
+      await API.updateProject(activeProject.id, body);
+
+      // Update shared config state so computeCleaningSuggestions picks it up immediately.
+      if (config) config.suggestedCleaningThresholdDays = raw;
+      if (displayEl) displayEl.textContent = `${raw}d`;
+
+      // Recompute suggestions from cached data without re-fetching the heatmap.
+      if (currentLastCleaned) {
+        const effectiveCfg = {
+          sectionsPerCable: config.sectionsPerCable,
+          channelsPerSection: config.channelsPerSection,
+          moduleFrequency: config.moduleFrequency,
+          useRopeForTail: config.useRopeForTail,
+          numCables: config.numCables,
+        };
+        currentSuggestions = computeCleaningSuggestions(currentLastCleaned, effectiveCfg, raw);
+        const toRender = sortSuggestions(currentSuggestions, sortState.column, sortState.direction);
+        renderCleaningSuggestions(toRender);
+      }
+
+      showSuccessToast("Threshold saved", `Suggestions will now show sections not cleaned in ${raw}+ days.`);
+    } catch (err) {
+      console.error("Failed to save suggestions threshold", err);
+      showErrorToast(err.message || "Failed to save threshold");
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+}
+
 function renderCleaningSuggestions(suggestions) {
   const tbody = safeGet("cleaning-suggestions-tbody");
   const table = safeGet("cleaning-suggestions-table");
@@ -495,8 +565,9 @@ function renderCleaningSuggestions(suggestions) {
 
   if (suggestions.length === 0) {
     const colspan = hasNoise ? 6 : 5;
+    const threshold = config?.suggestedCleaningThresholdDays || DEFAULT_DAYS_THRESHOLD;
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="${colspan}" style="text-align:center;color:var(--muted)">No sections due for cleaning — all fresh (within ${DAYS_THRESHOLD - 1} days).</td>`;
+    tr.innerHTML = `<td colspan="${colspan}" style="text-align:center;color:var(--muted)">No sections due for cleaning — all fresh (within ${threshold - 1} days).</td>`;
     tbody.appendChild(tr);
     return;
   }
@@ -519,8 +590,9 @@ function renderCleaningSuggestions(suggestions) {
 
 function buildNoiseBadgeHtml(avgNoise, isTail) {
   if (isTail || avgNoise === null) return '<span style="color:var(--muted)">—</span>';
-  const bg = rmsToColor(avgNoise) || "#e5e7eb";
-  const color = rmsTextColor(avgNoise);
+  const prefs = loadHeatmapLegendPrefs();
+  const bg = rmsToColor(avgNoise, prefs) || "#e5e7eb";
+  const color = rmsTextColor(avgNoise, prefs);
   return `<span class="noise-rms-badge" style="background:${bg};color:${color}">${avgNoise.toFixed(1)}</span>`;
 }
 
@@ -539,6 +611,7 @@ async function renderPlanningHeatmap() {
     }
     const data = await API.apiCall(url);
     const lastCleaned = data.lastCleaned;
+    currentLastCleaned = lastCleaned;
 
     const effectiveCfg = {
       sectionsPerCable: config.sectionsPerCable,
@@ -547,7 +620,8 @@ async function renderPlanningHeatmap() {
       useRopeForTail: config.useRopeForTail,
       numCables: config.numCables,
     };
-    currentSuggestions = computeCleaningSuggestions(lastCleaned, effectiveCfg);
+    const threshold = config?.suggestedCleaningThresholdDays || DEFAULT_DAYS_THRESHOLD;
+    currentSuggestions = computeCleaningSuggestions(lastCleaned, effectiveCfg, threshold);
     const toRender = sortSuggestions(currentSuggestions, sortState.column, sortState.direction);
     renderCleaningSuggestions(toRender);
 
@@ -686,11 +760,14 @@ async function renderPlanningHeatmap() {
     container.appendChild(wrapper);
     attachSectionTooltips(container, lastCleaned);
 
-    // Re-apply noise overlay if the toggle is currently active
     if (isNoiseToggleOn() && noiseData) {
       applyNoiseOverlay(container, noiseData);
+    } else {
+      // Apply continuous age gradient whenever noise overlay is not active
+      paintScrapingAgeCells(container, loadHeatmapLegendPrefs());
     }
 
+    updatePlanningHeatmapCardTitle();
   } catch (err) {
     console.error("renderPlanningHeatmap failed:", err);
     showErrorToast(err.message || "Failed to load planning heat map");
@@ -809,6 +886,8 @@ function initNoiseControls() {
       ageLegend?.classList.remove("hidden");
       noiseLegend?.classList.add("hidden");
     }
+
+    updatePlanningHeatmapCardTitle();
   });
 
   // Upload selector handler — load chosen batch and re-render
@@ -857,6 +936,94 @@ function initNoiseControls() {
   });
 }
 
+/* ------------ Legend controls (age + noise thresholds) ------------ */
+
+/**
+ * Populate both legend bars and threshold inputs from persisted prefs, and register
+ * input event listeners for immediate heatmap repaint and noise-overlay refresh.
+ * Called once on page init so event listeners are attached before data loads.
+ */
+function initLegendControls() {
+  const prefs = loadHeatmapLegendPrefs();
+
+  // --- Age legend bar + inputs ---
+  const ageBarEl  = safeGet("age-gradient-bar");
+  const ageTickEl = safeGet("age-legend-ticks");
+  if (ageBarEl)  ageBarEl.style.background = scrapingAgeLegendGradient(prefs);
+  if (ageTickEl) renderAgeTicks(ageTickEl, prefs);
+
+  prefs.ageBreaks.forEach((val, i) => {
+    const input = safeGet(`age-break-${i}`);
+    if (input) input.value = val;
+  });
+
+  function onAgeBreakInput() {
+    const vals = [0, 1, 2, 3].map((i) => {
+      const el = safeGet(`age-break-${i}`);
+      return el && el.value !== "" ? Number(el.value) : NaN;
+    });
+    const valid = validateAgeBreaks(vals);
+    if (!valid) return;
+
+    valid.forEach((v, i) => {
+      const el = safeGet(`age-break-${i}`);
+      if (el && Number(el.value) !== v) el.value = v;
+    });
+
+    saveHeatmapLegendPrefs({ ageBreaks: valid });
+    const newPrefs = loadHeatmapLegendPrefs();
+
+    if (ageBarEl)  ageBarEl.style.background = scrapingAgeLegendGradient(newPrefs);
+    if (ageTickEl) renderAgeTicks(ageTickEl, newPrefs);
+
+    const container = safeGet("planning-heatmap-container");
+    if (container && !isNoiseToggleOn()) {
+      paintScrapingAgeCells(container, newPrefs);
+    }
+  }
+
+  for (let i = 0; i < 4; i++) {
+    safeGet(`age-break-${i}`)?.addEventListener("input", onAgeBreakInput);
+  }
+
+  // --- Noise legend bar + inputs ---
+  const noiseBarEl  = safeGet("noise-gradient-bar");
+  const noiseTickEl = safeGet("noise-legend-ticks");
+
+  function updateNoiseLegendBar(p) {
+    if (noiseBarEl)  noiseBarEl.style.background = noiseLegendGradient(p);
+    if (noiseTickEl) renderNoiseTicks(noiseTickEl, p);
+  }
+
+  updateNoiseLegendBar(prefs);
+
+  const pivotInput = safeGet("noise-clean-pivot");
+  const maxInput   = safeGet("noise-max");
+  if (pivotInput) pivotInput.value = prefs.noiseCleanPivot;
+  if (maxInput)   maxInput.value   = prefs.noisyMax;
+
+  function onNoiseInput() {
+    const pivotVal = pivotInput && pivotInput.value !== "" ? Number(pivotInput.value) : NaN;
+    const maxVal   = maxInput   && maxInput.value   !== "" ? Number(maxInput.value)   : NaN;
+
+    if (!isFinite(pivotVal) || !isFinite(maxVal)) return;
+    if (pivotVal <= 0 || maxVal <= pivotVal) return;
+
+    saveHeatmapLegendPrefs({ noiseCleanPivot: pivotVal, noisyMax: maxVal });
+    const newPrefs = loadHeatmapLegendPrefs();
+
+    updateNoiseLegendBar(newPrefs);
+
+    const container = safeGet("planning-heatmap-container");
+    if (container && isNoiseToggleOn() && noiseData) {
+      applyNoiseOverlay(container, noiseData);
+    }
+  }
+
+  pivotInput?.addEventListener("input", onNoiseInput);
+  maxInput?.addEventListener("input", onNoiseInput);
+}
+
 /* ------------ Active project display ------------ */
 
 function showActiveProject() {
@@ -874,6 +1041,125 @@ function showActiveProject() {
   }
 }
 
+/* ------------ Sidebar navigation ------------ */
+
+// Mirrors the interaction pattern from app.js (scroll + active state +
+// mobile drawer) but without route/history manipulation. The noise nav
+// item is a special action item — it proxies #noise-toggle so all overlay
+// validation, legend swapping, and title updates remain in initNoiseControls().
+
+const PLANNING_DEFAULT_SECTION = 'planning-active-project-section';
+
+function activatePlanningNavSection(sectionId, smooth = true) {
+  const target = document.getElementById(sectionId);
+  if (!target) return;
+
+  target.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant', block: 'start' });
+
+  document.querySelectorAll('.nav-item[data-target]').forEach(i => i.classList.remove('active'));
+  const navItem = document.querySelector(`.nav-item[data-target="${sectionId}"]`);
+  if (navItem) navItem.classList.add('active');
+}
+
+function closePlanningMobileNav() {
+  document.body.classList.remove('nav-open');
+  const toggle = document.getElementById('nav-toggle');
+  if (toggle) toggle.setAttribute('aria-expanded', 'false');
+}
+
+function syncNoiseNavItem() {
+  const noiseCheckbox = document.getElementById('noise-toggle');
+  const noiseNavItem = document.getElementById('nav-noise-toggle');
+  if (!noiseNavItem || !noiseCheckbox) return;
+
+  const isOn = noiseCheckbox.checked;
+  const isDisabled = noiseCheckbox.disabled;
+
+  noiseNavItem.classList.toggle('active', isOn);
+  noiseNavItem.setAttribute('aria-pressed', String(isOn));
+  noiseNavItem.style.opacity = isDisabled ? '0.4' : '';
+  noiseNavItem.style.cursor = isDisabled ? 'not-allowed' : '';
+}
+
+function setupPlanningNavigation() {
+  const hamburger = document.getElementById('nav-toggle');
+  if (hamburger) {
+    hamburger.addEventListener('click', () => {
+      const isOpen = document.body.classList.toggle('nav-open');
+      hamburger.setAttribute('aria-expanded', String(isOpen));
+    });
+  }
+
+  // Close mobile sidebar when tapping the backdrop
+  document.addEventListener('click', (e) => {
+    if (
+      document.body.classList.contains('nav-open') &&
+      !e.target.closest('.sidebar-nav') &&
+      !e.target.closest('#nav-toggle')
+    ) {
+      closePlanningMobileNav();
+    }
+  });
+
+  // Scroll-anchored nav items
+  document.querySelectorAll('.nav-item[data-target]').forEach(item => {
+    const activate = () => {
+      activatePlanningNavSection(item.dataset.target);
+      closePlanningMobileNav();
+    };
+    item.addEventListener('click', activate);
+    item.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
+    });
+  });
+
+  // Noise toggle action item — proxies the existing #noise-toggle checkbox
+  const noiseNavItem = document.getElementById('nav-noise-toggle');
+  if (noiseNavItem) {
+    const triggerNoiseToggle = () => {
+      const checkbox = document.getElementById('noise-toggle');
+      if (!checkbox || checkbox.disabled) return;
+      checkbox.checked = !checkbox.checked;
+      checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+      closePlanningMobileNav();
+    };
+    noiseNavItem.addEventListener('click', triggerNoiseToggle);
+    noiseNavItem.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); triggerNoiseToggle(); }
+    });
+
+    // Keep the noise nav item visual state in sync whenever the checkbox changes
+    const noiseCheckbox = document.getElementById('noise-toggle');
+    noiseCheckbox?.addEventListener('change', syncNoiseNavItem);
+  }
+
+  // Keep scroll-anchored items in sync as the user scrolls
+  const sectionIds = Array.from(document.querySelectorAll('.nav-item[data-target]'))
+    .map(i => i.dataset.target)
+    .filter(Boolean);
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          document.querySelectorAll('.nav-item[data-target]').forEach(i => i.classList.remove('active'));
+          const navItem = document.querySelector(`.nav-item[data-target="${entry.target.id}"]`);
+          if (navItem) navItem.classList.add('active');
+        }
+      }
+    },
+    { threshold: 0.25 }
+  );
+
+  sectionIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) observer.observe(el);
+  });
+
+  activatePlanningNavSection(PLANNING_DEFAULT_SECTION, false);
+  syncNoiseNavItem();
+}
+
 /* ------------ Bootstrap ------------ */
 
 async function initPlanningApp() {
@@ -889,8 +1175,11 @@ async function initPlanningApp() {
   }
 
   showActiveProject();
-  initNoiseControls(); // registers event listeners only (no async data loading)
+  initLegendControls(); // populates gradient bars and attaches threshold input listeners
+  initSuggestionsThresholdControl(); // populates threshold input and wires save button
+  initNoiseControls();  // registers noise toggle/upload event listeners
   initSuggestionsSortHandlers();
+  setupPlanningNavigation(); // left-rail sidebar nav (must run after initNoiseControls)
 
   // Initial data load — refreshNoiseForProject calls renderPlanningHeatmap internally
   await refreshNoiseForProject(selectedProjectFilter);

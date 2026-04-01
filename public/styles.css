@@ -2876,6 +2876,42 @@ table.has-noise-data .noise-col {
   text-align: center;
 }
 
+/* Threshold control row above the cleaning suggestions table */
+.suggestions-threshold-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.suggestions-threshold-label {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.suggestions-threshold-display {
+  font-weight: 600;
+  color: var(--text);
+  min-width: 32px;
+}
+
+.suggestions-threshold-edit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.suggestions-threshold-input {
+  width: 60px;
+}
+
+.suggestions-threshold-unit {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 /* Noise value badge in the suggestions table */
 .noise-rms-badge {
   display: inline-block;

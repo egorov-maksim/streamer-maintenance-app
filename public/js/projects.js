@@ -87,6 +87,8 @@ export async function saveProjectConfig(projectId) {
       projectName: activeProject?.projectName || null,
       vesselTag: activeProject?.vesselTag || "TTN",
       ...formConfig,
+      // Preserve the per-project suggestion threshold; it is not on this form.
+      suggestedCleaningThresholdDays: config.suggestedCleaningThresholdDays ?? activeProject?.suggestedCleaningThresholdDays ?? 10,
       comments: commentsEl ? (commentsEl.value?.trim() || null) : null,
     };
     const updated = await API.updateProject(projectId, body);
@@ -121,6 +123,8 @@ export async function saveProjectComments() {
       projectName: activeProject.projectName || null,
       vesselTag: activeProject.vesselTag || "TTN",
       ...formConfig,
+      // Preserve the per-project suggestion threshold; it is not on this form.
+      suggestedCleaningThresholdDays: config.suggestedCleaningThresholdDays ?? activeProject.suggestedCleaningThresholdDays ?? 10,
       comments: commentsEl ? (commentsEl.value?.trim() || null) : null,
     };
     await API.updateProject(activeProject.id, body);

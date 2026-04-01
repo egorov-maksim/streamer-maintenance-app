@@ -135,6 +135,7 @@ export function getConfigForProject(projectNumber) {
           project.useRopeForTail !== null && project.useRopeForTail !== undefined
             ? project.useRopeForTail === true || project.useRopeForTail === 1
             : config.useRopeForTail,
+        suggestedCleaningThresholdDays: project.suggestedCleaningThresholdDays ?? 10,
       };
     }
   }

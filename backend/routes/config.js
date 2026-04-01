@@ -32,6 +32,8 @@ function createConfigRouter(authMiddleware, superUserOnly) {
         base.moduleFrequency = activeProject.moduleFrequency ?? base.moduleFrequency;
         base.channelsPerSection = activeProject.channelsPerSection ?? base.channelsPerSection;
         base.useRopeForTail = activeProject.useRopeForTail === 1;
+        // Per-project threshold — not stored in global app_config
+        base.suggestedCleaningThresholdDays = activeProject.suggestedCleaningThresholdDays ?? 10;
       }
       res.json(base);
     } catch (err) {
@@ -102,6 +104,7 @@ function createConfigRouter(authMiddleware, superUserOnly) {
           base.moduleFrequency = activeProject.moduleFrequency ?? base.moduleFrequency;
           base.channelsPerSection = activeProject.channelsPerSection ?? base.channelsPerSection;
           base.useRopeForTail = activeProject.useRopeForTail === 1;
+          base.suggestedCleaningThresholdDays = activeProject.suggestedCleaningThresholdDays ?? 10;
         }
       }
       res.json(base);

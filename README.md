@@ -99,7 +99,8 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 ### 🗺️ Planning Page (Dedicated Maintenance Planning View)
 - **Separate page** at `/planning` — read-only heatmap focused on upcoming cleaning decisions; scoped to per-vessel users (GrandSuperUser is intentionally blocked with a "restricted" notice)
 - **Heatmap**: displays *days since last cleaning* per section instead of section numbers; includes a **channel reference column** (CH) showing the channel range for each section row
-- **Cleaning Suggestions table**: automatically computes all contiguous section ranges where `days_since_last_clean ≥ 4` (or never cleaned), sorted by urgency (most overdue first)
+- **Cleaning Suggestions table**: automatically computes all contiguous section ranges where `days_since_last_clean ≥ threshold` (or never cleaned), sorted by urgency (most overdue first)
+  - The minimum age threshold defaults to **10 days** per project and is configurable by SuperUsers via the "Min age to suggest" input above the table; the setting is stored on the project record so each project has its own threshold
   - Columns: Days Since (color-coded badge), Streamer, Section Range, EB Range, Channel Range, Avg RMS Noise (hidden when no noise data is loaded)
   - Badge colors: 4–6d yellow → 7–9d orange → 10–13d red → 14+d dark red → never gray
   - Active and tail sections are kept as separate groups (never merged across the boundary)
@@ -601,11 +602,11 @@ streamer-maintenance-app/
 │   ├── index.html         # Main UI (heatmap, events, stats)
 │   ├── app.js             # Frontend entry & orchestration
 │   ├── config.html        # Config page (projects, streamer config, backups)
-│   ├── configPage.js      # Config page logic (SuperUser only)
+│   ├── config-page.js     # Config page logic (SuperUser only)
 │   ├── stats.html         # Standalone stats page at /stats
-│   ├── statsPage.js       # Stats page entry (independent login)
+│   ├── stats-page.js      # Stats page entry (independent login)
 │   ├── planning.html      # Standalone planning page at /planning
-│   ├── planningPage.js    # Planning page entry (independent login; per-vessel only)
+│   ├── planning-page.js   # Planning page entry (independent login; per-vessel only)
 │   ├── styles.css         # Single global stylesheet
 │   ├── pdf-generator.js   # PDF report generation (A3 landscape via jsPDF)
 │   ├── libs/
@@ -617,7 +618,7 @@ streamer-maintenance-app/
 │       ├── noise-validation.js # Pure CSV validation for noise uploads
 │       ├── projects.js         # Project UI logic
 │       ├── state.js            # Single source of truth for frontend state
-│       ├── stats.js            # Shared stats rendering (app.js & statsPage.js)
+│       ├── stats.js            # Shared stats rendering (app.js & stats-page.js)
 │       ├── streamer-tooltip.js # Heatmap column header tooltip
 │       ├── streamer-utils.js   # Section label helpers
 │       └── ui.js               # DOM helpers, toasts, status indicators

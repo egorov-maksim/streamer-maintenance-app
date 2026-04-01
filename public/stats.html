@@ -73,6 +73,14 @@
 
     <!-- User Header Bar -->
     <div class="user-header">
+      <!-- Hamburger — visible only on mobile (≤768px) -->
+      <button
+        class="nav-toggle-btn"
+        id="nav-toggle"
+        aria-label="Open navigation"
+        aria-expanded="false"
+        aria-controls="sidebar-nav"
+      >☰</button>
       <div class="user-info">
         <span class="user-avatar">👤</span>
         <span class="user-name" id="user-display-name">User</span>
@@ -88,6 +96,22 @@
       </div>
     </div>
 
+  <!-- Left Sidebar Navigation -->
+  <nav class="sidebar-nav" id="sidebar-nav">
+    <div class="nav-item active" data-target="project-filter-section" tabindex="0" role="button" aria-label="Navigate to Project Filter section">
+      <div class="nav-icon">🗂️</div>
+      <div class="nav-label">Filter</div>
+    </div>
+    <div class="nav-item" data-target="stats-section" tabindex="0" role="button" aria-label="Navigate to Statistics section">
+      <div class="nav-icon">📈</div>
+      <div class="nav-label">Stats</div>
+    </div>
+    <div class="nav-item" data-target="noise-efficiency-section" tabindex="0" role="button" aria-label="Navigate to Noise Efficiency section">
+      <div class="nav-icon">🔊</div>
+      <div class="nav-label">Noise</div>
+    </div>
+  </nav>
+
     <div class="main-wrapper">
       <header>
         <h1>📊 Statistics & Data Filtering</h1>
@@ -97,7 +121,7 @@
       <main>
 
         <!-- Project Filter -->
-        <section class="card">
+        <section id="project-filter-section" class="card">
           <h2 class="card-title">🗂️ Project Filter</h2>
           <div class="grid grid-2">
             <label>Select Project
@@ -296,6 +320,6 @@
   <div id="toast-container" class="toast-container"></div>
 
   <script src="/libs/jspdf.umd.min.js"></script>
-  <script type="module" src="/statsPage.js"></script>
+  <script type="module" src="/stats-page.js"></script>
 </body>
 </html>
