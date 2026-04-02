@@ -89,6 +89,7 @@
       <div class="user-header-actions">
         <a href="/" class="back-to-main-btn"><span>←</span> Back to main</a>
         <a href="/stats" class="back-to-main-btn"><span>📊</span> Statistics</a>
+        <a href="/help" class="back-to-main-btn"><span>❓</span> Help</a>
         <a href="/config" class="back-to-main-btn superuser-only"><span>⚙️</span> Config</a>
         <button class="logout-btn" id="logout-btn">
           <span>🚪</span> Logout
@@ -176,61 +177,102 @@
 
         <!-- Planning Heat Map -->
         <section id="planning-heatmap-section" class="card streamers-card">
-          <div class="noise-controls-row">
-            <h2 id="planning-heatmap-card-title" class="card-title">📋 Days Since Last Scraping</h2>
-            <div class="noise-controls">
-              <!-- Noise toggle (always visible once data loaded) -->
+          <div class="noise-toolbar">
+            <div class="noise-toolbar-heading">
+              <h2 id="planning-heatmap-card-title" class="card-title">📋 Days Since Last Scraping</h2>
+            </div>
+
+            <div class="noise-toolbar-group noise-toolbar-group-dataset">
+              <span class="noise-toolbar-label noise-dataset-label">RMS dataset</span>
+
               <label class="noise-toggle-label" id="noise-toggle-label" title="Switch heatmap to RMS noise coloring">
                 <input type="checkbox" id="noise-toggle" disabled>
                 <span class="noise-toggle-track"><span class="noise-toggle-thumb"></span></span>
                 <span class="noise-toggle-text">Noise overlay</span>
               </label>
-              <!-- Upload selector (shows past uploads) -->
-              <select id="noise-upload-selector" class="noise-upload-selector hidden" title="Select a historical noise upload to display">
-              </select>
-              <!-- Upload button (admin+, hidden from viewers) -->
-              <label class="btn btn-secondary btn-sm noise-upload-btn admin-only" title="Upload RMS noise CSV from current sequence">
-                Upload noise CSV
-                <input type="file" id="noise-csv-input" accept=".csv" class="hidden">
-              </label>
+
+              <span class="noise-dataset-divider" aria-hidden="true"></span>
+
+              <div class="noise-dataset-controls">
+                <p id="noise-toolbar-status" class="noise-toolbar-status hidden"></p>
+                <select id="noise-upload-selector" class="noise-upload-selector hidden" title="Select a historical noise upload to display">
+                </select>
+                <div class="noise-dataset-actions">
+                  <button
+                    type="button"
+                    id="noise-rename-btn"
+                    class="btn btn-outline btn-sm noise-action-btn admin-only hidden"
+                    title="Rename the selected RMS upload"
+                  >
+                    Rename
+                  </button>
+                  <button
+                    type="button"
+                    id="noise-delete-btn"
+                    class="btn btn-outline btn-outline-danger btn-sm noise-action-btn admin-only hidden"
+                    title="Delete the selected RMS upload"
+                  >
+                    Delete
+                  </button>
+                </div>
+                <label class="btn btn-secondary btn-sm noise-upload-btn admin-only" title="Upload RMS noise CSV from current sequence">
+                  Upload noise CSV
+                  <input type="file" id="noise-csv-input" accept=".csv" class="hidden">
+                </label>
+              </div>
+              <span class="hidden" id="noise-upload-helper-text"></span>
             </div>
           </div>
 
           <!-- Age-mode legend (default): gradient bar + editable breakpoints -->
-          <div class="heatmap-legend-panel mb-16" id="age-legend">
-            <div class="heatmap-legend-bar-wrap">
-              <div id="age-gradient-bar" class="heatmap-legend-gradient-bar"></div>
-              <div id="age-legend-ticks" class="heatmap-legend-ticks"></div>
-            </div>
-            <div class="legend">
-              <div class="badge"><span class="legend-swatch legend-swatch-never"></span> Never cleaned</div>
-              <div class="badge"><span class="legend-swatch legend-swatch-module"></span> EB Module</div>
-            </div>
-            <div class="heatmap-legend-breakpoints">
-              <span class="heatmap-legend-break-label">Thresholds (days):</span>
-              <div class="heatmap-legend-break-inputs">
-                <input type="number" id="age-break-0" class="heatmap-legend-break-input" min="1" max="99" title="First color transition">
-                <input type="number" id="age-break-1" class="heatmap-legend-break-input" min="1" max="99" title="Second color transition">
-                <input type="number" id="age-break-2" class="heatmap-legend-break-input" min="1" max="99" title="Third color transition">
-                <input type="number" id="age-break-3" class="heatmap-legend-break-input" min="1" max="99" title="Red zone start">
+          <div class="heatmap-legend-panel noise-legend-panel-shell mb-16" id="age-legend">
+            <div class="noise-legend-layout">
+              <div class="noise-legend-main">
+                <div class="heatmap-legend-bar-wrap">
+                  <div id="age-gradient-bar" class="heatmap-legend-gradient-bar"></div>
+                  <div id="age-legend-ticks" class="heatmap-legend-ticks"></div>
+                </div>
+                <div class="legend">
+                  <div class="badge"><span class="legend-swatch legend-swatch-never"></span> Never cleaned</div>
+                  <div class="badge"><span class="legend-swatch legend-swatch-module"></span> EB Module</div>
+                </div>
+              </div>
+              <div class="heatmap-legend-breakpoints">
+                <span class="heatmap-legend-break-label">Thresholds (days):</span>
+                <div class="heatmap-legend-break-inputs">
+                  <input type="number" id="age-break-0" class="heatmap-legend-break-input" min="1" max="99" title="First color transition">
+                  <input type="number" id="age-break-1" class="heatmap-legend-break-input" min="1" max="99" title="Second color transition">
+                  <input type="number" id="age-break-2" class="heatmap-legend-break-input" min="1" max="99" title="Third color transition">
+                  <input type="number" id="age-break-3" class="heatmap-legend-break-input" min="1" max="99" title="Red zone start">
+                </div>
+                <button type="button" id="age-legend-reset-btn" class="btn btn-outline btn-sm heatmap-legend-reset-btn">
+                  Reset
+                </button>
               </div>
             </div>
           </div>
 
           <!-- Noise-mode legend (hidden by default): JS-driven gradient + editable thresholds -->
-          <div class="heatmap-legend-panel mb-16 hidden" id="noise-legend">
-            <div class="heatmap-legend-bar-wrap">
-              <div class="noise-legend-bar" id="noise-gradient-bar"></div>
-              <div class="heatmap-legend-ticks" id="noise-legend-ticks"></div>
-            </div>
-            <div class="legend">
-              <div class="badge"><span class="legend-swatch" style="background:#9ca3af"></span> No RMS data available</div>
-            </div>
-            <div class="heatmap-legend-breakpoints">
-              <span class="heatmap-legend-break-label">Clean pivot (RMS):</span>
-              <input type="number" id="noise-clean-pivot" class="heatmap-legend-break-input" min="0.5" max="50" step="0.5" title="RMS value for clean/noisy colour transition">
-              <span class="heatmap-legend-break-label">Max (RMS):</span>
-              <input type="number" id="noise-max" class="heatmap-legend-break-input" min="1" max="100" step="1" title="RMS value mapped to deepest red">
+          <div class="heatmap-legend-panel noise-legend-panel-shell mb-16 hidden" id="noise-legend">
+            <div class="noise-legend-layout">
+              <div class="noise-legend-main">
+                <div class="heatmap-legend-bar-wrap">
+                  <div class="noise-legend-bar" id="noise-gradient-bar"></div>
+                  <div class="heatmap-legend-ticks" id="noise-legend-ticks"></div>
+                </div>
+                <div class="legend">
+                  <div class="badge"><span class="legend-swatch" style="background:#9ca3af"></span> No RMS data available</div>
+                </div>
+              </div>
+              <div class="heatmap-legend-breakpoints">
+                <span class="heatmap-legend-break-label">Clean pivot (RMS):</span>
+                <input type="number" id="noise-clean-pivot" class="heatmap-legend-break-input" min="0.5" max="50" step="0.5" title="RMS value for clean/noisy colour transition">
+                <span class="heatmap-legend-break-label">Max (RMS):</span>
+                <input type="number" id="noise-max" class="heatmap-legend-break-input" min="1" max="100" step="1" title="RMS value mapped to deepest red">
+                <button type="button" id="noise-legend-reset-btn" class="btn btn-outline btn-sm heatmap-legend-reset-btn">
+                  Reset
+                </button>
+              </div>
             </div>
           </div>
 
@@ -240,6 +282,61 @@
       </main>
     </div>
 
+  </div>
+
+  <div
+    id="noise-rename-modal"
+    class="modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="noise-rename-modal-title"
+  >
+    <div class="modal-overlay" id="noise-rename-modal-overlay" aria-hidden="true"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="noise-rename-modal-title">Rename RMS Upload</h3>
+        <button class="modal-close" id="noise-rename-modal-close" aria-label="Close rename dialog">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="muted mb-12">Update the display name shown in the RMS upload history.</p>
+        <label for="noise-rename-input">Upload label</label>
+        <input
+          type="text"
+          id="noise-rename-input"
+          class="noise-rename-input"
+          maxlength="120"
+          placeholder="Enter upload label"
+        >
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="noise-rename-cancel-btn">Cancel</button>
+        <button type="button" class="btn btn-primary" id="noise-rename-confirm-btn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div
+    id="noise-delete-modal"
+    class="modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="noise-delete-modal-title"
+  >
+    <div class="modal-overlay" id="noise-delete-modal-overlay" aria-hidden="true"></div>
+    <div class="modal-content modal-delete">
+      <div class="modal-header modal-header-delete">
+        <h3 id="noise-delete-modal-title">Delete RMS Upload</h3>
+        <button class="modal-close" id="noise-delete-modal-close" aria-label="Close delete dialog">×</button>
+      </div>
+      <div class="modal-body">
+        <p id="noise-delete-modal-message">Are you sure you want to delete this RMS upload?</p>
+        <p class="muted">This action cannot be undone.</p>
+      </div>
+      <div class="modal-footer modal-footer-delete">
+        <button type="button" class="btn btn-secondary" id="noise-delete-cancel-btn">Cancel</button>
+        <button type="button" class="btn btn-danger" id="noise-delete-confirm-btn">Delete</button>
+      </div>
+    </div>
   </div>
 
   <!-- Toast Notification Container -->

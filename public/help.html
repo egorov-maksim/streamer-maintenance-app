@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Help - Streamer Maintenance Tracker</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+  <div id="login-page" class="login-page hidden">
+    <div class="login-container">
+      <div class="login-header">
+        <div class="login-logo">🌊</div>
+        <h1>Streamers Scraping Tracker</h1>
+        <p class="login-subtitle">Sign in to open the help guide</p>
+      </div>
+
+      <form id="login-form" class="login-form" method="post" action="#" onsubmit="return false;">
+        <div class="form-group">
+          <label for="login-username">Username</label>
+          <div class="input-wrapper">
+            <span class="input-icon">👤</span>
+            <input
+              type="text"
+              id="login-username"
+              name="username"
+              placeholder="Enter your username"
+              autocomplete="username"
+              required
+            >
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="login-password">Password</label>
+          <div class="input-wrapper">
+            <span class="input-icon">🔒</span>
+            <input
+              type="password"
+              id="login-password"
+              name="password"
+              placeholder="Enter your password"
+              autocomplete="current-password"
+              required
+            >
+            <button type="button" class="password-toggle" id="password-toggle">👁️</button>
+          </div>
+        </div>
+
+        <div id="login-error" class="login-error"></div>
+
+        <button type="button" class="login-btn" id="login-submit">
+          <span class="btn-text">Sign In</span>
+          <span class="btn-loader hidden">⏳</span>
+        </button>
+      </form>
+
+      <div class="login-footer">
+        <p>Access Levels:</p>
+        <div class="access-info">
+          <span class="access-badge superuser">⚡ Super User</span>
+          <span class="access-badge admin">🔑 Administrator</span>
+          <span class="access-badge viewer">👁️ Viewer</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="app-container" class="app-container hidden">
+    <div class="user-header">
+      <div class="user-info">
+        <span class="user-avatar">👤</span>
+        <span class="user-name" id="user-display-name">User</span>
+        <span class="user-role-badge" id="user-role-badge">Viewer</span>
+      </div>
+      <div class="user-header-actions">
+        <a href="/" class="back-to-main-btn"><span>←</span> Back to main</a>
+        <a href="/stats" class="back-to-main-btn"><span>📊</span> Statistics</a>
+        <a href="/planning" class="back-to-main-btn"><span>📋</span> Planning</a>
+        <a href="/config" class="back-to-main-btn superuser-only"><span>⚙️</span> Config</a>
+        <button class="logout-btn" id="logout-btn">
+          <span>🚪</span> Logout
+        </button>
+      </div>
+    </div>
+
+    <div class="main-wrapper">
+      <header>
+        <h1>❓ Help</h1>
+        <div class="subheader">Simple guide for first-time users of the Streamer Maintenance Tracker</div>
+      </header>
+
+      <main>
+        <section class="card help-page-section">
+          <h2 class="card-title">Overview</h2>
+          <p class="mb-12">
+            This app helps the crew track streamer cleaning work by project. You can set up a project,
+            define streamer parameters, record cleaning events, and review results in the statistics and planning pages.
+          </p>
+          <div class="grid grid-2">
+            <div class="help-parameter-item">
+              <strong>Main page</strong>
+              Use it to select a cleaning method, mark cleaned sections on the heatmap, add manual events, and review the log.
+            </div>
+            <div class="help-parameter-item">
+              <strong>Config page</strong>
+              Use it to create projects, set the active project, define streamer parameters, and save deployment details.
+            </div>
+            <div class="help-parameter-item">
+              <strong>Statistics page</strong>
+              Use it to review coverage, cleaned distance, event counts, and project trends.
+            </div>
+            <div class="help-parameter-item">
+              <strong>Planning page</strong>
+              Use it to see which sections have gone the longest without cleaning and plan the next work.
+            </div>
+          </div>
+        </section>
+
+        <section class="card help-page-section">
+          <h2 class="card-title">Quick Start</h2>
+          <ol class="help-quick-start">
+            <li>Open the <strong>Config</strong> page.</li>
+            <li>Check the current streamer configuration values before creating a new project.</li>
+            <li>Create the new project with project number, name, and vessel tag.</li>
+            <li>Set that project as the active project.</li>
+            <li>Adjust and save the project configuration if anything should be different from the inherited defaults.</li>
+            <li>Save streamer deployment dates and coating status for the active project.</li>
+            <li>Return to the main page and start recording cleaning work.</li>
+          </ol>
+        </section>
+
+        <section class="card help-page-section">
+          <h2 class="card-title">Create a Project</h2>
+          <p class="mb-12">
+            Go to <strong>Config</strong>, then use <strong>Create New Project</strong>. New projects inherit the current configuration,
+            so it is a good idea to review the parameters first.
+          </p>
+          <div class="help-parameter-grid">
+            <div class="help-parameter-item">
+              <strong>Project Number</strong>
+              Main identifier for the job, for example a survey or campaign reference.
+            </div>
+            <div class="help-parameter-item">
+              <strong>Project Name</strong>
+              Optional plain-language label that makes the project easier to recognize.
+            </div>
+            <div class="help-parameter-item">
+              <strong>Vessel Tag</strong>
+              Vessel code the project belongs to, such as `TTN`.
+            </div>
+          </div>
+          <p class="info-text mt-12">
+            After creating the project, select it and click <strong>Set as Active</strong> so the app loads that project's settings.
+          </p>
+        </section>
+
+        <section class="card help-page-section">
+          <h2 class="card-title">Define Streamer Parameters</h2>
+          <p class="mb-12">
+            These settings describe how the streamer spread is arranged for the active project.
+          </p>
+          <div class="help-parameter-grid">
+            <div class="help-parameter-item">
+              <strong>Number of Streamers</strong>
+              Total streamers in the spread for this project.
+            </div>
+            <div class="help-parameter-item">
+              <strong>Active Sections per Streamer</strong>
+              Number of working sections on each streamer.
+            </div>
+            <div class="help-parameter-item">
+              <strong>Section Length (m)</strong>
+              Physical length of one section. This is used when the app calculates cleaned distance.
+            </div>
+            <div class="help-parameter-item">
+              <strong>eBird Frequency</strong>
+              How often equipment box positions repeat along the streamer.
+            </div>
+            <div class="help-parameter-item">
+              <strong>Channels per Section</strong>
+              Number of channels contained in each section.
+            </div>
+            <div class="help-parameter-item">
+              <strong>Tail Configuration</strong>
+              Choose whether the tail uses rope only or includes 5 extra tail sections.
+            </div>
+          </div>
+          <p class="info-text mt-12">
+            Save the configuration after changes. The active project uses its own saved parameters.
+          </p>
+        </section>
+
+        <section class="card help-page-section">
+          <h2 class="card-title">Configure Streamers</h2>
+          <p class="mb-12">
+            In the active project, use <strong>Per-Streamer Deployment Configuration</strong> to define deployment details for each streamer.
+          </p>
+          <div class="grid grid-2">
+            <div class="help-parameter-item">
+              <strong>Deployment date</strong>
+              Records when a streamer was deployed for the project.
+            </div>
+            <div class="help-parameter-item">
+              <strong>Coating status</strong>
+              Mark each streamer as coated, uncoated, or unknown.
+            </div>
+          </div>
+          <p class="info-text mt-12">
+            You can use the bulk actions to set the same date or coating status for all streamers, then click <strong>Save Streamer Configurations</strong>.
+          </p>
+        </section>
+
+        <section class="card help-page-section">
+          <h2 class="card-title">Use the Main Page</h2>
+          <div class="help-parameter-grid">
+            <div class="help-parameter-item">
+              <strong>Choose the method</strong>
+              Select Rope, Scraper, Scraper&amp;Rope, SCUE, or Knife before recording work.
+            </div>
+            <div class="help-parameter-item">
+              <strong>Mark cleaned sections</strong>
+              Click and drag across active cells in the heatmap to record a cleaned range.
+            </div>
+            <div class="help-parameter-item">
+              <strong>Add manual events</strong>
+              Use the manual entry form when you need to enter a cleaning event directly.
+            </div>
+            <div class="help-parameter-item">
+              <strong>Review the log</strong>
+              Check the history table to confirm the event was saved and sorted correctly.
+            </div>
+          </div>
+          <p class="info-text mt-12">
+            If the wrong project is active, change it in <strong>Config</strong> before recording new work.
+          </p>
+        </section>
+
+        <section class="card help-page-section">
+          <h2 class="card-title">Use Stats and Planning</h2>
+          <div class="grid grid-2">
+            <div class="help-parameter-item">
+              <strong>Statistics</strong>
+              Best for checking coverage, total cleaned distance, number of events, and filtered project results.
+            </div>
+            <div class="help-parameter-item">
+              <strong>Planning</strong>
+              Best for deciding what to clean next by looking at days since last scraping and suggested ranges.
+            </div>
+          </div>
+        </section>
+
+        <section class="card help-page-section">
+          <h2 class="card-title">Tips</h2>
+          <div class="alert alert-warning">
+            <div class="alert-icon">ℹ️</div>
+            <div>
+              Always activate the correct project before entering events. Project-specific configuration, deployments,
+              and planning data depend on the active project.
+            </div>
+          </div>
+          <p class="info-text mt-12">
+            If you create a new project, save its configuration first, then start logging cleaning events.
+          </p>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div id="toast-container" class="toast-container"></div>
+
+  <script type="module" src="/help-page.js"></script>
+</body>
+</html>

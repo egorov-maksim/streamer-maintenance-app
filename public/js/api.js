@@ -305,6 +305,21 @@ export async function uploadNoiseData(payload) {
   });
 }
 
+export async function renameNoiseUpload(uploadId, label) {
+  return apiCall(`api/noise-data/uploads/${uploadId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ label }),
+    action: "rename noise upload",
+  });
+}
+
+export async function deleteNoiseUpload(uploadId) {
+  return apiCall(`api/noise-data/uploads/${uploadId}`, {
+    method: "DELETE",
+    action: "delete noise upload",
+  });
+}
+
 // --- Cleaning noise efficiency KPI ---
 
 /**
