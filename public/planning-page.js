@@ -37,6 +37,7 @@ import {
 } from "./js/streamer-utils.js";
 import { validateNoiseCsv } from "./js/noise-validation.js";
 import {
+  DEFAULT_PREFS,
   loadHeatmapLegendPrefs,
   saveHeatmapLegendPrefs,
   validateAgeBreaks,
@@ -176,6 +177,50 @@ function syncNoiseActionButtons() {
   });
 }
 
+function updateNoiseToolbarStatus(message = null) {
+  const statusEl = safeGet("noise-toolbar-status");
+  if (!statusEl) return;
+
+  if (message) {
+    statusEl.textContent = message;
+    statusEl.classList.toggle("hidden", !isNoiseToggleOn());
+    return;
+  }
+
+  if (!noiseUploads.length) {
+    statusEl.textContent = "";
+    statusEl.classList.add("hidden");
+    return;
+  }
+
+  const selectedUploadId = getSelectedNoiseUploadId();
+  const selectedUpload = noiseUploads.find((upload) => upload.id === selectedUploadId) || noiseUploads[0];
+  if (!selectedUpload) {
+    statusEl.textContent = "";
+    statusEl.classList.add("hidden");
+    return;
+  }
+
+  const date = new Date(selectedUpload.uploadedAt).toLocaleDateString();
+  const label = selectedUpload.label ? ` - ${selectedUpload.label}` : "";
+  statusEl.textContent = `Showing RMS upload from ${date}${label}.`;
+  statusEl.classList.toggle("hidden", !isNoiseToggleOn());
+}
+
+function updateNoiseUploadHelperText() {
+  const helperEl = safeGet("noise-upload-helper-text");
+  if (!helperEl) return;
+
+  if (!noiseUploads.length) {
+    helperEl.textContent = "";
+    helperEl.classList.add("hidden");
+    return;
+  }
+
+  helperEl.textContent = "";
+  helperEl.classList.add("hidden");
+}
+
 function closeNoiseRenameModal() {
   const renameInput = safeGet("noise-rename-input");
   if (renameInput) {
@@ -209,10 +254,10 @@ function enableNoiseToggle(hasData) {
 function updatePlanningHeatmapCardTitle() {
   const el = safeGet("planning-heatmap-card-title");
   if (!el) return;
-  el.textContent =
-    isNoiseToggleOn() && noiseData
-      ? "📋 Average RMS per section"
-      : "📋 Days Since Last Scraping";
+  el.textContent = isNoiseToggleOn() && noiseData
+    ? "📋 Average RMS per section"
+    : "📋 Days Since Last Scraping";
+  updateNoiseToolbarStatus();
 }
 
 /* ------------ Tooltip ------------ */
@@ -856,6 +901,8 @@ async function refreshNoiseForProject(projectNumber, preferredUploadId = null) {
     setNoiseUploads([]);
     selector?.classList.add("hidden");
     syncNoiseActionButtons();
+    updateNoiseUploadHelperText();
+    updateNoiseToolbarStatus("Select an active project to view RMS noise data.");
     enableNoiseToggle(false);
     // Turn off toggle visually and restore age overlay if it was active
     if (toggle?.checked) {
@@ -900,6 +947,8 @@ async function refreshNoiseForProject(projectNumber, preferredUploadId = null) {
   }
 
   syncNoiseActionButtons();
+  updateNoiseUploadHelperText();
+  updateNoiseToolbarStatus();
   await renderPlanningHeatmap();
 }
 
@@ -963,6 +1012,7 @@ function initNoiseControls() {
     syncNoiseActionButtons();
     if (!uploadId) return;
     await loadNoiseData(uploadId, selectedProjectFilter);
+    updateNoiseToolbarStatus();
     await renderPlanningHeatmap();
   });
 
@@ -1097,18 +1147,53 @@ function initNoiseControls() {
  * Called once on page init so event listeners are attached before data loads.
  */
 function initLegendControls() {
-  const prefs = loadHeatmapLegendPrefs();
-
-  // --- Age legend bar + inputs ---
   const ageBarEl  = safeGet("age-gradient-bar");
   const ageTickEl = safeGet("age-legend-ticks");
-  if (ageBarEl)  ageBarEl.style.background = scrapingAgeLegendGradient(prefs);
-  if (ageTickEl) renderAgeTicks(ageTickEl, prefs);
+  const pivotInput = safeGet("noise-clean-pivot");
+  const maxInput   = safeGet("noise-max");
 
-  prefs.ageBreaks.forEach((val, i) => {
-    const input = safeGet(`age-break-${i}`);
-    if (input) input.value = val;
-  });
+  function updateAgeLegend(prefs) {
+    if (ageBarEl) ageBarEl.style.background = scrapingAgeLegendGradient(prefs);
+    if (ageTickEl) renderAgeTicks(ageTickEl, prefs);
+  }
+
+  function updateNoiseLegendBar(prefs) {
+    const noiseBarEl  = safeGet("noise-gradient-bar");
+    const noiseTickEl = safeGet("noise-legend-ticks");
+    if (noiseBarEl) noiseBarEl.style.background = noiseLegendGradient(prefs);
+    if (noiseTickEl) renderNoiseTicks(noiseTickEl, prefs);
+  }
+
+  function syncLegendInputs(prefs) {
+    prefs.ageBreaks.forEach((val, i) => {
+      const input = safeGet(`age-break-${i}`);
+      if (input) input.value = val;
+    });
+    if (pivotInput) pivotInput.value = prefs.noiseCleanPivot;
+    if (maxInput) maxInput.value = prefs.noisyMax;
+  }
+
+  function repaintPlanningHeatmap(prefs) {
+    const container = safeGet("planning-heatmap-container");
+    if (!container) return;
+
+    if (isNoiseToggleOn() && noiseData) {
+      applyNoiseOverlay(container, noiseData);
+      return;
+    }
+
+    if (!isNoiseToggleOn()) {
+      paintScrapingAgeCells(container, prefs);
+    }
+  }
+
+  function refreshLegendUI(prefs) {
+    updateAgeLegend(prefs);
+    updateNoiseLegendBar(prefs);
+    syncLegendInputs(prefs);
+  }
+
+  refreshLegendUI(loadHeatmapLegendPrefs());
 
   function onAgeBreakInput() {
     const vals = [0, 1, 2, 3].map((i) => {
@@ -1125,35 +1210,13 @@ function initLegendControls() {
 
     saveHeatmapLegendPrefs({ ageBreaks: valid });
     const newPrefs = loadHeatmapLegendPrefs();
-
-    if (ageBarEl)  ageBarEl.style.background = scrapingAgeLegendGradient(newPrefs);
-    if (ageTickEl) renderAgeTicks(ageTickEl, newPrefs);
-
-    const container = safeGet("planning-heatmap-container");
-    if (container && !isNoiseToggleOn()) {
-      paintScrapingAgeCells(container, newPrefs);
-    }
+    refreshLegendUI(newPrefs);
+    repaintPlanningHeatmap(newPrefs);
   }
 
   for (let i = 0; i < 4; i++) {
     safeGet(`age-break-${i}`)?.addEventListener("input", onAgeBreakInput);
   }
-
-  // --- Noise legend bar + inputs ---
-  const noiseBarEl  = safeGet("noise-gradient-bar");
-  const noiseTickEl = safeGet("noise-legend-ticks");
-
-  function updateNoiseLegendBar(p) {
-    if (noiseBarEl)  noiseBarEl.style.background = noiseLegendGradient(p);
-    if (noiseTickEl) renderNoiseTicks(noiseTickEl, p);
-  }
-
-  updateNoiseLegendBar(prefs);
-
-  const pivotInput = safeGet("noise-clean-pivot");
-  const maxInput   = safeGet("noise-max");
-  if (pivotInput) pivotInput.value = prefs.noiseCleanPivot;
-  if (maxInput)   maxInput.value   = prefs.noisyMax;
 
   function onNoiseInput() {
     const pivotVal = pivotInput && pivotInput.value !== "" ? Number(pivotInput.value) : NaN;
@@ -1164,17 +1227,26 @@ function initLegendControls() {
 
     saveHeatmapLegendPrefs({ noiseCleanPivot: pivotVal, noisyMax: maxVal });
     const newPrefs = loadHeatmapLegendPrefs();
-
-    updateNoiseLegendBar(newPrefs);
-
-    const container = safeGet("planning-heatmap-container");
-    if (container && isNoiseToggleOn() && noiseData) {
-      applyNoiseOverlay(container, noiseData);
-    }
+    refreshLegendUI(newPrefs);
+    repaintPlanningHeatmap(newPrefs);
   }
 
   pivotInput?.addEventListener("input", onNoiseInput);
   maxInput?.addEventListener("input", onNoiseInput);
+
+  function resetLegendPrefs() {
+    saveHeatmapLegendPrefs({
+      ageBreaks: [...DEFAULT_PREFS.ageBreaks],
+      noiseCleanPivot: DEFAULT_PREFS.noiseCleanPivot,
+      noisyMax: DEFAULT_PREFS.noisyMax,
+    });
+    const resetPrefs = loadHeatmapLegendPrefs();
+    refreshLegendUI(resetPrefs);
+    repaintPlanningHeatmap(resetPrefs);
+  }
+
+  safeGet("age-legend-reset-btn")?.addEventListener("click", resetLegendPrefs);
+  safeGet("noise-legend-reset-btn")?.addEventListener("click", resetLegendPrefs);
 }
 
 /* ------------ Active project display ------------ */

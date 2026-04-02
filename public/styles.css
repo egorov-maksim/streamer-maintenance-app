@@ -2723,25 +2723,114 @@ table.has-noise-data .noise-col {
   display: table-cell;
 }
 
-/* Header row: title + noise controls side-by-side */
-.noise-controls-row {
+/* RMS toolbar + grouped controls */
+.noise-toolbar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 4px;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
-.noise-controls-row .card-title {
+.noise-toolbar-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.noise-toolbar-heading .card-title {
   margin-bottom: 0;
 }
 
-.noise-controls {
+.noise-toolbar-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+/* Single unified dataset card */
+.noise-toolbar-group {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-bg);
+  overflow: hidden;
   flex-wrap: wrap;
+}
+
+.noise-toolbar-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.noise-toolbar-group-dataset {
+  width: 100%;
+}
+
+/* Each segment in the card is separated by a border-right */
+.noise-dataset-label {
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding: 10px 14px;
+  border-right: 1px solid var(--border);
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+
+/* Toggle sits in its own segment */
+.noise-toolbar-group .noise-toggle-label {
+  padding: 10px 14px;
+  border-right: 1px solid var(--border);
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  margin: 0;
+}
+
+/* Vertical pipe divider (hidden — border on toggle-label acts as divider) */
+.noise-dataset-divider {
+  display: none;
+}
+
+.noise-dataset-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  padding: 8px 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.noise-dataset-controls .noise-toolbar-status {
+  margin-right: auto;
+}
+
+.noise-dataset-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 700px) {
+  .noise-dataset-label,
+  .noise-toolbar-group .noise-toggle-label {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    width: 100%;
+    padding: 8px 12px;
+  }
 }
 
 /* Toggle switch */
@@ -2805,19 +2894,21 @@ table.has-noise-data .noise-col {
 
 /* Upload selector */
 .noise-upload-selector {
-  font-size: 12px;
-  padding: 4px 8px;
+  min-width: 280px;
+  max-width: 360px;
+  font-size: 13px;
+  padding: 8px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 10px;
   background: var(--card-bg, #fff);
   color: var(--text);
-  max-width: 220px;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 /* Upload button — styled as a file label */
 .noise-upload-btn {
-  font-size: 12px;
-  padding: 5px 12px;
+  font-size: 13px;
+  padding: 8px 14px;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -2828,6 +2919,28 @@ table.has-noise-data .noise-col {
 
 .noise-rename-input {
   width: 100%;
+}
+
+.noise-legend-panel-shell {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(249,250,251,0.96) 100%);
+}
+
+.noise-legend-layout {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.noise-legend-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 480px;
 }
 
 /* Noise gradient bar (inside .heatmap-legend-bar-wrap — same vertical rhythm as age bar) */
@@ -2891,9 +3004,11 @@ table.has-noise-data .noise-col {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 4px;
-  max-width: 480px;
+  gap: 8px;
+  margin-top: 0;
+  max-width: none;
+  flex: 0 0 auto;
+  justify-content: flex-end;
 }
 
 .heatmap-legend-break-label {
@@ -2912,12 +3027,55 @@ table.has-noise-data .noise-col {
 .heatmap-legend-break-input {
   width: 52px;
   font-size: 12px;
-  padding: 2px 4px;
+  padding: 4px 6px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 6px;
   background: var(--card-bg);
   color: var(--text);
   text-align: center;
+}
+
+.heatmap-legend-reset-btn {
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 900px) {
+  .noise-toolbar-group {
+    justify-content: flex-start;
+  }
+
+  .noise-dataset-controls {
+    justify-content: flex-start;
+  }
+
+  .noise-dataset-controls .noise-toolbar-status {
+    max-width: 100%;
+    width: 100%;
+    order: -1;
+  }
+
+  .noise-upload-selector {
+    min-width: 220px;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .noise-toolbar-group-overlay {
+    flex: 1 1 280px;
+  }
+
+  .noise-legend-layout {
+    gap: 12px;
+  }
+
+  .heatmap-legend-breakpoints {
+    justify-content: flex-start;
+  }
+
+  .heatmap-legend-reset-btn {
+    margin-left: 0;
+  }
 }
 
 /* Threshold control row above the cleaning suggestions table */
