@@ -178,22 +178,29 @@
         <h2 class="card-title">🗺️ Streamers Detail View</h2>
 
         <!-- Adjustable gradient legend -->
-        <div class="heatmap-legend-panel mb-16" id="age-legend-panel">
-          <div class="heatmap-legend-bar-wrap">
-            <div id="age-gradient-bar" class="heatmap-legend-gradient-bar"></div>
-            <div id="age-legend-ticks" class="heatmap-legend-ticks"></div>
-          </div>
-          <div class="legend">
-            <div class="badge"><span class="legend-swatch legend-swatch-never"></span> Never cleaned</div>
-            <div class="badge"><span class="legend-swatch legend-swatch-module"></span> EB Module</div>
-          </div>
-          <div class="heatmap-legend-breakpoints">
-            <span class="heatmap-legend-break-label">Thresholds (days):</span>
-            <div class="heatmap-legend-break-inputs">
-              <input type="number" id="age-break-0" class="heatmap-legend-break-input" min="1" max="99" title="First color transition">
-              <input type="number" id="age-break-1" class="heatmap-legend-break-input" min="1" max="99" title="Second color transition">
-              <input type="number" id="age-break-2" class="heatmap-legend-break-input" min="1" max="99" title="Third color transition">
-              <input type="number" id="age-break-3" class="heatmap-legend-break-input" min="1" max="99" title="Red zone start">
+        <div class="heatmap-legend-panel noise-legend-panel-shell mb-16" id="age-legend-panel">
+          <div class="noise-legend-layout">
+            <div class="noise-legend-main">
+              <div class="heatmap-legend-bar-wrap">
+                <div id="age-gradient-bar" class="heatmap-legend-gradient-bar"></div>
+                <div id="age-legend-ticks" class="heatmap-legend-ticks"></div>
+              </div>
+              <div class="legend">
+                <div class="badge"><span class="legend-swatch legend-swatch-never"></span> Never cleaned</div>
+                <div class="badge"><span class="legend-swatch legend-swatch-module"></span> EB Module</div>
+              </div>
+            </div>
+            <div class="heatmap-legend-breakpoints">
+              <span class="heatmap-legend-break-label">Thresholds (days):</span>
+              <div class="heatmap-legend-break-inputs">
+                <input type="number" id="age-break-0" class="heatmap-legend-break-input" min="1" max="99" title="First color transition">
+                <input type="number" id="age-break-1" class="heatmap-legend-break-input" min="1" max="99" title="Second color transition">
+                <input type="number" id="age-break-2" class="heatmap-legend-break-input" min="1" max="99" title="Third color transition">
+                <input type="number" id="age-break-3" class="heatmap-legend-break-input" min="1" max="99" title="Red zone start">
+              </div>
+              <button type="button" id="age-legend-reset-btn" class="btn btn-outline btn-sm heatmap-legend-reset-btn">
+                Reset
+              </button>
             </div>
           </div>
         </div>

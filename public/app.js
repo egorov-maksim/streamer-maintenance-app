@@ -58,6 +58,7 @@ import {
   renderStreamerCards,
 } from "./js/stats.js";
 import {
+  DEFAULT_PREFS,
   loadHeatmapLegendPrefs,
   saveHeatmapLegendPrefs,
   validateAgeBreaks,
@@ -2177,18 +2178,21 @@ function setupProjectCollapse() {
  * any breakpoint without requiring a data re-fetch.
  */
 function initAgeLegendControls() {
-  const prefs = loadHeatmapLegendPrefs();
-
   const barEl = safeGet("age-gradient-bar");
   const ticksEl = safeGet("age-legend-ticks");
+  const resetBtn = safeGet("age-legend-reset-btn");
 
-  if (barEl) barEl.style.background = scrapingAgeLegendGradient(prefs);
-  if (ticksEl) renderAgeTicks(ticksEl, prefs);
+  function refreshAgeLegend(prefs) {
+    if (barEl) barEl.style.background = scrapingAgeLegendGradient(prefs);
+    if (ticksEl) renderAgeTicks(ticksEl, prefs);
 
-  prefs.ageBreaks.forEach((val, i) => {
-    const input = safeGet(`age-break-${i}`);
-    if (input) input.value = val;
-  });
+    prefs.ageBreaks.forEach((val, i) => {
+      const input = safeGet(`age-break-${i}`);
+      if (input) input.value = val;
+    });
+  }
+
+  refreshAgeLegend(loadHeatmapLegendPrefs());
 
   function onBreakInput() {
     const vals = [0, 1, 2, 3].map((i) => {
@@ -2205,9 +2209,7 @@ function initAgeLegendControls() {
 
     saveHeatmapLegendPrefs({ ageBreaks: valid });
     const newPrefs = loadHeatmapLegendPrefs();
-
-    if (barEl) barEl.style.background = scrapingAgeLegendGradient(newPrefs);
-    if (ticksEl) renderAgeTicks(ticksEl, newPrefs);
+    refreshAgeLegend(newPrefs);
 
     const container = safeGet("heatmap-container");
     if (container) paintScrapingAgeCells(container, newPrefs);
@@ -2216,6 +2218,15 @@ function initAgeLegendControls() {
   for (let i = 0; i < 4; i++) {
     safeGet(`age-break-${i}`)?.addEventListener("input", onBreakInput);
   }
+
+  resetBtn?.addEventListener("click", () => {
+    saveHeatmapLegendPrefs({ ageBreaks: [...DEFAULT_PREFS.ageBreaks] });
+    const resetPrefs = loadHeatmapLegendPrefs();
+    refreshAgeLegend(resetPrefs);
+
+    const container = safeGet("heatmap-container");
+    if (container) paintScrapingAgeCells(container, resetPrefs);
+  });
 }
 
 /* ------------ Init ------------ */
