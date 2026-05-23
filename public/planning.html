@@ -192,6 +192,8 @@
                 <span class="noise-toggle-text">Noise overlay</span>
               </label>
 
+              <span id="noise-water-speed-display" class="noise-water-speed-display hidden" aria-live="polite"></span>
+
               <span class="noise-dataset-divider" aria-hidden="true"></span>
 
               <div class="noise-dataset-controls">
@@ -203,9 +205,9 @@
                     type="button"
                     id="noise-rename-btn"
                     class="btn btn-outline btn-sm noise-action-btn admin-only hidden"
-                    title="Rename the selected RMS upload"
+                    title="Edit label and water speed for the selected RMS upload"
                   >
-                    Rename
+                    Edit RMS file attributes
                   </button>
                   <button
                     type="button"
@@ -295,11 +297,11 @@
     <div class="modal-overlay" id="noise-rename-modal-overlay" aria-hidden="true"></div>
     <div class="modal-content">
       <div class="modal-header">
-        <h3 id="noise-rename-modal-title">Rename RMS Upload</h3>
-        <button class="modal-close" id="noise-rename-modal-close" aria-label="Close rename dialog">×</button>
+        <h3 id="noise-rename-modal-title">Edit RMS Upload</h3>
+        <button class="modal-close" id="noise-rename-modal-close" aria-label="Close edit dialog">×</button>
       </div>
       <div class="modal-body">
-        <p class="muted mb-12">Update the display name shown in the RMS upload history.</p>
+        <p class="muted mb-12">Update the display name and optional water speed readings for this RMS upload.</p>
         <label for="noise-rename-input">Upload label</label>
         <input
           type="text"
@@ -308,10 +310,74 @@
           maxlength="120"
           placeholder="Enter upload label"
         >
+        <div class="noise-water-speed-fields">
+          <label for="noise-rename-speed-start">Water speed at start of line (kts, optional)</label>
+          <input
+            type="number"
+            id="noise-rename-speed-start"
+            class="noise-water-speed-input"
+            min="0"
+            step="0.01"
+            placeholder="e.g. 4.5"
+          >
+          <label for="noise-rename-speed-end">Water speed at end of line (kts, optional)</label>
+          <input
+            type="number"
+            id="noise-rename-speed-end"
+            class="noise-water-speed-input"
+            min="0"
+            step="0.01"
+            placeholder="e.g. 4.8"
+          >
+        </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" id="noise-rename-cancel-btn">Cancel</button>
         <button type="button" class="btn btn-primary" id="noise-rename-confirm-btn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div
+    id="noise-water-speed-modal"
+    class="modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="noise-water-speed-modal-title"
+  >
+    <div class="modal-overlay" id="noise-water-speed-modal-overlay" aria-hidden="true"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="noise-water-speed-modal-title">Upload RMS Noise File</h3>
+        <button class="modal-close" id="noise-water-speed-modal-close" aria-label="Close upload dialog">×</button>
+      </div>
+      <div class="modal-body">
+        <p id="noise-water-speed-modal-filename" class="noise-water-speed-filename muted mb-12"></p>
+        <p class="muted mb-12">Optionally record the water speed at the start and end of the acquisition line. These fields can be left blank and filled in later.</p>
+        <div class="noise-water-speed-fields">
+          <label for="noise-upload-speed-start">Water speed at start of line (kts, optional)</label>
+          <input
+            type="number"
+            id="noise-upload-speed-start"
+            class="noise-water-speed-input"
+            min="0"
+            step="0.01"
+            placeholder="e.g. 4.5"
+          >
+          <label for="noise-upload-speed-end">Water speed at end of line (kts, optional)</label>
+          <input
+            type="number"
+            id="noise-upload-speed-end"
+            class="noise-water-speed-input"
+            min="0"
+            step="0.01"
+            placeholder="e.g. 4.8"
+          >
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="noise-water-speed-cancel-btn">Cancel</button>
+        <button type="button" class="btn btn-primary" id="noise-water-speed-confirm-btn">Upload</button>
       </div>
     </div>
   </div>
@@ -342,6 +408,7 @@
 
   <script src="/libs/notyf.min.js"></script>
   <script src="/libs/chroma.min.js"></script>
+  <script src="/libs/papaparse.min.js"></script>
   <script type="module" src="/planning-page.js"></script>
 </body>
 </html>

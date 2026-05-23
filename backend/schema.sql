@@ -84,8 +84,11 @@ CREATE TABLE IF NOT EXISTS noise_uploads (
   vessel_tag TEXT NOT NULL,
   label TEXT,
   uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
+  water_speed_start REAL,
+  water_speed_end REAL,
   FOREIGN KEY(project_number) REFERENCES projects(project_number) ON DELETE CASCADE
 );
+
 
 -- Noise data: per-section RMS measurements linked to a batch
 CREATE TABLE IF NOT EXISTS noise_data (

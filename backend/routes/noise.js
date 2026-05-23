@@ -140,13 +140,23 @@ function createNoiseRouter(authMiddleware, adminOrAbove) {
   // Upload a new RMS noise batch (admin and above), scoped to a project
   router.post("/api/noise-data", authMiddleware, adminOrAbove, async (req, res) => {
     try {
-      const { projectNumber, label, noiseData } = req.body;
+      const { projectNumber, label, noiseData, waterSpeedStart, waterSpeedEnd } = req.body;
 
       if (!projectNumber) {
         return sendError(res, 400, "projectNumber is required");
       }
       if (!noiseData || typeof noiseData !== "object") {
         return sendError(res, 400, "noiseData object is required");
+      }
+
+      const speedStart = waterSpeedStart != null ? parseFloat(waterSpeedStart) : null;
+      const speedEnd = waterSpeedEnd != null ? parseFloat(waterSpeedEnd) : null;
+
+      if (speedStart !== null && isNaN(speedStart)) {
+        return sendError(res, 400, "waterSpeedStart must be a number");
+      }
+      if (speedEnd !== null && isNaN(speedEnd)) {
+        return sendError(res, 400, "waterSpeedEnd must be a number");
       }
 
       // Look up the project to get vessel_tag for the denormalized field + scope check
@@ -165,8 +175,8 @@ function createNoiseRouter(authMiddleware, adminOrAbove) {
 
       // Insert the batch header
       const headerResult = await runAsync(
-        "INSERT INTO noise_uploads (project_number, vessel_tag, label) VALUES (?, ?, ?)",
-        [projectNumber, project.vesselTag, label || null]
+        "INSERT INTO noise_uploads (project_number, vessel_tag, label, water_speed_start, water_speed_end) VALUES (?, ?, ?, ?, ?)",
+        [projectNumber, project.vesselTag, label || null, speedStart, speedEnd]
       );
       const uploadId = headerResult.lastID;
 
@@ -211,9 +221,34 @@ function createNoiseRouter(authMiddleware, adminOrAbove) {
     }
 
     try {
-      const label = typeof req.body?.label === "string" ? req.body.label.trim() : "";
-      if (!label) {
-        return sendError(res, 400, "label is required");
+      const { label, waterSpeedStart, waterSpeedEnd } = req.body || {};
+
+      const setClauses = [];
+      const params = [];
+
+      if (label !== undefined) {
+        const trimmed = typeof label === "string" ? label.trim() : "";
+        if (!trimmed) return sendError(res, 400, "label must not be empty");
+        setClauses.push("label = ?");
+        params.push(trimmed);
+      }
+
+      if (waterSpeedStart !== undefined) {
+        const val = waterSpeedStart === null ? null : parseFloat(waterSpeedStart);
+        if (val !== null && isNaN(val)) return sendError(res, 400, "waterSpeedStart must be a number");
+        setClauses.push("water_speed_start = ?");
+        params.push(val);
+      }
+
+      if (waterSpeedEnd !== undefined) {
+        const val = waterSpeedEnd === null ? null : parseFloat(waterSpeedEnd);
+        if (val !== null && isNaN(val)) return sendError(res, 400, "waterSpeedEnd must be a number");
+        setClauses.push("water_speed_end = ?");
+        params.push(val);
+      }
+
+      if (setClauses.length === 0) {
+        return sendError(res, 400, "At least one field (label, waterSpeedStart, waterSpeedEnd) is required");
       }
 
       const upload = await getScopedUpload(uploadId, req.vesselScope);
@@ -221,13 +256,14 @@ function createNoiseRouter(authMiddleware, adminOrAbove) {
         return sendError(res, 404, "Noise upload not found");
       }
 
-      await runAsync("UPDATE noise_uploads SET label = ? WHERE id = ?", [label, uploadId]);
+      params.push(uploadId);
+      await runAsync(`UPDATE noise_uploads SET ${setClauses.join(", ")} WHERE id = ?`, params);
 
       const updatedUpload = await getScopedUpload(uploadId, req.vesselScope);
       res.json(updatedUpload);
     } catch (err) {
       console.error("PATCH /api/noise-data/uploads/:id failed", err);
-      sendError(res, 500, "Failed to rename noise upload");
+      sendError(res, 500, "Failed to update noise upload");
     }
   });
 

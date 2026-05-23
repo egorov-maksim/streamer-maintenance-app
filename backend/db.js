@@ -67,6 +67,30 @@ function applyMigrations() {
       );
     }
   });
+
+  // Water speed fields recorded at the time of RMS noise line acquisition
+  db.all("PRAGMA table_info(noise_uploads)", [], (err, columns) => {
+    if (err) { console.error("Migration check failed (noise_uploads):", err); return; }
+    const names = columns.map((col) => col.name);
+    if (!names.includes("water_speed_start")) {
+      db.run(
+        "ALTER TABLE noise_uploads ADD COLUMN water_speed_start REAL",
+        (migrErr) => {
+          if (migrErr) console.error("Migration failed (add water_speed_start):", migrErr);
+          else console.log("Migration applied: added water_speed_start to noise_uploads");
+        }
+      );
+    }
+    if (!names.includes("water_speed_end")) {
+      db.run(
+        "ALTER TABLE noise_uploads ADD COLUMN water_speed_end REAL",
+        (migrErr) => {
+          if (migrErr) console.error("Migration failed (add water_speed_end):", migrErr);
+          else console.log("Migration applied: added water_speed_end to noise_uploads");
+        }
+      );
+    }
+  });
 }
 
 /**
