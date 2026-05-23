@@ -45,23 +45,42 @@ npm install
 
 Wait 1-2 minutes for installation to complete.
 
-### 4. Install jsPDF Library (REQUIRED)
+### 4. Install frontend libraries (REQUIRED)
 
-Download and place the jsPDF 4.x library for PDF report generation:
+Download UMD builds into `public/libs/` (no bundler). From the repo root:
 
 ```bash
-# Create libs directory
 mkdir -p public/libs
 
-# Download jsPDF 4.x (macOS/Linux)
-curl -o public/libs/jspdf.umd.min.js https://unpkg.com/jspdf@4.0.0/dist/jspdf.umd.min.js
+# PDF
+curl -fsSL -o public/libs/jspdf.umd.min.js https://unpkg.com/jspdf@4.0.0/dist/jspdf.umd.min.js
+curl -fsSL -o public/libs/jspdf-autotable.min.js https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js
 
-# Or download manually from the URL above and place in public/libs/
+# CSV, charts, toasts, heatmap colors
+curl -fsSL -o public/libs/papaparse.min.js https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js
+curl -fsSL -o public/libs/chart.umd.min.js https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js
+curl -fsSL -o public/libs/notyf.min.js https://cdn.jsdelivr.net/npm/notyf@3.10.0/notyf.min.js
+curl -fsSL -o public/libs/notyf.min.css https://cdn.jsdelivr.net/npm/notyf@3.10.0/notyf.min.css
+curl -fsSL -o public/libs/chroma.min.js https://cdn.jsdelivr.net/npm/chroma-js@2.4.2/chroma.min.js
 ```
 
-**Windows users**: Download from the URL above and save to `public\libs\jspdf.umd.min.js`
+**Windows users**: Download the same files from the URLs above into `public\libs\`.
 
-### 5. Configure (Optional)
+### 5. Generate password hashes (AUTH_USERS)
+
+Passwords in `.env` must be **bcrypt hashes**, not plaintext:
+
+```bash
+node -e "const b=require('bcryptjs'); console.log(b.hashSync('yourpassword', 10))"
+```
+
+Use the output in `AUTH_USERS` as the password field:
+
+```env
+AUTH_USERS=admin:$2b$10$YourHashHere:admin:TTN
+```
+
+### 6. Configure (Optional)
 
 Create a `.env` file for custom settings:
 
@@ -70,11 +89,11 @@ PORT=3000
 DB_FILE=./backend/streamer.db
 ALLOWED_ORIGINS=http://localhost:3000
 
-# Authentication (format: USERNAME:PASSWORD:ROLE:VESSEL_TAG[:GLOBAL])
-AUTH_USERS=USERNAME:PASSWORD:admin:ALL:true,USERNAME:PASSWORD:viewer:TTN
+# Authentication (format: USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG[:GLOBAL])
+AUTH_USERS=USERNAME:$2b$10$hash:admin:ALL:true,USERNAME:$2b$10$hash:viewer:TTN
 ```
 
-### 6. Start the Application
+### 7. Start the Application
 
 ```bash
 npm start
@@ -87,7 +106,7 @@ Database schema ensured.
 Starting automated database backup scheduler...
 ```
 
-### 7. Open in Browser
+### 8. Open in Browser
 
 Navigate to: **http://localhost:3000**
 
@@ -146,11 +165,13 @@ npm start
 
 ### Login Issues
 
-Check `.env` file AUTH_USERS format:
+Check `.env` file `AUTH_USERS` format (password field must be a bcrypt hash):
+
 ```env
-AUTH_USERS=USERNAME:PASSWORD:ROLE,NEXTUSER:NEXTPASS:ROLE
+AUTH_USERS=USERNAME:$2b$10$hash:ROLE:VESSEL_TAG
 ```
-No spaces around colons or commas.
+
+No spaces around colons or commas. Wrap the value in single quotes in shell scripts if `$` appears in hashes.
 
 ---
 
@@ -166,8 +187,7 @@ streamer-maintenance-app/
 │   ├── schema.sql         # Database schema
 │   └── streamer.db        # SQLite database (created on first run)
 ├── public/
-│   ├── libs/
-│   │   └── jspdf.umd.min.js  # jsPDF library (REQUIRED)
+│   ├── libs/               # UMD frontend libraries (REQUIRED — see step 4)
 │   ├── index.html
 │   ├── app.js
 │   ├── styles.css

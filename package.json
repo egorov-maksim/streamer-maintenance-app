@@ -6,8 +6,8 @@
   "scripts": {
     "start": "node backend/server.js",
     "dev": "nodemon backend/server.js",
-    "start:test": "DB_FILE=./backend/test.db node backend/server.js",
-    "test": "NODE_ENV=test DB_FILE=./backend/test.db node --test testing/tests/*.test.js testing/tests/unit/*.test.js",
+    "start:test": "DB_FILE=./backend/test.db AUTH_USERS='superuser:$2b$10$L1sK3Pu0fcrBHebPKQDkz.whPlAUVK0jc17PP1U4zsm6ON2YYI0Au:superuser,admin:$2b$10$zidjQ5ZXv97S3MOsGIZkhe.ZnJW8ZUHzM/sRlDHvu69PRVq5M71Tm:admin,viewer:$2b$10$qzvlc.//S4N47L/ZNJt8h.WTAEMmd01nFm8ynYVVphz4.RwdAAnLm:viewer' node backend/server.js",
+    "test": "NODE_ENV=test DB_FILE=./backend/test.db AUTH_USERS='superuser:$2b$10$L1sK3Pu0fcrBHebPKQDkz.whPlAUVK0jc17PP1U4zsm6ON2YYI0Au:superuser,admin:$2b$10$zidjQ5ZXv97S3MOsGIZkhe.ZnJW8ZUHzM/sRlDHvu69PRVq5M71Tm:admin,viewer:$2b$10$qzvlc.//S4N47L/ZNJt8h.WTAEMmd01nFm8ynYVVphz4.RwdAAnLm:viewer' node --test testing/tests/*.test.js testing/tests/unit/*.test.js",
     "test:e2e": "playwright test --config=testing/playwright.config.js",
     "test:e2e:headed": "playwright test --config=testing/playwright.config.js --headed",
     "test:all": "npm test && npm run test:e2e"

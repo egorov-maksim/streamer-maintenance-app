@@ -3298,6 +3298,11 @@ table.has-noise-data .noise-col {
   color: var(--muted);
 }
 
+.stats-daily-chart-canvas {
+  width: 100%;
+  max-height: 320px;
+}
+
 .stats-daily-chart {
   width: 100%;
   min-height: 200px;

@@ -5,7 +5,8 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const path = require("path");
-const { initDb } = require("./db");
+const { initDb, createBackup } = require("./db");
+const { startBackupScheduler } = require("./backupScheduler");
 const { createSessionStore } = require("./sessionStore");
 const {
   loadUsersFromEnv,
@@ -23,7 +24,11 @@ const { createNoiseRouter } = require("./routes/noise");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-initDb();
+initDb(() => {
+  if (process.env.NODE_ENV !== "test") {
+    startBackupScheduler(createBackup);
+  }
+});
 
 const users = loadUsersFromEnv();
 const sessionStore = createSessionStore();

@@ -868,9 +868,8 @@ function importCsv() {
   input.click();
 }
 
-function parseCsvLine(line) {
-  const regex = /,(?=(?:(?:[^"]*"){2})*[^"]*$)/;
-  return line.split(regex).map(field => field.trim().replace(/^"|"$/g, ''));
+function normalizeCsvRow(row) {
+  return row.map((field) => String(field ?? "").trim().replace(/^"|"$/g, ""));
 }
 
 async function handleCsvFile(file) {
@@ -883,20 +882,21 @@ async function handleCsvFile(file) {
 
   reader.onload = async (e) => {
     const content = e.target.result;
-    const lines = content.split('\n').filter(l => l.trim());
+    const parsed = window.Papa.parse(content, { skipEmptyLines: true });
+    const rows = parsed.data || [];
 
-    if (lines.length < 2) {
+    if (rows.length < 2) {
       showErrorToast('Invalid File', 'CSV file seems empty or invalid.');
       return;
     }
 
     const importBtn = safeGet('btn-import-csv');
     const progressEl = safeGet('csv-import-progress');
-    const dataLines = lines.slice(1).filter(l => l.trim());
-    const total = dataLines.length;
+    const dataRows = rows.slice(1).filter((row) => row.some((cell) => String(cell ?? "").trim()));
+    const total = dataRows.length;
 
     const hasSectionTypeColumn = total > 0 && (() => {
-      const firstParts = parseCsvLine(dataLines[0].trim());
+      const firstParts = normalizeCsvRow(dataRows[0]);
       return firstParts.length >= 8 && (firstParts[1] === 'active' || firstParts[1] === 'tail');
     })();
 
@@ -904,11 +904,9 @@ async function handleCsvFile(file) {
     const validRows = [];
     let parseErrorCount = 0;
 
-    for (const line of dataLines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-
-      const parts = parseCsvLine(trimmed);
+    for (const rawRow of dataRows) {
+      const parts = normalizeCsvRow(rawRow);
+      if (!parts.length) continue;
       let streamerNum, startSection, endSection, method, dateTimeStr, projectNumber, vesselTag, sectionType;
 
       if (hasSectionTypeColumn && parts.length >= 8 && (parts[1] === 'active' || parts[1] === 'tail')) {
