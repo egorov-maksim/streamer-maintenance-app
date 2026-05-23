@@ -66,6 +66,10 @@ import {
   scrapingAgeLegendGradient,
   renderAgeTicks,
 } from "./js/heatmap-legend.js";
+import {
+  loadDefaultCleaningMethod,
+  saveDefaultCleaningMethod,
+} from "./js/cleaning-method-prefs.js";
 
 const sectionCount = StreamerUtils.sectionCount;
 const eventDistance = StreamerUtils.eventDistance;
@@ -1066,6 +1070,7 @@ async function renderLog() {
 
 function selectMethod(method) {
   setSelectedMethod(method);
+  saveDefaultCleaningMethod(method);
   document.querySelectorAll('.method-tile').forEach(tile => {
     tile.classList.toggle('active', tile.dataset.method === method);
   });
@@ -2378,6 +2383,11 @@ async function initAppContent() {
   if (selectorEl && selectedProjectFilter) {
     selectorEl.value = selectedProjectFilter;
   }
+
+  // Apply the user's remembered default cleaning method (falls back to scraper-rope).
+  selectMethod(loadDefaultCleaningMethod());
+  const evtMethodEl = safeGet('evt-method');
+  if (evtMethodEl) evtMethodEl.value = selectedMethod;
 
   const { lastCleanedData, deployments, overallStats, filterStats } = await fetchDashboardDataBundle();
 
