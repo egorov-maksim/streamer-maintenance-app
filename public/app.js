@@ -1460,6 +1460,33 @@ function attachStreamerHeaderTooltips(wrapper, lastCleaned, deployments) {
 
 /* ------------ Drag-to-select ------------ */
 
+const SCROLL_ZONE = 80; // px from viewport edge that triggers auto-scroll during drag
+const SCROLL_MAX = 12;  // max px scrolled per animation frame
+
+let _scrollRAF = null;  // requestAnimationFrame handle for the scroll loop
+let _mouseY = 0;        // last known mouse clientY, updated via mousemove
+
+function _startScrollLoop() {
+  if (_scrollRAF) return;
+  function step() {
+    if (!dragState.active) { _scrollRAF = null; return; }
+    const vh = window.innerHeight;
+    let delta = 0;
+    if (_mouseY < SCROLL_ZONE) {
+      delta = -SCROLL_MAX * (1 - _mouseY / SCROLL_ZONE);
+    } else if (_mouseY > vh - SCROLL_ZONE) {
+      delta = SCROLL_MAX * ((_mouseY - (vh - SCROLL_ZONE)) / SCROLL_ZONE);
+    }
+    if (delta !== 0) window.scrollBy(0, delta);
+    _scrollRAF = requestAnimationFrame(step);
+  }
+  _scrollRAF = requestAnimationFrame(step);
+}
+
+function _stopScrollLoop() {
+  if (_scrollRAF) { cancelAnimationFrame(_scrollRAF); _scrollRAF = null; }
+}
+
 function attachDragListeners() {
   const cells = document.querySelectorAll('.hm-vcell:not(.hm-module)');
 
@@ -1493,7 +1520,13 @@ function attachDragListeners() {
     });
   });
 
+  document.addEventListener('mousemove', (e) => {
+    _mouseY = e.clientY;
+    if (dragState.active) _startScrollLoop();
+  });
+
   document.addEventListener('mouseup', () => {
+    _stopScrollLoop();
     if (dragState.active) {
       showConfirmationModal();
     }
@@ -1516,6 +1549,7 @@ function updateDragHighlight() {
 }
 
 function clearDragState() {
+  _stopScrollLoop();
   if (dragState.cells) {
     dragState.cells.forEach(cell => {
       cell.classList.remove('dragging');
