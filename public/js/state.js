@@ -3,9 +3,11 @@
  * All state reads/writes go through this module (direct exports or setters).
  */
 
+import { DEFAULT_CLEANING_METHOD } from "./cleaning-method-prefs.js";
+
 export let config = null;
 export let events = [];
-export let selectedMethod = "scraper-rope";
+export let selectedMethod = DEFAULT_CLEANING_METHOD;
 export let projects = [];
 export let selectedProjectFilter = null;
 

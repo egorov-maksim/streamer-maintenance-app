@@ -1,5 +1,6 @@
 // routes/auth.js
 const express = require("express");
+const bcrypt = require("bcryptjs");
 const { generateSessionToken } = require("../middleware/auth");
 const { sendError } = require("../utils/errors");
 
@@ -13,7 +14,7 @@ const { sendError } = require("../utils/errors");
 function createAuthRouter(sessionStore, users, authMiddleware) {
   const router = express.Router();
 
-  router.post("/api/login", (req, res) => {
+  router.post("/api/login", async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
@@ -21,7 +22,12 @@ function createAuthRouter(sessionStore, users, authMiddleware) {
     }
 
     const user = users[username];
-    if (!user || user.password !== password) {
+    if (!user) {
+      return sendError(res, 401, "Invalid credentials");
+    }
+
+    const passwordOk = await bcrypt.compare(password, user.password);
+    if (!passwordOk) {
       return sendError(res, 401, "Invalid credentials");
     }
 

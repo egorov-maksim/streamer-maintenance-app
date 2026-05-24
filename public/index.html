@@ -17,6 +17,7 @@
   <link rel="modulepreload" href="js/stats.js">
   <link rel="modulepreload" href="js/noise-validation.js">
   <link rel="modulepreload" href="pdf-generator.js">
+  <link rel="stylesheet" href="/libs/notyf.min.css">
 </head>
 <body>
 
@@ -157,7 +158,7 @@
             <div class="method-icon">🛠️</div>
             <div class="method-name">Scraper</div>
           </div>
-          <div class="method-tile active" data-method="scraper-rope" tabindex="0" role="button" aria-label="Select Scraper and Rope cleaning method">
+          <div class="method-tile" data-method="scraper-rope" tabindex="0" role="button" aria-label="Select Scraper and Rope cleaning method">
             <div class="method-icon">🪢🛠️</div>
             <div class="method-name">Scraper&Rope</div>
           </div>
@@ -170,7 +171,7 @@
             <div class="method-name">Knife</div>
           </div>
         </div>
-        <p class="info-text mt-12"><strong>How to mark sections:</strong> Click and drag across active section cells to mark them as cleaned.</p>
+        <p class="info-text mt-12"><strong>How to mark sections:</strong> Click and drag across active section cells to mark them as cleaned. Your selected method is remembered on this device.</p>
       </section>
 
       <!-- Heat Map -->
@@ -253,7 +254,7 @@
             <select id="evt-method">
               <option value="rope">Rope</option>
               <option value="scraper">Scraper</option>
-              <option value="scraper-rope" selected>Scraper&Rope</option>
+              <option value="scraper-rope">Scraper&Rope</option>
               <option value="scue">SCUE</option>
               <option value="knife">Knife</option>
             </select>
@@ -380,7 +381,7 @@
             <select id="modal-method">
               <option value="rope">🪢 Rope</option>
               <option value="scraper">🛠️ Scraper</option>
-              <option value="scraper-rope" selected>🪢🛠️ Scraper&Rope</option>
+              <option value="scraper-rope">🪢🛠️ Scraper&Rope</option>
               <option value="scue">⚙️ SCUE</option>
               <option value="knife">🔪 Knife</option>
             </select>
@@ -430,7 +431,7 @@
             <select id="edit-method">
               <option value="rope">Rope</option>
               <option value="scraper">Scraper</option>
-              <option value="scraper-rope" selected>Scraper&Rope</option>
+              <option value="scraper-rope">Scraper&Rope</option>
               <option value="scue">SCUE</option>
               <option value="knife">Knife</option>
             </select>
@@ -667,9 +668,9 @@
     </div>
   </div>
 
-  <!-- Toast Notification Container -->
-  <div id="toast-container" class="toast-container"></div>
-
+  <script src="/libs/papaparse.min.js"></script>
+  <script src="/libs/notyf.min.js"></script>
+  <script src="/libs/chroma.min.js"></script>
   <script type="module" src="app.js"></script>
 </body>
 </html>

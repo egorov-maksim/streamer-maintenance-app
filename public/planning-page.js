@@ -179,17 +179,22 @@ function syncNoiseActionButtons() {
 
 function updateNoiseToolbarStatus(message = null) {
   const statusEl = safeGet("noise-toolbar-status");
+  const waterSpeedEl = safeGet("noise-water-speed-display");
+  const overlayOn = isNoiseToggleOn();
+
   if (!statusEl) return;
 
   if (message) {
     statusEl.textContent = message;
-    statusEl.classList.toggle("hidden", !isNoiseToggleOn());
+    statusEl.classList.toggle("hidden", !overlayOn);
+    if (waterSpeedEl) waterSpeedEl.classList.add("hidden");
     return;
   }
 
   if (!noiseUploads.length) {
     statusEl.textContent = "";
     statusEl.classList.add("hidden");
+    if (waterSpeedEl) waterSpeedEl.classList.add("hidden");
     return;
   }
 
@@ -198,13 +203,29 @@ function updateNoiseToolbarStatus(message = null) {
   if (!selectedUpload) {
     statusEl.textContent = "";
     statusEl.classList.add("hidden");
+    if (waterSpeedEl) waterSpeedEl.classList.add("hidden");
     return;
   }
 
   const date = new Date(selectedUpload.uploadedAt).toLocaleDateString();
   const label = selectedUpload.label ? ` - ${selectedUpload.label}` : "";
   statusEl.textContent = `Showing RMS upload from ${date}${label}.`;
-  statusEl.classList.toggle("hidden", !isNoiseToggleOn());
+  statusEl.classList.toggle("hidden", !overlayOn);
+
+  // Show water speed summary near the toggle when the overlay is active
+  if (waterSpeedEl) {
+    const hasStart = selectedUpload.waterSpeedStart != null;
+    const hasEnd = selectedUpload.waterSpeedEnd != null;
+    if (overlayOn && (hasStart || hasEnd)) {
+      const parts = [];
+      if (hasStart) parts.push(`Start: ${selectedUpload.waterSpeedStart} kts`);
+      if (hasEnd) parts.push(`End: ${selectedUpload.waterSpeedEnd} kts`);
+      waterSpeedEl.textContent = `Water speed — ${parts.join(" · ")}`;
+      waterSpeedEl.classList.remove("hidden");
+    } else {
+      waterSpeedEl.classList.add("hidden");
+    }
+  }
 }
 
 function updateNoiseUploadHelperText() {
@@ -221,12 +242,25 @@ function updateNoiseUploadHelperText() {
   helperEl.classList.add("hidden");
 }
 
+function closeNoiseWaterSpeedModal() {
+  pendingUploadState = null;
+  const startInput = safeGet("noise-upload-speed-start");
+  const endInput = safeGet("noise-upload-speed-end");
+  if (startInput) startInput.value = "";
+  if (endInput) endInput.value = "";
+  closeModal("noise-water-speed-modal");
+}
+
 function closeNoiseRenameModal() {
   const renameInput = safeGet("noise-rename-input");
   if (renameInput) {
     renameInput.value = "";
     delete renameInput.dataset.uploadId;
   }
+  const speedStart = safeGet("noise-rename-speed-start");
+  const speedEnd = safeGet("noise-rename-speed-end");
+  if (speedStart) speedStart.value = "";
+  if (speedEnd) speedEnd.value = "";
   closeModal("noise-rename-modal");
 }
 
@@ -356,6 +390,9 @@ const NEVER_DAYS = 9999;
 let currentSuggestions = [];
 let sortState = { column: null, direction: "asc" };
 let pendingNoiseDeleteUploadId = null;
+
+// Holds parsed CSV data while the water speed modal is open, cleared after upload or cancel.
+let pendingUploadState = null;
 
 // Cached last-cleaned data so threshold changes can recompute without re-fetching.
 let currentLastCleaned = null;
@@ -973,12 +1010,20 @@ function initNoiseControls() {
     "noise-delete-cancel-btn",
     "noise-delete-modal-overlay",
   ];
+  const waterSpeedModalCloseIds = [
+    "noise-water-speed-modal-close",
+    "noise-water-speed-cancel-btn",
+    "noise-water-speed-modal-overlay",
+  ];
 
   renameModalCloseIds.forEach((id) => {
     safeGet(id)?.addEventListener("click", closeNoiseRenameModal);
   });
   deleteModalCloseIds.forEach((id) => {
     safeGet(id)?.addEventListener("click", closeNoiseDeleteModal);
+  });
+  waterSpeedModalCloseIds.forEach((id) => {
+    safeGet(id)?.addEventListener("click", closeNoiseWaterSpeedModal);
   });
 
   // Toggle handler
@@ -1025,6 +1070,12 @@ function initNoiseControls() {
 
     renameInput.value = selectedUpload?.label || "";
     renameInput.dataset.uploadId = String(uploadId);
+
+    const speedStartInput = safeGet("noise-rename-speed-start");
+    const speedEndInput = safeGet("noise-rename-speed-end");
+    if (speedStartInput) speedStartInput.value = selectedUpload?.waterSpeedStart ?? "";
+    if (speedEndInput) speedEndInput.value = selectedUpload?.waterSpeedEnd ?? "";
+
     openModal("noise-rename-modal");
     requestAnimationFrame(() => {
       renameInput.focus();
@@ -1043,15 +1094,20 @@ function initNoiseControls() {
       return;
     }
 
+    const speedStartRaw = safeGet("noise-rename-speed-start")?.value.trim();
+    const speedEndRaw = safeGet("noise-rename-speed-end")?.value.trim();
+    const waterSpeedStart = speedStartRaw !== "" ? parseFloat(speedStartRaw) : null;
+    const waterSpeedEnd = speedEndRaw !== "" ? parseFloat(speedEndRaw) : null;
+
     renameModalSaveBtn.disabled = true;
     try {
-      await API.renameNoiseUpload(uploadId, trimmedLabel);
+      await API.updateNoiseUpload(uploadId, { label: trimmedLabel, waterSpeedStart, waterSpeedEnd });
       closeNoiseRenameModal();
       await refreshNoiseForProject(selectedProjectFilter, uploadId);
-      showSuccessToast("Noise upload renamed", `Saved as "${trimmedLabel}"`);
+      showSuccessToast("Noise upload updated", `Saved as "${trimmedLabel}"`);
     } catch (err) {
-      console.error("Rename noise upload failed:", err);
-      showErrorToast("Rename failed", err.message || "Failed to rename noise upload");
+      console.error("Update noise upload failed:", err);
+      showErrorToast("Save failed", err.message || "Failed to update noise upload");
     } finally {
       renameModalSaveBtn.disabled = false;
       syncNoiseActionButtons();
@@ -1101,7 +1157,7 @@ function initNoiseControls() {
     }
   });
 
-  // Upload CSV handler
+  // Upload CSV handler — validate file then open water speed modal before uploading
   const csvInput = safeGet("noise-csv-input");
   csvInput?.addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
@@ -1125,16 +1181,51 @@ function initNoiseControls() {
       }
 
       const parsedNoise = parseNoiseCsv(text);
-
       const label = file.name.replace(/\.csv$/i, "");
-      await API.uploadNoiseData({ projectNumber: selectedProjectFilter, label, noiseData: parsedNoise });
-      showSuccessToast("Noise data uploaded", `Saved ${Object.keys(parsedNoise).length} cables from "${label}"`);
 
-      // Refresh the upload list and load the new batch for the current project
+      // Store parsed data and open the water speed prompt before uploading
+      pendingUploadState = { label, parsedNoise };
+      const filenameEl = safeGet("noise-water-speed-modal-filename");
+      if (filenameEl) filenameEl.textContent = `File: ${file.name}`;
+      openModal("noise-water-speed-modal");
+    } catch (err) {
+      console.error("Noise CSV read/validate failed:", err);
+      showErrorToast(err.message || "Failed to read noise CSV");
+    }
+  });
+
+  // Water speed modal confirm — complete the upload with optional speed values
+  const waterSpeedConfirmBtn = safeGet("noise-water-speed-confirm-btn");
+  waterSpeedConfirmBtn?.addEventListener("click", async () => {
+    if (!pendingUploadState || !selectedProjectFilter) {
+      closeNoiseWaterSpeedModal();
+      return;
+    }
+
+    const { label, parsedNoise } = pendingUploadState;
+
+    const speedStartRaw = safeGet("noise-upload-speed-start")?.value.trim();
+    const speedEndRaw = safeGet("noise-upload-speed-end")?.value.trim();
+    const waterSpeedStart = speedStartRaw !== "" ? parseFloat(speedStartRaw) : null;
+    const waterSpeedEnd = speedEndRaw !== "" ? parseFloat(speedEndRaw) : null;
+
+    waterSpeedConfirmBtn.disabled = true;
+    try {
+      await API.uploadNoiseData({
+        projectNumber: selectedProjectFilter,
+        label,
+        noiseData: parsedNoise,
+        waterSpeedStart,
+        waterSpeedEnd,
+      });
+      closeNoiseWaterSpeedModal();
+      showSuccessToast("Noise data uploaded", `Saved ${Object.keys(parsedNoise).length} cables from "${label}"`);
       await refreshNoiseForProject(selectedProjectFilter);
     } catch (err) {
       console.error("Noise CSV upload failed:", err);
       showErrorToast(err.message || "Failed to upload noise data");
+    } finally {
+      waterSpeedConfirmBtn.disabled = false;
     }
   });
 }

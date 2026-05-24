@@ -30,19 +30,34 @@ function parseRgbOrHex(cssColor) {
   return { r: 0, g: 0, b: 0 };
 }
 
-/**
- * Dynamically injects the local jspdf UMD script the first time it is needed,
- * then resolves. Subsequent calls resolve immediately via the window.jspdf guard.
- */
-function loadJspdf() {
-  if (window.jspdf) return Promise.resolve();
+function loadScriptOnce(src) {
+  const existing = document.querySelector(`script[src="${src}"]`);
+  if (existing?.dataset.loaded === "1") return Promise.resolve();
+
   return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = 'libs/jspdf.umd.min.js';
-    script.onload = resolve;
-    script.onerror = () => reject(new Error('Failed to load jspdf library'));
+    const script = document.createElement("script");
+    script.src = src;
+    script.onload = () => {
+      script.dataset.loaded = "1";
+      resolve();
+    };
+    script.onerror = () => reject(new Error(`Failed to load ${src}`));
     document.head.appendChild(script);
   });
+}
+
+/**
+ * Dynamically injects jsPDF and jspdf-autotable UMD scripts the first time they are needed.
+ */
+async function loadJspdf() {
+  if (!window.jspdf) {
+    await loadScriptOnce("libs/jspdf.umd.min.js");
+  }
+  const { jsPDF } = window.jspdf || {};
+  const probe = new jsPDF();
+  if (typeof probe.autoTable !== "function") {
+    await loadScriptOnce("libs/jspdf-autotable.min.js");
+  }
 }
 
 async function generatePDFReport({
@@ -747,20 +762,16 @@ async function addNoiseHeatmapPage(doc, noiseData, title) {
  * If startDate/endDate are provided, only events within that range are included.
  */
 async function addAllEventsSection(doc, startDate, endDate) {
-  let yPos = 20;
-
-  // Fetch events from API with project filter
-  let eventsUrl = 'api/events';
+  let eventsUrl = "api/events";
   if (config.activeProjectNumber) {
     eventsUrl += `?project=${encodeURIComponent(config.activeProjectNumber)}`;
   }
   const eventsRes = await fetch(eventsUrl, { headers: getAuthHeaders() });
   const allEvents = await eventsRes.json();
 
-  // Filter by date range when filter dates are set
   const eventsToShow = (startDate || endDate)
     ? allEvents.filter((e) => {
-        const eventDate = new Date(e.cleanedAt).toISOString().split('T')[0];
+        const eventDate = new Date(e.cleanedAt).toISOString().split("T")[0];
         if (startDate && endDate) return eventDate >= startDate && eventDate <= endDate;
         if (startDate) return eventDate >= startDate;
         if (endDate) return eventDate <= endDate;
@@ -769,86 +780,58 @@ async function addAllEventsSection(doc, startDate, endDate) {
     : allEvents;
 
   const hasFilter = Boolean(startDate || endDate);
-  doc.setFontSize(14);
-  doc.text(
-    hasFilter
-      ? `Cleaning Events (${eventsToShow.length} in selected period)`
-      : `All Cleaning Events (${eventsToShow.length} total)`,
-    20,
-    yPos
-  );
-  yPos += 8;
-  doc.setFontSize(8);
+  const sectionTitle = hasFilter
+    ? `Cleaning Events (${eventsToShow.length} in selected period)`
+    : `All Cleaning Events (${eventsToShow.length} total)`;
 
   if (eventsToShow.length === 0) {
+    doc.setFontSize(14);
+    doc.text(sectionTitle, 20, 20);
+    doc.setFontSize(8);
     doc.text(
-      hasFilter ? 'No cleaning events recorded for the selected period.' : 'No cleaning events recorded.',
+      hasFilter ? "No cleaning events recorded for the selected period." : "No cleaning events recorded.",
       25,
-      yPos
+      30
     );
     return;
   }
 
-  // Table headers with EB Range and Added by columns
-  const drawHeaders = (y) => {
-    doc.text('Date', 15, y);
-    doc.text('Cable', 40, y);
-    doc.text('Sections', 55, y);
-    doc.text('EB Range', 85, y);
-    doc.text('Method', 115, y);
-    doc.text('Added by', 140, y);
-    doc.text('Length', 165, y);
-    doc.text('Count', 182, y);
-  };
-
-  drawHeaders(yPos);
-  yPos += 5;
-  doc.line(15, yPos, 195, yPos);
-  yPos += 5;
-
-  // Calculate EB ranges locally using already-loaded config — no network calls needed
   const ebRanges = eventsToShow.map((evt) =>
     evt.sectionType === "tail"
       ? "—"
       : getEBRangeForSectionRange(evt.sectionIndexStart, evt.sectionIndexEnd, config)
   );
 
-  for (let i = 0; i < eventsToShow.length; i++) {
-    const evt = eventsToShow[i];
-
-    if (yPos > 195) {
-      doc.addPage('a3', 'landscape');
-      yPos = 20;
-      drawHeaders(yPos);
-      yPos += 5;
-      doc.line(15, yPos, 195, yPos);
-      yPos += 5;
-    }
-
-    const date = new Date(evt.cleanedAt).toLocaleDateString();
-    const streamer = `S${evt.streamerId}`;
-    const sectionType = evt.sectionType || 'active';
-    const sections = `${formatSectionLabel(evt.sectionIndexStart, sectionType)} - ${formatSectionLabel(evt.sectionIndexEnd, sectionType)}`;
+  const tableBody = eventsToShow.map((evt, i) => {
+    const sectionType = evt.sectionType || "active";
     const ebRangeRaw = ebRanges[i];
     const ebRange =
-      typeof ebRangeRaw === "string" && ebRangeRaw.trim().length > 0
-        ? ebRangeRaw
-        : "—";
-    const addedBy = evt.addedByUsertag || "—";
-    const distance = `${eventDistance(evt)}m`;
-    const count = evt.cleaningCount || 1;
+      typeof ebRangeRaw === "string" && ebRangeRaw.trim().length > 0 ? ebRangeRaw : "—";
+    return [
+      new Date(evt.cleanedAt).toLocaleDateString(),
+      `S${evt.streamerId}`,
+      `${formatSectionLabel(evt.sectionIndexStart, sectionType)} - ${formatSectionLabel(evt.sectionIndexEnd, sectionType)}`,
+      ebRange,
+      evt.cleaningMethod,
+      evt.addedByUsertag || "—",
+      `${eventDistance(evt)}m`,
+      String(evt.cleaningCount || 1),
+    ];
+  });
 
-    doc.setFontSize(7);
-    doc.text(date, 15, yPos);
-    doc.text(streamer, 40, yPos);
-    doc.text(sections, 55, yPos);
-    doc.text(ebRange, 85, yPos);
-    doc.text(evt.cleaningMethod, 115, yPos);
-    doc.text(addedBy, 140, yPos);
-    doc.text(distance, 165, yPos);
-    doc.text(String(count), 182, yPos);
-    yPos += 5;
-  }
+  doc.setFontSize(14);
+  doc.text(sectionTitle, 20, 16);
+
+  doc.autoTable({
+    head: [["Date", "Cable", "Sections", "EB Range", "Method", "Added by", "Length", "Count"]],
+    body: tableBody,
+    startY: 22,
+    margin: { left: 15, right: 15 },
+    styles: { fontSize: 7, cellPadding: 1.5 },
+    headStyles: { fillColor: [55, 65, 81], textColor: 255, fontSize: 8 },
+    theme: "grid",
+    rowPageBreak: "auto",
+  });
 }
 
 function getNoiseModalOptions() {

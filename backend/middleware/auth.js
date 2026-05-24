@@ -13,7 +13,9 @@ const ROLES = {
  * Load user credentials from AUTH_USERS environment variable.
  *
  * Format per user (comma-separated list):
- *   USERNAME:PASSWORD:ROLE:VESSEL_TAG[:GLOBAL]
+ *   USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG[:GLOBAL]
+ *
+ * PASSWORD_HASH is a bcrypt hash (see INSTALL.md for generation).
  *
  * - ROLE: grandsuperuser | superuser | admin | viewer
  * - VESSEL_TAG: short vessel code (e.g. TTN, RAM); use "ALL" or empty for global users

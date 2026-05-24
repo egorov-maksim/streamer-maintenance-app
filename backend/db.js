@@ -11,8 +11,8 @@ const DB_FILE = process.env.DB_FILE
 
 const SCHEMA_FILE = path.join(__dirname, "schema.sql");
 const BACKUP_DIR = path.join(__dirname, "..", "backup");
-const BACKUP_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12 hours in milliseconds
 const MAX_BACKUPS = 14; // Keep last 14 backups (7 days worth at 12hr intervals)
+const { stopBackupScheduler } = require("./backupScheduler");
 
 if (!fs.existsSync(path.dirname(DB_FILE))) {
   fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
@@ -25,7 +25,10 @@ if (!fs.existsSync(BACKUP_DIR)) {
 
 const db = new sqlite3.Database(DB_FILE);
 
-function initDb() {
+/**
+ * @param {(() => void)|undefined} onReady - Called after schema is applied (e.g. start backup scheduler).
+ */
+function initDb(onReady) {
   db.serialize(() => {
     db.run("PRAGMA foreign_keys = ON;");
     db.run("PRAGMA journal_mode = WAL;");
@@ -37,8 +40,8 @@ function initDb() {
       } else {
         console.log("Database schema applied.");
         applyMigrations();
-        if (process.env.NODE_ENV !== "test") {
-          startBackupScheduler();
+        if (typeof onReady === "function") {
+          onReady();
         }
       }
     });
@@ -60,6 +63,30 @@ function applyMigrations() {
         (migrErr) => {
           if (migrErr) console.error("Migration failed (add suggested_cleaning_threshold_days):", migrErr);
           else console.log("Migration applied: added suggested_cleaning_threshold_days to projects");
+        }
+      );
+    }
+  });
+
+  // Water speed fields recorded at the time of RMS noise line acquisition
+  db.all("PRAGMA table_info(noise_uploads)", [], (err, columns) => {
+    if (err) { console.error("Migration check failed (noise_uploads):", err); return; }
+    const names = columns.map((col) => col.name);
+    if (!names.includes("water_speed_start")) {
+      db.run(
+        "ALTER TABLE noise_uploads ADD COLUMN water_speed_start REAL",
+        (migrErr) => {
+          if (migrErr) console.error("Migration failed (add water_speed_start):", migrErr);
+          else console.log("Migration applied: added water_speed_start to noise_uploads");
+        }
+      );
+    }
+    if (!names.includes("water_speed_end")) {
+      db.run(
+        "ALTER TABLE noise_uploads ADD COLUMN water_speed_end REAL",
+        (migrErr) => {
+          if (migrErr) console.error("Migration failed (add water_speed_end):", migrErr);
+          else console.log("Migration applied: added water_speed_end to noise_uploads");
         }
       );
     }
@@ -123,34 +150,6 @@ function cleanupOldBackups() {
     }
   } catch (err) {
     console.error("Error cleaning up old backups:", err);
-  }
-}
-
-let backupInterval = null;
-
-/**
- * Starts the automated backup scheduler (every 12 hours)
- */
-function startBackupScheduler() {
-  // Create an initial backup on startup
-  console.log("Starting automated database backup scheduler (every 12 hours)");
-  createBackup().catch(err => console.error("Initial backup failed:", err));
-
-  // Schedule backups every 12 hours
-  backupInterval = setInterval(() => {
-    console.log("Running scheduled database backup...");
-    createBackup().catch(err => console.error("Scheduled backup failed:", err));
-  }, BACKUP_INTERVAL_MS);
-}
-
-/**
- * Stops the backup scheduler
- */
-function stopBackupScheduler() {
-  if (backupInterval) {
-    clearInterval(backupInterval);
-    backupInterval = null;
-    console.log("Backup scheduler stopped.");
   }
 }
 
@@ -231,7 +230,6 @@ module.exports = {
   db,
   initDb,
   createBackup,
-  stopBackupScheduler,
   runAsync,
   allAsync,
   getAsync,

@@ -15,13 +15,15 @@ export function validateNoiseCsv(csvText, config) {
     return { valid: false, errors: ["Project configuration is missing (numCables or sectionsPerCable)."] };
   }
 
-  const lines = csvText.trim().split(/\r?\n/);
-  if (lines.length < 2) {
+  const parsed = window.Papa.parse(csvText, { skipEmptyLines: true });
+  const rows = parsed.data || [];
+
+  if (rows.length < 2) {
     return { valid: false, errors: ["CSV has no data rows."] };
   }
 
   // --- Header: extract cable numbers ---
-  const headers = lines[0].split(",");
+  const headers = rows[0].map((h) => String(h ?? "").trim());
   const cableNums = [];
   for (let i = 1; i < headers.length; i++) {
     const n = parseInt(headers[i].replace(/[^0-9]/g, ""), 10);
@@ -43,8 +45,8 @@ export function validateNoiseCsv(csvText, config) {
 
   // --- Data rows: collect out-of-range section numbers ---
   const badSections = new Set();
-  for (let r = 1; r < lines.length; r++) {
-    const cols = lines[r].split(",");
+  for (let r = 1; r < rows.length; r++) {
+    const cols = rows[r].map((c) => String(c ?? "").trim());
     const sectionNum = parseInt(cols[0], 10);
     if (isNaN(sectionNum)) continue;
     if (sectionNum < 1 || sectionNum > sectionsPerCable) {

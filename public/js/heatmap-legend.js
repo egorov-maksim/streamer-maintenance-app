@@ -91,7 +91,11 @@ export function validateAgeBreaks(breaks) {
   return nums;
 }
 
-// ---------- Internal color math ----------
+// ---------- Internal color math (chroma-js in browser; fallbacks for Node tests) ----------
+
+function hasChroma() {
+  return typeof window !== "undefined" && window.chroma;
+}
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
@@ -105,20 +109,24 @@ function lerpRgb(c0, c1, t) {
   ];
 }
 
-/**
- * Quick luma approximation (no gamma correction) returning 0 (dark) – 1 (light).
- * Threshold 0.67 correctly classifies all five anchor colors versus the original CSS text colors.
- */
 function perceivedLightness(r, g, b) {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 }
 
 function rgbToHex(r, g, b) {
+  if (hasChroma()) return window.chroma(r, g, b).hex();
   return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 }
 
 function interpolateAgeRgb(days, ageBreaks) {
-  const edges = [0, ...ageBreaks]; // [0, b1, b2, b3, b4]
+  if (hasChroma()) {
+    const hexColors = AGE_COLOR_ANCHORS.map(([r, g, b]) => window.chroma(r, g, b).hex());
+    const scale = window.chroma.scale(hexColors).mode("lab").domain([0, ...ageBreaks]);
+    const rgb = scale(Math.max(0, days)).rgb();
+    return [Math.round(rgb[0]), Math.round(rgb[1]), Math.round(rgb[2])];
+  }
+
+  const edges = [0, ...ageBreaks];
   if (days <= 0) return AGE_COLOR_ANCHORS[0];
   for (let i = 0; i < 4; i++) {
     const lo = edges[i];
@@ -128,7 +136,7 @@ function interpolateAgeRgb(days, ageBreaks) {
       return lerpRgb(AGE_COLOR_ANCHORS[i], AGE_COLOR_ANCHORS[i + 1], t);
     }
   }
-  return AGE_COLOR_ANCHORS[4]; // days >= b4
+  return AGE_COLOR_ANCHORS[4];
 }
 
 // ---------- Public color API ----------
@@ -164,6 +172,13 @@ export function rmsToColor(rms, prefs) {
   if (!rms || rms <= 0) return null;
   const { noiseCleanPivot, noisyMax } = prefs;
   const val = Math.min(rms, noisyMax);
+  if (hasChroma()) {
+    const scale = window.chroma
+      .scale(["#1e3a8a", "#ffffff", "#dc2626"])
+      .mode("lab")
+      .domain([0, noiseCleanPivot, noisyMax]);
+    return scale(val).css();
+  }
   if (val <= noiseCleanPivot) {
     const t = noiseCleanPivot > 0 ? val / noiseCleanPivot : 1;
     return `rgb(${Math.round(30 + t * 225)},${Math.round(58 + t * 197)},${Math.round(138 + t * 117)})`;

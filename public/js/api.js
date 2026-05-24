@@ -305,11 +305,16 @@ export async function uploadNoiseData(payload) {
   });
 }
 
-export async function renameNoiseUpload(uploadId, label) {
+/**
+ * Update one or more fields on a noise upload batch (label, water speeds).
+ * @param {number} uploadId
+ * @param {{ label?: string, waterSpeedStart?: number|null, waterSpeedEnd?: number|null }} fields
+ */
+export async function updateNoiseUpload(uploadId, fields) {
   return apiCall(`api/noise-data/uploads/${uploadId}`, {
     method: "PATCH",
-    body: JSON.stringify({ label }),
-    action: "rename noise upload",
+    body: JSON.stringify(fields),
+    action: "update noise upload",
   });
 }
 

@@ -66,6 +66,10 @@ import {
   scrapingAgeLegendGradient,
   renderAgeTicks,
 } from "./js/heatmap-legend.js";
+import {
+  loadDefaultCleaningMethod,
+  saveDefaultCleaningMethod,
+} from "./js/cleaning-method-prefs.js";
 
 const sectionCount = StreamerUtils.sectionCount;
 const eventDistance = StreamerUtils.eventDistance;
@@ -868,9 +872,8 @@ function importCsv() {
   input.click();
 }
 
-function parseCsvLine(line) {
-  const regex = /,(?=(?:(?:[^"]*"){2})*[^"]*$)/;
-  return line.split(regex).map(field => field.trim().replace(/^"|"$/g, ''));
+function normalizeCsvRow(row) {
+  return row.map((field) => String(field ?? "").trim().replace(/^"|"$/g, ""));
 }
 
 async function handleCsvFile(file) {
@@ -883,20 +886,21 @@ async function handleCsvFile(file) {
 
   reader.onload = async (e) => {
     const content = e.target.result;
-    const lines = content.split('\n').filter(l => l.trim());
+    const parsed = window.Papa.parse(content, { skipEmptyLines: true });
+    const rows = parsed.data || [];
 
-    if (lines.length < 2) {
+    if (rows.length < 2) {
       showErrorToast('Invalid File', 'CSV file seems empty or invalid.');
       return;
     }
 
     const importBtn = safeGet('btn-import-csv');
     const progressEl = safeGet('csv-import-progress');
-    const dataLines = lines.slice(1).filter(l => l.trim());
-    const total = dataLines.length;
+    const dataRows = rows.slice(1).filter((row) => row.some((cell) => String(cell ?? "").trim()));
+    const total = dataRows.length;
 
     const hasSectionTypeColumn = total > 0 && (() => {
-      const firstParts = parseCsvLine(dataLines[0].trim());
+      const firstParts = normalizeCsvRow(dataRows[0]);
       return firstParts.length >= 8 && (firstParts[1] === 'active' || firstParts[1] === 'tail');
     })();
 
@@ -904,11 +908,9 @@ async function handleCsvFile(file) {
     const validRows = [];
     let parseErrorCount = 0;
 
-    for (const line of dataLines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-
-      const parts = parseCsvLine(trimmed);
+    for (const rawRow of dataRows) {
+      const parts = normalizeCsvRow(rawRow);
+      if (!parts.length) continue;
       let streamerNum, startSection, endSection, method, dateTimeStr, projectNumber, vesselTag, sectionType;
 
       if (hasSectionTypeColumn && parts.length >= 8 && (parts[1] === 'active' || parts[1] === 'tail')) {
@@ -1068,6 +1070,7 @@ async function renderLog() {
 
 function selectMethod(method) {
   setSelectedMethod(method);
+  saveDefaultCleaningMethod(method);
   document.querySelectorAll('.method-tile').forEach(tile => {
     tile.classList.toggle('active', tile.dataset.method === method);
   });
@@ -1457,6 +1460,33 @@ function attachStreamerHeaderTooltips(wrapper, lastCleaned, deployments) {
 
 /* ------------ Drag-to-select ------------ */
 
+const SCROLL_ZONE = 80; // px from viewport edge that triggers auto-scroll during drag
+const SCROLL_MAX = 12;  // max px scrolled per animation frame
+
+let _scrollRAF = null;  // requestAnimationFrame handle for the scroll loop
+let _mouseY = 0;        // last known mouse clientY, updated via mousemove
+
+function _startScrollLoop() {
+  if (_scrollRAF) return;
+  function step() {
+    if (!dragState.active) { _scrollRAF = null; return; }
+    const vh = window.innerHeight;
+    let delta = 0;
+    if (_mouseY < SCROLL_ZONE) {
+      delta = -SCROLL_MAX * (1 - _mouseY / SCROLL_ZONE);
+    } else if (_mouseY > vh - SCROLL_ZONE) {
+      delta = SCROLL_MAX * ((_mouseY - (vh - SCROLL_ZONE)) / SCROLL_ZONE);
+    }
+    if (delta !== 0) window.scrollBy(0, delta);
+    _scrollRAF = requestAnimationFrame(step);
+  }
+  _scrollRAF = requestAnimationFrame(step);
+}
+
+function _stopScrollLoop() {
+  if (_scrollRAF) { cancelAnimationFrame(_scrollRAF); _scrollRAF = null; }
+}
+
 function attachDragListeners() {
   const cells = document.querySelectorAll('.hm-vcell:not(.hm-module)');
 
@@ -1490,7 +1520,13 @@ function attachDragListeners() {
     });
   });
 
+  document.addEventListener('mousemove', (e) => {
+    _mouseY = e.clientY;
+    if (dragState.active) _startScrollLoop();
+  });
+
   document.addEventListener('mouseup', () => {
+    _stopScrollLoop();
     if (dragState.active) {
       showConfirmationModal();
     }
@@ -1513,6 +1549,7 @@ function updateDragHighlight() {
 }
 
 function clearDragState() {
+  _stopScrollLoop();
   if (dragState.cells) {
     dragState.cells.forEach(cell => {
       cell.classList.remove('dragging');
@@ -2380,6 +2417,11 @@ async function initAppContent() {
   if (selectorEl && selectedProjectFilter) {
     selectorEl.value = selectedProjectFilter;
   }
+
+  // Apply the user's remembered default cleaning method (falls back to scraper-rope).
+  selectMethod(loadDefaultCleaningMethod());
+  const evtMethodEl = safeGet('evt-method');
+  if (evtMethodEl) evtMethodEl.value = selectedMethod;
 
   const { lastCleanedData, deployments, overallStats, filterStats } = await fetchDashboardDataBundle();
 

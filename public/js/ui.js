@@ -2,6 +2,29 @@
  * DOM helpers, toasts, and shared UI utilities.
  */
 
+let notyfInstance = null;
+
+function getNotyf() {
+  if (!window.Notyf) {
+    console.warn("[UI] Notyf library not loaded");
+    return null;
+  }
+  if (!notyfInstance) {
+    notyfInstance = new window.Notyf({
+      duration: 5000,
+      dismissible: true,
+      position: { x: "right", y: "top" },
+      types: [
+        { type: "success", background: "#059669" },
+        { type: "error", background: "#dc2626" },
+        { type: "warning", background: "#d97706" },
+        { type: "info", background: "#2563eb" },
+      ],
+    });
+  }
+  return notyfInstance;
+}
+
 export function safeGet(id) {
   const el = document.getElementById(id);
   if (!el) console.warn(`[UI] Element #${id} not found`);
@@ -17,50 +40,25 @@ export function setStatus(el, msg, isError = false) {
 }
 
 export function showToast(type, title, message, duration = 5000) {
-  const container = document.getElementById("toast-container");
-  if (!container) return null;
+  const notyf = getNotyf();
+  if (!notyf) return null;
 
-  const toast = document.createElement("div");
-  toast.className = `toast toast-${type}`;
+  const text = message ? `${title}: ${message}` : title;
 
-  const icons = {
-    error: "🚫",
-    warning: "⚠️",
-    success: "✅",
-    info: "ℹ️",
-  };
-
-  toast.innerHTML = `
-    <div class="toast-icon">${icons[type] || icons.info}</div>
-    <div class="toast-content">
-      <div class="toast-title">${title}</div>
-      <div class="toast-message">${message}</div>
-    </div>
-    <button class="toast-close" aria-label="Close">×</button>
-    <div class="toast-progress"></div>
-  `;
-
-  const closeBtn = toast.querySelector(".toast-close");
-  closeBtn.addEventListener("click", () => dismissToast(toast));
-
-  container.appendChild(toast);
-
-  if (duration > 0) {
-    setTimeout(() => dismissToast(toast), duration);
-  }
-
-  return toast;
+  return notyf.open({
+    type,
+    message: text,
+    duration,
+    className: `toast toast-${type}`,
+  });
 }
 
-export function dismissToast(toast) {
-  if (!toast || toast.classList.contains("toast-exit")) return;
-
-  toast.classList.add("toast-exit");
-  setTimeout(() => {
-    if (toast.parentNode) {
-      toast.parentNode.removeChild(toast);
-    }
-  }, 300);
+export function dismissToast(toastRef) {
+  if (!toastRef) return;
+  const notyf = getNotyf();
+  if (notyf && typeof notyf.dismiss === "function") {
+    notyf.dismiss(toastRef);
+  }
 }
 
 export function showErrorToast(title, message) {
