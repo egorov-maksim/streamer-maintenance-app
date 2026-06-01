@@ -56,6 +56,7 @@ import {
   refreshStatsFiltered,
   resetFilter,
   renderStreamerCards,
+  initCleaningEventsKpiModal,
 } from "./js/stats.js";
 import {
   DEFAULT_PREFS,
@@ -2443,6 +2444,7 @@ async function initAppContent() {
   if (!dashboardDomListenersBound) {
     dashboardDomListenersBound = true;
     initModals();
+    initCleaningEventsKpiModal();
     setupEventListeners();
     setupSidebarNavigation();
     setupProjectCollapse();

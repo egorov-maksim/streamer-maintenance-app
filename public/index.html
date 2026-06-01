@@ -301,7 +301,8 @@
             <div class="kpi-value" id="kpi-distance">0.0 km</div>
             <div class="kpi-sub" id="kpi-distance-sub">0 meters cleaned</div>
           </div>
-          <div class="kpi">
+          <div class="kpi kpi-interactive" id="kpi-events-card" role="button" tabindex="0"
+               aria-label="View cleaning events for today and yesterday">
             <div class="kpi-title">Cleaning Events</div>
             <div class="kpi-value" id="kpi-events">0</div>
             <div class="kpi-sub" id="kpi-events-sub">0 log entries</div>
@@ -639,6 +640,41 @@
       <div class="modal-footer modal-footer-delete">
         <button class="btn btn-secondary" id="btn-restore-cancel">Cancel</button>
         <button class="btn btn-danger" id="btn-restore-confirm">🔄 Restore Database</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Cleaning Events Modal (today & yesterday, opened from Cleaning Events KPI) -->
+  <div id="recent-cleaning-events-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="recent-cleaning-events-title">
+    <div class="modal-overlay" aria-hidden="true"></div>
+    <div class="modal-content modal-content-wide">
+      <div class="modal-header">
+        <div>
+          <h3 id="recent-cleaning-events-title">🧹 Cleaning Events — Today &amp; Yesterday</h3>
+          <p id="recent-cleaning-events-subtitle" class="modal-subtitle"></p>
+        </div>
+        <button type="button" class="modal-close" id="btn-recent-cleaning-events-close">×</button>
+      </div>
+      <div class="modal-body">
+        <p id="recent-cleaning-events-empty" class="hidden modal-body-note">No cleaning events recorded in the last two days.</p>
+        <div class="table-wrapper">
+          <table class="table" id="recent-cleaning-events-table">
+            <thead>
+              <tr>
+                <th>Date &amp; Time</th>
+                <th>Streamer</th>
+                <th>Section Range</th>
+                <th>EB Range</th>
+                <th>Length (m)</th>
+                <th>Method</th>
+              </tr>
+            </thead>
+            <tbody id="recent-cleaning-events-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btn-recent-cleaning-events-close-footer">Close</button>
       </div>
     </div>
   </div>

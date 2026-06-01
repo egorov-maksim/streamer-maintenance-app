@@ -18,7 +18,8 @@ import {
   getActiveProject,
   projects,
 } from "./js/state.js";
-import { refreshStatsFiltered, resetFilter } from "./js/stats.js";
+import { refreshStatsFiltered, resetFilter, initCleaningEventsKpiModal } from "./js/stats.js";
+import { initModals } from "./js/modals.js";
 import { initPDFGeneration } from "./pdf-generator.js";
 
 async function loadEvents() {
@@ -358,6 +359,8 @@ async function initStatsApp() {
     await populateNoiseUploadSelectors(initialProject);
   }
 
+  initModals();
+  initCleaningEventsKpiModal();
   initPDFGeneration();
   updateUIForRole();
 }
