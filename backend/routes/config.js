@@ -2,11 +2,29 @@
 const express = require("express");
 const humps = require("humps");
 const { defaultConfig, loadConfig, saveConfig } = require("../config");
-const { runAsync } = require("../db");
+const { runAsync, getAllCamelized } = require("../db");
 const { getActiveProjectForVessel } = require("../activeProject");
 const { toInt } = require("../utils/validation");
 const { sendError } = require("../utils/errors");
 const { isGlobalUser } = require("../middleware/auth");
+
+/**
+ * Build a map of streamer_id -> sections_per_cable for overrides set in a project's deployments.
+ * Only includes entries that actually differ from the project default (i.e. sections_per_cable IS NOT NULL).
+ * @param {number} projectId
+ * @returns {Promise<Object>} e.g. { "3": 120, "7": 120 }
+ */
+async function buildSectionsPerCableOverrides(projectId) {
+  const rows = await getAllCamelized(
+    "SELECT streamer_id, sections_per_cable FROM streamer_deployments WHERE project_id = ? AND sections_per_cable IS NOT NULL",
+    [projectId]
+  );
+  const overrides = {};
+  for (const row of rows) {
+    overrides[row.streamerId] = row.sectionsPerCable;
+  }
+  return overrides;
+}
 
 /**
  * Create config router (GET/PUT /api/config).
@@ -34,6 +52,9 @@ function createConfigRouter(authMiddleware, superUserOnly) {
         base.useRopeForTail = activeProject.useRopeForTail === 1;
         // Per-project threshold — not stored in global app_config
         base.suggestedCleaningThresholdDays = activeProject.suggestedCleaningThresholdDays ?? 10;
+        base.sectionsPerCableOverrides = await buildSectionsPerCableOverrides(activeProject.id);
+      } else {
+        base.sectionsPerCableOverrides = {};
       }
       res.json(base);
     } catch (err) {
@@ -105,7 +126,12 @@ function createConfigRouter(authMiddleware, superUserOnly) {
           base.channelsPerSection = activeProject.channelsPerSection ?? base.channelsPerSection;
           base.useRopeForTail = activeProject.useRopeForTail === 1;
           base.suggestedCleaningThresholdDays = activeProject.suggestedCleaningThresholdDays ?? 10;
+          base.sectionsPerCableOverrides = await buildSectionsPerCableOverrides(activeProject.id);
+        } else {
+          base.sectionsPerCableOverrides = {};
         }
+      } else {
+        base.sectionsPerCableOverrides = {};
       }
       res.json(base);
     } catch (err) {

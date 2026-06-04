@@ -10,6 +10,23 @@ const { ROLES, isGlobalUser } = require("../middleware/auth");
 const { splitSectionRange, validateRangeForType } = require("../utils/sectionType");
 
 /**
+ * Look up the effective sectionsPerCable for a specific streamer in a project,
+ * falling back to the project/global default when no per-streamer override is set.
+ * @param {number|null} projectId
+ * @param {number} streamerId
+ * @param {number} defaultSections
+ * @returns {Promise<number>}
+ */
+async function getStreamerSectionsPerCable(projectId, streamerId, defaultSections) {
+  if (projectId == null) return defaultSections;
+  const row = await getOneCamelized(
+    "SELECT sections_per_cable FROM streamer_deployments WHERE project_id = ? AND streamer_id = ? AND sections_per_cable IS NOT NULL",
+    [projectId, streamerId]
+  );
+  return row?.sectionsPerCable ?? defaultSections;
+}
+
+/**
  * Create events router (CRUD, bulk delete).
  * @param {function} authMiddleware
  * @param {function} adminOrAbove
@@ -98,9 +115,11 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
         finalVesselTag = req.vesselScope;
       }
       const projectRow = activeProject || await getOneCamelized("SELECT * FROM projects WHERE project_number = ?", [finalProjectNumber]);
+      const defaultSections = projectRow?.sectionsPerCable ?? config.sectionsPerCable;
+      const effectiveSections = await getStreamerSectionsPerCable(projectRow?.id ?? null, streamer_id, defaultSections);
       const eventConfig = {
         ...config,
-        sectionsPerCable: projectRow?.sectionsPerCable ?? config.sectionsPerCable,
+        sectionsPerCable: effectiveSections,
         useRopeForTail: projectRow != null ? projectRow.useRopeForTail === 1 : config.useRopeForTail,
       };
       const count = Number.isFinite(cleaning_count) ? cleaning_count : 1;
@@ -223,9 +242,11 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
           [effectiveProjectNumber]
         );
         if (projectRow) {
+          const defaultSections = projectRow.sectionsPerCable ?? config.sectionsPerCable;
+          const effectiveSections = await getStreamerSectionsPerCable(projectRow.id, streamer_id, defaultSections);
           eventConfig = {
             ...config,
-            sectionsPerCable: projectRow.sectionsPerCable ?? config.sectionsPerCable,
+            sectionsPerCable: effectiveSections,
             useRopeForTail:
               projectRow.useRopeForTail === 1
                 ? true
@@ -369,9 +390,11 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
           const projectRow = activeProject ||
             await getOneCamelized("SELECT * FROM projects WHERE project_number = ?", [finalProjectNumber]);
 
+          const defaultSections = projectRow?.sectionsPerCable ?? config.sectionsPerCable;
+          const effectiveSections = await getStreamerSectionsPerCable(projectRow?.id ?? null, streamer_id, defaultSections);
           const eventConfig = {
             ...config,
-            sectionsPerCable: projectRow?.sectionsPerCable ?? config.sectionsPerCable,
+            sectionsPerCable: effectiveSections,
             useRopeForTail: projectRow != null
               ? projectRow.useRopeForTail === 1
               : config.useRopeForTail,

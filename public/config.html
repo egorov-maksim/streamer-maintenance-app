@@ -166,6 +166,7 @@
               </div>
               <p class="info-text-sm">
                 <strong>Note:</strong> Configuration is saved per project. eBird appear after 1st section, then every N sections.
+                If streamers differ in length, set this to the usual count and use <strong>Sections override</strong> in Per-Streamer Deployment Configuration below.
               </p>
             </div>
             
@@ -177,8 +178,13 @@
                   <span id="streamer-config-project-label" class="text-muted font-normal"></span>
                 </h3>
                 <p class="info-text-sm">
-                  Configure individual deployment dates and coating status for each streamer.
-                  Streamers without specific configuration will show as "Not Configured".
+                  Configure individual deployment dates, coating status, and optional section counts for each streamer.
+                  Streamers without specific configuration will show as "Default".
+                </p>
+                <p class="info-text-sm mt-8">
+                  <strong>Sections override:</strong> Leave blank to use the project default (<strong>Active Sections per Streamer</strong> above).
+                  Enter a number only when this streamer's active section count differs from the default—for example if some streamers are shorter or longer than the rest.
+                  The heatmap and stats use each streamer's effective length; unused cells appear grey on shorter streamers.
                 </p>
 
                 <div class="streamer-deployment-actions superuser-only">

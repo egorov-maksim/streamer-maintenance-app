@@ -68,6 +68,20 @@ function applyMigrations() {
     }
   });
 
+  // Per-streamer section count override (longer cables in a project)
+  db.all("PRAGMA table_info(streamer_deployments)", [], (err, columns) => {
+    if (err) { console.error("Migration check failed (streamer_deployments):", err); return; }
+    if (!columns.some((col) => col.name === "sections_per_cable")) {
+      db.run(
+        "ALTER TABLE streamer_deployments ADD COLUMN sections_per_cable INTEGER",
+        (migrErr) => {
+          if (migrErr) console.error("Migration failed (add sections_per_cable to streamer_deployments):", migrErr);
+          else console.log("Migration applied: added sections_per_cable to streamer_deployments");
+        }
+      );
+    }
+  });
+
   // Water speed fields recorded at the time of RMS noise line acquisition
   db.all("PRAGMA table_info(noise_uploads)", [], (err, columns) => {
     if (err) { console.error("Migration check failed (noise_uploads):", err); return; }

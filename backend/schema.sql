@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS streamer_deployments (
   streamer_id INTEGER NOT NULL,
   deployment_date TEXT,
   is_coated INTEGER,
+  sections_per_cable INTEGER,
   FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
   UNIQUE(project_id, streamer_id)
 );

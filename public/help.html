@@ -169,7 +169,7 @@
             </div>
             <div class="help-parameter-item">
               <strong>Active Sections per Streamer</strong>
-              Number of working sections on each streamer.
+              Default number of active sections for every streamer in the spread. Use this when all streamers have the same length.
             </div>
             <div class="help-parameter-item">
               <strong>Section Length (m)</strong>
@@ -191,6 +191,9 @@
           <p class="info-text mt-12">
             Save the configuration after changes. The active project uses its own saved parameters.
           </p>
+          <p class="info-text mt-12">
+            If one or more streamers are shorter or longer than the rest, set <strong>Active Sections per Streamer</strong> to the value used by most streamers, then override individual lengths in <strong>Per-Streamer Deployment Configuration</strong> (see below).
+          </p>
         </section>
 
         <section class="card help-page-section">
@@ -207,9 +210,16 @@
               <strong>Coating status</strong>
               Mark each streamer as coated, uncoated, or unknown.
             </div>
+            <div class="help-parameter-item">
+              <strong>Sections override</strong>
+              <p class="help-parameter-desc">Optional active section count for this streamer only. Leave empty to use the project default from <strong>Active Sections per Streamer</strong>, or enter a value when this streamer differs from the others (if you have a configuration where any streamer has more sections than others).</p>
+            </div>
           </div>
           <p class="info-text mt-12">
-            You can use the bulk actions to set the same date or coating status for all streamers, then click <strong>Save Streamer Configurations</strong>.
+            The heatmap, planning view, and statistics use each streamer's effective section count. Streamers with fewer sections show inactive (grey) cells beyond their length; longer streamers can have more active cells than shorter ones in the same spread.
+          </p>
+          <p class="info-text mt-12">
+            You can use the bulk actions to set the same date or coating status for all streamers. Set <strong>Sections override</strong> per streamer as needed, then click <strong>Save Streamer Configurations</strong>.
           </p>
         </section>
 

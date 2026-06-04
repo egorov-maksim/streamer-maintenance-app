@@ -387,7 +387,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
       }
 
       const rows = await getAllCamelized(
-        "SELECT streamer_id, deployment_date, is_coated FROM streamer_deployments WHERE project_id = ?",
+        "SELECT streamer_id, deployment_date, is_coated, sections_per_cable FROM streamer_deployments WHERE project_id = ?",
         [id]
       );
       const result = {};
@@ -396,6 +396,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
         result[row.streamerId] = {
           deploymentDate: row.deploymentDate || null,
           isCoated,
+          sectionsPerCable: row.sectionsPerCable ?? null,
         };
       }
       res.json(result);
@@ -422,12 +423,17 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
         const deploymentDate = data.deployment_date || null;
         const isCoatedVal =
           data.is_coated === true || data.is_coated === 1 ? 1 : data.is_coated === false || data.is_coated === 0 ? 0 : null;
+        const rawSections = data.sections_per_cable;
+        const sectionsVal = rawSections != null ? parseInt(rawSections, 10) : null;
+        if (sectionsVal !== null && (Number.isNaN(sectionsVal) || sectionsVal < 1)) {
+          return sendError(res, 400, `Invalid sections_per_cable for streamer ${streamerId}: must be a positive integer`);
+        }
         await runAsync(
-          `INSERT INTO streamer_deployments (project_id, streamer_id, deployment_date, is_coated)
-         VALUES (?, ?, ?, ?)
+          `INSERT INTO streamer_deployments (project_id, streamer_id, deployment_date, is_coated, sections_per_cable)
+         VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(project_id, streamer_id)
-         DO UPDATE SET deployment_date = excluded.deployment_date, is_coated = excluded.is_coated`,
-          [id, streamerId, deploymentDate, isCoatedVal]
+         DO UPDATE SET deployment_date = excluded.deployment_date, is_coated = excluded.is_coated, sections_per_cable = excluded.sections_per_cable`,
+          [id, streamerId, deploymentDate, isCoatedVal, sectionsVal]
         );
       }
       res.json({ success: true });

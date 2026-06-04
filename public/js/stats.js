@@ -16,7 +16,7 @@
 import { config, events, projects, selectedProjectFilter, getFilteredEvents } from "./state.js";
 import * as API from "./api.js";
 import { safeGet, showErrorToast, formatDateTime } from "./ui.js";
-import { fmtKm, formatSectionLabel, eventDistance, getEBRangeForSectionRange } from "./streamer-utils.js";
+import { fmtKm, formatSectionLabel, eventDistance, getEBRangeForSectionRange, getEffectiveSectionsPerCable } from "./streamer-utils.js";
 import { openModal, closeModal } from "./modals.js";
 import { renderDailyDistanceChart } from "./daily-distance-chart.js";
 
@@ -38,12 +38,12 @@ export async function renderStreamerCards(startDate = null, endDate = null, prel
     const lastCleaned = data.lastCleaned;
 
     const cableCount = config.numCables;
-    const sectionsPerCable = config.sectionsPerCable;
     const tailSections = config.useRopeForTail ? 0 : 5;
-    const totalPerCable = sectionsPerCable + tailSections;
 
     for (let streamerId = 1; streamerId <= cableCount; streamerId++) {
       const sections = lastCleaned[streamerId] || [];
+      const effectiveSections = getEffectiveSectionsPerCable(streamerId);
+      const totalPerCable = effectiveSections + tailSections;
 
       let filteredEvents = events.filter((evt) => evt.streamerId === streamerId);
 

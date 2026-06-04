@@ -85,6 +85,7 @@ const getSectionsPerCableWithTail = StreamerUtils.getSectionsPerCableWithTail;
 const getMaxSectionIndex = StreamerUtils.getMaxSectionIndex;
 const validateStreamerAndSections = StreamerUtils.validateStreamerAndSections;
 const getEBRangeForSectionRange = StreamerUtils.getEBRangeForSectionRange;
+const getEffectiveSectionsPerCable = StreamerUtils.getEffectiveSectionsPerCable;
 
 /* ------------ Heatmap ------------ */
 /* ============================================================================
@@ -121,11 +122,11 @@ function positionTooltipNearCursor(element, event) {
 function showSectionTooltip(e, streamerId, sectionIndex) {
   const tooltip = createTooltip();
   const streamerNum = streamerId;
-  const sectionsPerCable = config.sectionsPerCable;
+  const effectiveSectionsForStreamer = getEffectiveSectionsPerCable(streamerId);
 
-  // Determine if it's a tail section
-  const isTail = sectionIndex >= sectionsPerCable;
-  const relIndex = isTail ? sectionIndex - sectionsPerCable : sectionIndex;
+  // Determine if it's a tail section based on this streamer's effective section count
+  const isTail = sectionIndex >= effectiveSectionsForStreamer;
+  const relIndex = isTail ? sectionIndex - effectiveSectionsForStreamer : sectionIndex;
   const sectionLabel = formatSectionLabel(relIndex, isTail ? 'tail' : 'active');
 
   // Get cleaning history for this specific section (by section_type and indices)
@@ -342,20 +343,20 @@ function checkRecentCleanings(streamerId, startIndex, endIndex, cleanedAtIso) {
  * @returns {{ evt, mergedStart, mergedEnd, sectionType, diffMs } | null}
  */
 function checkAdjacentEvents(streamerId, startIndex, endIndex, cleaningMethod, cleanedAtIso) {
-  const sectionsPerCable = config.sectionsPerCable ?? 107;
+  const effectiveSectionsForStreamer = getEffectiveSectionsPerCable(streamerId);
 
   let proposedType;
   let proposedStart;
   let proposedEnd;
 
-  if (endIndex < sectionsPerCable) {
+  if (endIndex < effectiveSectionsForStreamer) {
     proposedType = 'active';
     proposedStart = startIndex;
     proposedEnd = endIndex;
-  } else if (startIndex >= sectionsPerCable) {
+  } else if (startIndex >= effectiveSectionsForStreamer) {
     proposedType = 'tail';
-    proposedStart = startIndex - sectionsPerCable;
-    proposedEnd = endIndex - sectionsPerCable;
+    proposedStart = startIndex - effectiveSectionsForStreamer;
+    proposedEnd = endIndex - effectiveSectionsForStreamer;
   } else {
     // Spans active + tail — skip merge suggestion for now
     return null;
@@ -417,15 +418,15 @@ function showRecentCleanWarning(recentClean, body) {
 /** Populates and opens the adjacent-merge modal, storing the payload and merge target. */
 function showAdjacentMergeModal(adjacentMatch, body) {
   const { evt, mergedStart, mergedEnd, sectionType, diffMs } = adjacentMatch;
-  const sectionsPerCable = config.sectionsPerCable ?? 107;
+  const effectiveSectionsForStreamer = getEffectiveSectionsPerCable(evt.streamerId ?? body.streamerId);
 
   const existingRange = `${formatSectionLabel(evt.sectionIndexStart, sectionType)}–${formatSectionLabel(evt.sectionIndexEnd, sectionType)}`;
 
   const proposedStart = sectionType === 'tail'
-    ? body.sectionIndexStart - sectionsPerCable
+    ? body.sectionIndexStart - effectiveSectionsForStreamer
     : body.sectionIndexStart;
   const proposedEnd = sectionType === 'tail'
-    ? body.sectionIndexEnd - sectionsPerCable
+    ? body.sectionIndexEnd - effectiveSectionsForStreamer
     : body.sectionIndexEnd;
   const proposedRange = `${formatSectionLabel(proposedStart, sectionType)}–${formatSectionLabel(proposedEnd, sectionType)}`;
   const mergedRange = `${formatSectionLabel(mergedStart, sectionType)}–${formatSectionLabel(mergedEnd, sectionType)}`;
@@ -1253,13 +1254,19 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
     const useTailSections = !config.useRopeForTail;
     const tailSections = useTailSections ? 5 : 0;
 
+    // Determine maximum section count across all streamers (project default or any override)
+    const overrides = config.sectionsPerCableOverrides || {};
+    const maxSectionsPerCable = Object.values(overrides).length > 0
+      ? Math.max(sectionsPerCable, ...Object.values(overrides))
+      : sectionsPerCable;
+
     // Compute actual EB module cell count to match rendering logic:
     // – always 1 at the first section
     // – 1 at every section where (sectionNumber-1) % moduleFreq === 0 and sectionNumber > 1
     // – always 1 at the last section (if not already a regular)
-    const lastSectionIsRegular = (sectionsPerCable - 1) % moduleFreq === 0;
-    const modulesCount = 1 + Math.floor((sectionsPerCable - 1) / moduleFreq) + (lastSectionIsRegular ? 0 : 1);
-    const totalRows = sectionsPerCable + modulesCount + tailSections;
+    const lastSectionIsRegular = (maxSectionsPerCable - 1) % moduleFreq === 0;
+    const modulesCount = 1 + Math.floor((maxSectionsPerCable - 1) / moduleFreq) + (lastSectionIsRegular ? 0 : 1);
+    const totalRows = maxSectionsPerCable + modulesCount + tailSections;
 
     const orientation = getHeatmapOrientation();
     const wrapper = document.createElement('div');
@@ -1290,23 +1297,23 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
       const colTemplate = `var(--hm-label-w, 40px) repeat(${totalRows}, var(--hm-cell-w, 52px))`;
 
       // Helper: build the interleaved section/EB/tail cells for a row.
-      // For the header row, cellFactory receives (sectionIndex, isModule, moduleNum, tailIndex).
-      function buildRowCells(row, cellFactory) {
+      // effectiveSections controls how many active cells are shown before inactive padding.
+      function buildRowCells(row, cellFactory, effectiveSections = maxSectionsPerCable) {
         let moduleNum = 1;
-        for (let s = 0; s < sectionsPerCable; s++) {
-          row.appendChild(cellFactory('section', s, null, null));
+        for (let s = 0; s < maxSectionsPerCable; s++) {
+          row.appendChild(cellFactory('section', s, null, null, s >= effectiveSections));
 
           const sNum = s + 1;
           const isFirstMod = sNum === 1;
           const isRegularMod = sNum > 1 && (sNum - 1) % moduleFreq === 0;
-          const isLastMod = sNum === sectionsPerCable;
+          const isLastMod = sNum === maxSectionsPerCable;
           if (isFirstMod || isRegularMod || isLastMod) {
-            row.appendChild(cellFactory('module', s, moduleNum, null));
+            row.appendChild(cellFactory('module', s, moduleNum, null, s >= effectiveSections));
             moduleNum++;
           }
         }
         for (let t = 0; t < tailSections; t++) {
-          row.appendChild(cellFactory('tail', null, null, t));
+          row.appendChild(cellFactory('tail', null, null, t, false));
         }
       }
 
@@ -1338,7 +1345,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
           cell.title = 'Tail Section';
         }
         return cell;
-      });
+      }, maxSectionsPerCable);
       wrapper.appendChild(headerRow);
 
       // CH row — channel range labels per section column
@@ -1368,13 +1375,14 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
           cell.title = 'Tail Section (no channels)';
         }
         return cell;
-      });
+      }, maxSectionsPerCable);
       wrapper.appendChild(chRow);
 
       // One row per streamer (S12 down to S1)
       for (let streamerId = cableCount; streamerId >= 1; streamerId--) {
         const sections = lastCleaned[streamerId] || [];
         const deployment = deployments[streamerId] || {};
+        const effectiveSections = getEffectiveSectionsPerCable(streamerId);
 
         const row = document.createElement('div');
         row.className = 'hm-row';
@@ -1388,8 +1396,12 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
         streamerLabel.dataset.isCoated = deployment.isCoated === true ? 'true' : deployment.isCoated === false ? 'false' : 'unknown';
         row.appendChild(streamerLabel);
 
-        buildRowCells(row, (type, s, modNum, tailIdx) => {
+        buildRowCells(row, (type, s, modNum, tailIdx, inactive) => {
           const cell = document.createElement('div');
+          if (inactive) {
+            cell.className = type === 'module' ? 'hm-vcell hm-module hm-vcell-inactive' : 'hm-vcell hm-vcell-inactive';
+            return cell;
+          }
           if (type === 'section') {
             const lastDate = sections[s];
             let days = null;
@@ -1412,7 +1424,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
             cell.title = `Equipment Box ${ebLabel}`;
             cell.dataset.ebNum = ebLabel;
           } else {
-            const tailSectionIdx = sectionsPerCable + tailIdx;
+            const tailSectionIdx = effectiveSections + tailIdx;
             const lastDate = sections[tailSectionIdx] || null;
             let days = null;
             let bucket = 'never';
@@ -1432,7 +1444,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
             cell.setAttribute('aria-label', `Streamer ${streamerId}, Tail ${formatSectionLabel(tailIdx, 'tail')}: ${tailAgeText}`);
           }
           return cell;
-        });
+        }, effectiveSections);
 
         wrapper.appendChild(row);
       }
@@ -1460,7 +1472,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
       channelLabel.textContent = 'CH';
       channelCol.appendChild(channelLabel);
 
-      for (let s = 0; s < sectionsPerCable; s++) {
+      for (let s = 0; s < maxSectionsPerCable; s++) {
         const channelCell = document.createElement('div');
         channelCell.className = 'hm-vcell hm-channel-ref';
         const startCh = s * channelsPerSection + 1;
@@ -1472,7 +1484,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
         const sectionNumber = s + 1;
         const isFirstModule = sectionNumber === 1;
         const isRegularModule = sectionNumber > 1 && (sectionNumber - 1) % moduleFreq === 0;
-        const isLastModule = sectionNumber === sectionsPerCable;
+        const isLastModule = sectionNumber === maxSectionsPerCable;
 
         if (isFirstModule || isRegularModule || isLastModule) {
           const moduleChannelCell = document.createElement('div');
@@ -1496,6 +1508,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
       for (let streamerId = cableCount; streamerId >= 1; streamerId--) {
         const sections = lastCleaned[streamerId] || [];
         const deployment = deployments[streamerId] || {};
+        const effectiveSections = getEffectiveSectionsPerCable(streamerId);
 
         const col = document.createElement('div');
         col.className = 'hm-col';
@@ -1512,7 +1525,26 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
 
         let moduleNum = 1;
 
-        for (let s = 0; s < sectionsPerCable; s++) {
+        for (let s = 0; s < maxSectionsPerCable; s++) {
+          if (s >= effectiveSections) {
+            // Inactive placeholder for sections beyond this streamer's length
+            const inactiveCell = document.createElement('div');
+            inactiveCell.className = 'hm-vcell hm-vcell-inactive';
+            col.appendChild(inactiveCell);
+
+            const sectionNumber = s + 1;
+            const isFirstModule = sectionNumber === 1;
+            const isRegularModule = sectionNumber > 1 && (sectionNumber - 1) % moduleFreq === 0;
+            const isLastModule = sectionNumber === maxSectionsPerCable;
+            if (isFirstModule || isRegularModule || isLastModule) {
+              const inactiveModule = document.createElement('div');
+              inactiveModule.className = 'hm-vcell hm-module hm-vcell-inactive';
+              col.appendChild(inactiveModule);
+              moduleNum++;
+            }
+            continue;
+          }
+
           // Active section cell
           const cell = document.createElement('div');
           cell.className = 'hm-vcell hm-active-section';
@@ -1543,7 +1575,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
           const sectionNumber = s + 1;
           const isFirstModule = sectionNumber === 1;
           const isRegularModule = sectionNumber > 1 && (sectionNumber - 1) % moduleFreq === 0;
-          const isLastModule = sectionNumber === sectionsPerCable;
+          const isLastModule = sectionNumber === maxSectionsPerCable;
 
           if (isFirstModule || isRegularModule || isLastModule) {
             const moduleCell = document.createElement('div');
@@ -1557,7 +1589,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
 
         // Add tail sections if configured
         for (let t = 0; t < tailSections; t++) {
-          const tailIdx = sectionsPerCable + t;
+          const tailIdx = effectiveSections + t;
           const tailCell = document.createElement('div');
           tailCell.className = 'hm-vcell hm-tail-section';
           tailCell.dataset.streamer = streamerId;
@@ -1808,7 +1840,7 @@ function showConfirmationModal() {
   dragState.active = false;
   
   const { streamerId, start, end } = dragState;
-  const sectionsPerCable = config.sectionsPerCable ?? 107;
+  const effectiveSectionsForStreamer = getEffectiveSectionsPerCable(streamerId);
   const min = Math.min(start, end);
   const max = Math.max(start, end);
   const streamerNum = streamerId;
@@ -1817,8 +1849,8 @@ function showConfirmationModal() {
   const endInput = safeGet('modal-end');
   const methodSelect = safeGet('modal-method');
   
-  const totalSections = getSectionsPerCableWithTail(config);
-  const tailOnly = min >= sectionsPerCable;
+  const totalSections = getSectionsPerCableWithTail(config, streamerId);
+  const tailOnly = min >= effectiveSectionsForStreamer;
 
   streamerInput.max = config.numCables;
   startInput.min = 1;
@@ -1827,8 +1859,8 @@ function showConfirmationModal() {
     confirmationModalTailOnly = true;
     startInput.max = 5;
     endInput.max = 5;
-    startInput.value = min - sectionsPerCable + 1;  // Tail 1-based 1..5
-    endInput.value = max - sectionsPerCable + 1;
+    startInput.value = min - effectiveSectionsForStreamer + 1;  // Tail 1-based 1..5
+    endInput.value = max - effectiveSectionsForStreamer + 1;
     safeGet('modal-first-section-label').childNodes[0].textContent = 'First Tail Section ';
     safeGet('modal-last-section-label').childNodes[0].textContent = 'Last Tail Section ';
   } else {
@@ -1858,14 +1890,15 @@ function showConfirmationModal() {
 }
 
 function updateModalSummary() {
-  const sectionsPerCable = config.sectionsPerCable ?? 107;
+  const modalStreamerId = parseInt(safeGet('modal-streamer')?.value || '1', 10);
+  const effectiveSectionsForStreamer = getEffectiveSectionsPerCable(modalStreamerId);
   let min;
   let max;
   if (confirmationModalTailOnly) {
     const startVal = parseInt(safeGet('modal-start').value || 1, 10) - 1;
     const endVal = parseInt(safeGet('modal-end').value || 1, 10) - 1;
-    min = Math.min(startVal, endVal) + sectionsPerCable;
-    max = Math.max(startVal, endVal) + sectionsPerCable;
+    min = Math.min(startVal, endVal) + effectiveSectionsForStreamer;
+    max = Math.max(startVal, endVal) + effectiveSectionsForStreamer;
   } else {
     const start = parseInt(safeGet('modal-start').value || 1, 10) - 1;
     const end = parseInt(safeGet('modal-end').value || 1, 10) - 1;
@@ -1873,12 +1906,12 @@ function updateModalSummary() {
     max = Math.max(start, end);
   }
   const labelFor = (s) =>
-    s >= sectionsPerCable
-      ? formatSectionLabel(s - sectionsPerCable, 'tail')
+    s >= effectiveSectionsForStreamer
+      ? formatSectionLabel(s - effectiveSectionsForStreamer, 'tail')
       : formatSectionLabel(s, 'active');
   const rangeText = `${labelFor(min)} – ${labelFor(max)}`;
-  const channelStart = min < sectionsPerCable ? getChannelRange(min).split('–')[0] : '—';
-  const channelEnd = max < sectionsPerCable ? getChannelRange(max).split('–')[1] : '—';
+  const channelStart = min < effectiveSectionsForStreamer ? getChannelRange(min).split('–')[0] : '—';
+  const channelEnd = max < effectiveSectionsForStreamer ? getChannelRange(max).split('–')[1] : '—';
   const channelText = `${channelStart} – ${channelEnd}`;
   const distance = (max - min + 1) * config.sectionLength;
 
@@ -1905,12 +1938,12 @@ async function confirmCleaning() {
   setIsFinalizing(true);
   
   const streamerNum = parseInt(safeGet('modal-streamer').value, 10);
-  const sectionsPerCable = config.sectionsPerCable ?? 107;
+  const effectiveSectionsForStreamer = getEffectiveSectionsPerCable(streamerNum);
   let startSection = parseInt(safeGet('modal-start').value, 10);
   let endSection = parseInt(safeGet('modal-end').value, 10);
   if (confirmationModalTailOnly) {
-    startSection = (startSection - 1) + sectionsPerCable + 1;
-    endSection = (endSection - 1) + sectionsPerCable + 1;
+    startSection = (startSection - 1) + effectiveSectionsForStreamer + 1;
+    endSection = (endSection - 1) + effectiveSectionsForStreamer + 1;
   }
   const method = safeGet('modal-method').value;
   

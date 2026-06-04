@@ -469,6 +469,21 @@
     border-color: #6b7280;
   }
   
+  /* Inactive placeholder for sections beyond a streamer's effective length */
+  .hm-vcell.hm-vcell-inactive {
+    background: transparent;
+    border-color: transparent;
+    cursor: default;
+    pointer-events: none;
+  }
+
+  /* EB module cells in the inactive range must override the !important rules on .hm-module */
+  .hm-vcell.hm-module.hm-vcell-inactive {
+    background: transparent !important;
+    border: none !important;
+    color: transparent;
+  }
+
   /* Drag feedback for selection */
   .hm-vcell.dragging {
     outline: 3px solid var(--primary);
@@ -1941,9 +1956,18 @@
   background: var(--bg);
 }
 
-.help-parameter-item strong {
+.help-parameter-item > strong:first-child {
   display: block;
   margin-bottom: 6px;
+}
+
+.help-parameter-item > strong:not(:first-child) {
+  display: inline;
+  margin-bottom: 0;
+}
+
+.help-parameter-desc {
+  margin: 0;
 }
 
 .help-page-section + .help-page-section {

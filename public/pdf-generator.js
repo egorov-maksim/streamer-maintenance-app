@@ -5,7 +5,7 @@
 
 import { safeGet, setStatus } from "./js/ui.js";
 import { config, getActiveProject } from "./js/state.js";
-import { formatAS, formatSectionLabel, eventDistance, fmtKm, formatEB, getEBRangeForSectionRange } from "./js/streamer-utils.js";
+import { formatAS, formatSectionLabel, eventDistance, fmtKm, formatEB, getEBRangeForSectionRange, getEffectiveSectionsPerCable } from "./js/streamer-utils.js";
 import { getAuthHeaders } from "./js/api.js";
 import { openModal, closeModal } from "./js/modals.js";
 import { loadHeatmapLegendPrefs, scrapingAgeStyle, rmsToColor } from "./js/heatmap-legend.js";
@@ -145,8 +145,15 @@ async function generatePDFReport({
     doc.setFontSize(10);
     doc.text(`Number of Cables: ${config.numCables}`, 25, yPos);
     yPos += 6;
-    doc.text(`Sections per Cable: ${config.sectionsPerCable}`, 25, yPos);
+    doc.text(`Sections per Cable: ${config.sectionsPerCable} (default)`, 25, yPos);
     yPos += 6;
+    const overrides = config.sectionsPerCableOverrides || {};
+    const overrideEntries = Object.entries(overrides);
+    if (overrideEntries.length > 0) {
+      const overrideText = overrideEntries.map(([sid, cnt]) => `S${sid}: ${cnt}`).join(', ');
+      doc.text(`  Overrides: ${overrideText}`, 25, yPos);
+      yPos += 6;
+    }
     doc.text(`Tail Sections: ${config.useRopeForTail ? 'Using rope (no tails)' : '5 tail sections added'}`, 25, yPos);
     
     // Add deployment date and coating status if available
@@ -198,10 +205,11 @@ async function generatePDFReport({
 
         doc.setFontSize(9);
         doc.text('Streamer', 20, yPos);
-        doc.text('Deployed', 45, yPos);
-        doc.text('Coating', 85, yPos);
-        doc.text('Days to First Cleaning', 115, yPos);
-        doc.text('Total Cleanings', 165, yPos);
+        doc.text('Sections', 45, yPos);
+        doc.text('Deployed', 70, yPos);
+        doc.text('Coating', 110, yPos);
+        doc.text('Days to First Cleaning', 140, yPos);
+        doc.text('Total Cleanings', 195, yPos);
         yPos += 5;
 
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -212,10 +220,11 @@ async function generatePDFReport({
             yPos = 20;
             doc.setFontSize(9);
             doc.text('Streamer', 20, yPos);
-            doc.text('Deployed', 45, yPos);
-            doc.text('Coating', 85, yPos);
-            doc.text('Days to First Cleaning', 115, yPos);
-            doc.text('Total Cleanings', 165, yPos);
+            doc.text('Sections', 45, yPos);
+            doc.text('Deployed', 70, yPos);
+            doc.text('Coating', 110, yPos);
+            doc.text('Days to First Cleaning', 140, yPos);
+            doc.text('Total Cleanings', 195, yPos);
             yPos += 5;
           }
 
@@ -229,6 +238,11 @@ async function generatePDFReport({
               : deployment.isCoated === false
               ? 'Uncoated'
               : 'Unknown';
+
+          const effectiveSections = getEffectiveSectionsPerCable(streamerNum);
+          const sectionsLabel = effectiveSections !== config.sectionsPerCable
+            ? `${effectiveSections} *`
+            : String(effectiveSections);
 
           const streamerEvents = eventsForProject.filter(
             (e) => e.streamerId === streamerNum
@@ -253,10 +267,11 @@ async function generatePDFReport({
             daysToFirst !== null ? `${daysToFirst} days` : '—';
 
           doc.text(`S${streamerNum}`, 20, yPos);
-          doc.text(String(deployDateStr), 45, yPos);
-          doc.text(coatingLabel, 85, yPos);
-          doc.text(daysToFirstLabel, 115, yPos);
-          doc.text(String(streamerEvents.length), 165, yPos);
+          doc.text(sectionsLabel, 45, yPos);
+          doc.text(String(deployDateStr), 70, yPos);
+          doc.text(coatingLabel, 110, yPos);
+          doc.text(daysToFirstLabel, 140, yPos);
+          doc.text(String(streamerEvents.length), 195, yPos);
           yPos += 5;
         }
       } catch (err) {
@@ -393,7 +408,11 @@ async function addHeatmapPage(doc, lastCleaned, title) {
   const numCables = config.numCables;
   const sectionsPerCable = config.sectionsPerCable;
   const tailSections = config.useRopeForTail ? 0 : 5;
-  const totalSections = sectionsPerCable + tailSections;
+  const overrides = config.sectionsPerCableOverrides || {};
+  const maxSectionsPerCable = Object.values(overrides).length > 0
+    ? Math.max(sectionsPerCable, ...Object.values(overrides))
+    : sectionsPerCable;
+  const totalSections = maxSectionsPerCable + tailSections;
 
   // Calculate dimensions for horizontal layout (landscape)
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -417,7 +436,7 @@ async function addHeatmapPage(doc, lastCleaned, title) {
   const startX = leftMargin + 15; // Space for section labels
   const startY = topMargin + 8; // Space for cable labels
 
-  // Pre-compute EB module positions per section (active sections only)
+  // Pre-compute EB module positions per section (based on max sections across all streamers)
   const moduleFreq = config.moduleFrequency || 4;
   const legendPrefs = loadHeatmapLegendPrefs();
   const modulesBySection = Array.from({ length: totalSections }, () => null);
@@ -425,18 +444,22 @@ async function addHeatmapPage(doc, lastCleaned, title) {
   // Always have EB01 at section 0
   modulesBySection[0] = 1;
 
-  for (let sectionIndex = moduleFreq; sectionIndex < sectionsPerCable; sectionIndex += moduleFreq) {
+  for (let sectionIndex = moduleFreq; sectionIndex < maxSectionsPerCable; sectionIndex += moduleFreq) {
     const moduleNum = Math.floor(sectionIndex / moduleFreq) + 1;
     if (sectionIndex < totalSections) {
       modulesBySection[sectionIndex] = moduleNum;
     }
   }
 
-  const lastModuleNum = Math.floor((sectionsPerCable - 1) / moduleFreq) + 1;
-  const lastModuleSection = sectionsPerCable - 1;
+  const lastModuleNum = Math.floor((maxSectionsPerCable - 1) / moduleFreq) + 1;
+  const lastModuleSection = maxSectionsPerCable - 1;
   if (lastModuleSection < totalSections && !modulesBySection[lastModuleSection]) {
     modulesBySection[lastModuleSection] = lastModuleNum;
   }
+
+  // Inactive cell fill — light grey, used for sections beyond a streamer's effective length
+  const inactiveFill = { r: 240, g: 240, b: 240 };
+  const inactiveBorder = { r: 220, g: 220, b: 220 };
 
   // Draw cable numbers at top (RIGHT TO LEFT: S12, S11, S10... S2, S1)
   doc.setFontSize(8);
@@ -452,31 +475,45 @@ async function addHeatmapPage(doc, lastCleaned, title) {
   doc.setFontSize(6);
   for (let s = 0; s < totalSections; s++) {
     const rowY = startY + s * cellHeight;
+    const isTailRow = s >= maxSectionsPerCable;
 
-    // Section number on left (AS01..AS107 or Tail 1..Tail 5) - show every 5 sections
+    // Section number on left — show every 5 sections
     if (s % 5 === 0 || s === 0 || s === totalSections - 1) {
-      const sectionLabel = s < sectionsPerCable
-        ? formatSectionLabel(s, 'active')
-        : formatSectionLabel(s - sectionsPerCable, 'tail');
+      const sectionLabel = isTailRow
+        ? formatSectionLabel(s - maxSectionsPerCable, 'tail')
+        : formatSectionLabel(s, 'active');
       doc.setTextColor(0, 0, 0);
       doc.text(sectionLabel, leftMargin + 12, rowY + cellHeight / 2 + 1, { align: 'right' });
     }
 
     // Draw cells for each cable - RIGHT TO LEFT ordering
     for (let c = 0; c < numCables; c++) {
-      // Display cables in reverse: column 0 shows streamerId=numCables, column 11 shows streamerId=1
+      // Display cables in reverse: column 0 shows streamerId=numCables, column N-1 shows streamerId=1
       const streamerId = numCables - c;
-      const streamerData = lastCleaned[streamerId];
-      const lastCleanedDate = streamerData?.[s];
+      const effectiveSectionsForStreamer = getEffectiveSectionsPerCable(streamerId);
+      const isInactive = !isTailRow && s >= effectiveSectionsForStreamer;
 
-      let days = null;
-      if (lastCleanedDate) {
-        days = Math.floor((Date.now() - new Date(lastCleanedDate)) / (1000 * 60 * 60 * 24));
+      let fillRgb, borderRgb;
+      if (isInactive) {
+        fillRgb = inactiveFill;
+        borderRgb = inactiveBorder;
+      } else {
+        // Map row index to the streamer's lastCleaned array index
+        const arrayIdx = isTailRow
+          ? effectiveSectionsForStreamer + (s - maxSectionsPerCable)
+          : s;
+        const streamerData = lastCleaned[streamerId];
+        const lastCleanedDate = streamerData?.[arrayIdx];
+
+        let days = null;
+        if (lastCleanedDate) {
+          days = Math.floor((Date.now() - new Date(lastCleanedDate)) / (1000 * 60 * 60 * 24));
+        }
+
+        const style = scrapingAgeStyle(days, legendPrefs);
+        fillRgb = parseRgbOrHex(style.backgroundColor);
+        borderRgb = parseRgbOrHex(style.borderColor);
       }
-
-      const style = scrapingAgeStyle(days, legendPrefs);
-      const fillRgb = parseRgbOrHex(style.backgroundColor);
-      const borderRgb = parseRgbOrHex(style.borderColor);
 
       doc.setFillColor(fillRgb.r, fillRgb.g, fillRgb.b);
       doc.rect(startX + c * cellWidth, rowY, cellWidth, cellHeight, 'F');
@@ -501,7 +538,7 @@ async function addHeatmapPage(doc, lastCleaned, title) {
   const ebSepEndX = startX + heatmapWidth + 18;
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.4);
-  for (let boundaryS = moduleFreq; boundaryS < sectionsPerCable; boundaryS += moduleFreq) {
+  for (let boundaryS = moduleFreq; boundaryS < maxSectionsPerCable; boundaryS += moduleFreq) {
     const moduleNum = Math.floor(boundaryS / moduleFreq) + 1;
     if (moduleNum % 2 !== 0) continue;
     const lineY = startY + (boundaryS + 1) * cellHeight;
@@ -588,7 +625,11 @@ async function addNoiseHeatmapPage(doc, noiseData, title) {
   const numCables = config.numCables;
   const sectionsPerCable = config.sectionsPerCable;
   const tailSections = config.useRopeForTail ? 0 : 5;
-  const totalSections = sectionsPerCable + tailSections;
+  const overrides = config.sectionsPerCableOverrides || {};
+  const maxSectionsPerCable = Object.values(overrides).length > 0
+    ? Math.max(sectionsPerCable, ...Object.values(overrides))
+    : sectionsPerCable;
+  const totalSections = maxSectionsPerCable + tailSections;
 
   // Calculate dimensions for horizontal layout (landscape)
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -612,21 +653,25 @@ async function addNoiseHeatmapPage(doc, noiseData, title) {
   const startX = leftMargin + 15; // Space for section labels
   const startY = topMargin + 8; // Space for cable labels
 
-  // Pre-compute EB module positions per section (active sections only)
+  // Pre-compute EB module positions per section (based on max sections across all streamers)
   const moduleFreq = config.moduleFrequency || 4;
   const modulesBySection = Array.from({ length: totalSections }, () => null);
   modulesBySection[0] = 1; // EB01 at section 0
 
-  for (let sectionIndex = moduleFreq; sectionIndex < sectionsPerCable; sectionIndex += moduleFreq) {
+  for (let sectionIndex = moduleFreq; sectionIndex < maxSectionsPerCable; sectionIndex += moduleFreq) {
     const moduleNum = Math.floor(sectionIndex / moduleFreq) + 1;
     if (sectionIndex < totalSections) modulesBySection[sectionIndex] = moduleNum;
   }
 
-  const lastModuleNum = Math.floor((sectionsPerCable - 1) / moduleFreq) + 1;
-  const lastModuleSection = sectionsPerCable - 1;
+  const lastModuleNum = Math.floor((maxSectionsPerCable - 1) / moduleFreq) + 1;
+  const lastModuleSection = maxSectionsPerCable - 1;
   if (lastModuleSection < totalSections && !modulesBySection[lastModuleSection]) {
     modulesBySection[lastModuleSection] = lastModuleNum;
   }
+
+  // Inactive cell fill — light grey, used for sections beyond a streamer's effective length
+  const inactiveFill = { r: 240, g: 240, b: 240 };
+  const inactiveBorder = { r: 220, g: 220, b: 220 };
 
   // Draw cable numbers at top (RIGHT TO LEFT: S12, S11, ... S2, S1)
   doc.setFontSize(8);
@@ -641,12 +686,13 @@ async function addNoiseHeatmapPage(doc, noiseData, title) {
   doc.setFontSize(6);
   for (let s = 0; s < totalSections; s++) {
     const rowY = startY + s * cellHeight;
+    const isTailRow = s >= maxSectionsPerCable;
 
-    // Section number on left (AS01..AS107 or Tail 1..Tail 5) - show every 5 sections
+    // Section number on left — show every 5 sections
     if (s % 5 === 0 || s === 0 || s === totalSections - 1) {
-      const sectionLabel = s < sectionsPerCable
-        ? formatSectionLabel(s, "active")
-        : formatSectionLabel(s - sectionsPerCable, "tail");
+      const sectionLabel = isTailRow
+        ? formatSectionLabel(s - maxSectionsPerCable, "tail")
+        : formatSectionLabel(s, "active");
       doc.setTextColor(0, 0, 0);
       doc.text(sectionLabel, leftMargin + 12, rowY + cellHeight / 2 + 1, { align: "right" });
     }
@@ -654,20 +700,27 @@ async function addNoiseHeatmapPage(doc, noiseData, title) {
     // Draw cells for each cable - RIGHT TO LEFT ordering
     for (let c = 0; c < numCables; c++) {
       const streamerId = numCables - c;
-      const rms = noiseData?.[streamerId]?.[s] ?? 0;
-      const bgCss = rmsToColor(rms, prefs);
+      const effectiveSectionsForStreamer = getEffectiveSectionsPerCable(streamerId);
+      const isInactive = !isTailRow && s >= effectiveSectionsForStreamer;
 
-      const fillRgb = bgCss
-        ? parseRgbOrHex(bgCss)
-        : parseRgbOrHex("#e5e7eb");
+      let fillRgb, borderRgb;
+      if (isInactive) {
+        fillRgb = inactiveFill;
+        borderRgb = inactiveBorder;
+      } else {
+        const rms = noiseData?.[streamerId]?.[s] ?? 0;
+        const bgCss = rmsToColor(rms, prefs);
+        fillRgb = bgCss ? parseRgbOrHex(bgCss) : parseRgbOrHex("#e5e7eb");
+        borderRgb = {
+          r: Math.max(0, Math.round(fillRgb.r * 0.78)),
+          g: Math.max(0, Math.round(fillRgb.g * 0.78)),
+          b: Math.max(0, Math.round(fillRgb.b * 0.78)),
+        };
+      }
+
       doc.setFillColor(fillRgb.r, fillRgb.g, fillRgb.b);
       doc.rect(startX + c * cellWidth, rowY, cellWidth, cellHeight, "F");
 
-      const borderRgb = {
-        r: Math.max(0, Math.round(fillRgb.r * 0.78)),
-        g: Math.max(0, Math.round(fillRgb.g * 0.78)),
-        b: Math.max(0, Math.round(fillRgb.b * 0.78)),
-      };
       doc.setDrawColor(borderRgb.r, borderRgb.g, borderRgb.b);
       doc.setLineWidth(0.05);
       doc.rect(startX + c * cellWidth, rowY, cellWidth, cellHeight, "S");
@@ -688,7 +741,7 @@ async function addNoiseHeatmapPage(doc, noiseData, title) {
   const ebSepEndX = startX + heatmapWidth + 18;
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.4);
-  for (let boundaryS = moduleFreq; boundaryS < sectionsPerCable; boundaryS += moduleFreq) {
+  for (let boundaryS = moduleFreq; boundaryS < maxSectionsPerCable; boundaryS += moduleFreq) {
     const moduleNum = Math.floor(boundaryS / moduleFreq) + 1;
     if (moduleNum % 2 !== 0) continue;
     const lineY = startY + (boundaryS + 1) * cellHeight;
