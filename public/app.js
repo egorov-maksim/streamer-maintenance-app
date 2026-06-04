@@ -71,6 +71,10 @@ import {
   loadDefaultCleaningMethod,
   saveDefaultCleaningMethod,
 } from "./js/cleaning-method-prefs.js";
+import {
+  shouldInsertModuleAfterSection,
+  countHeatmapColumnRows,
+} from "./js/heatmap-layout.js";
 
 const sectionCount = StreamerUtils.sectionCount;
 const eventDistance = StreamerUtils.eventDistance;
@@ -1296,34 +1300,32 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
       wrapper.style.setProperty('--hm-ch-row-h', `${chRowHeight}px`);
 
 
-      // Each row: label column + totalRows section/EB/tail columns
-      const colTemplate = `var(--hm-label-w, 40px) repeat(${totalRows}, var(--hm-cell-w, 52px))`;
+      // CH row spans the full max-length grid so channel labels are always visible.
+      const maxColTemplate = `var(--hm-label-w, 40px) repeat(${totalRows}, var(--hm-cell-w, 52px))`;
 
-      // Helper: build the interleaved section/EB/tail cells for a row.
-      // effectiveSections controls how many active cells are shown before inactive padding.
-      function buildRowCells(row, cellFactory, effectiveSections = maxSectionsPerCable) {
+      // Helper: append the interleaved section/EB/tail cells for a single row.
+      // sectionCount is the active section count for this row (determines loop bound
+      // and last-EB placement). Returns total data cells appended (for gridTemplateColumns).
+      function buildRowCells(row, cellFactory, sectionCount) {
         let moduleNum = 1;
-        for (let s = 0; s < maxSectionsPerCable; s++) {
-          row.appendChild(cellFactory('section', s, null, null, s >= effectiveSections));
+        for (let s = 0; s < sectionCount; s++) {
+          row.appendChild(cellFactory('section', s, null, null));
 
-          const sNum = s + 1;
-          const isFirstMod = sNum === 1;
-          const isRegularMod = sNum > 1 && (sNum - 1) % moduleFreq === 0;
-          const isLastMod = sNum === maxSectionsPerCable;
-          if (isFirstMod || isRegularMod || isLastMod) {
-            row.appendChild(cellFactory('module', s, moduleNum, null, s >= effectiveSections));
+          if (shouldInsertModuleAfterSection(s + 1, sectionCount, moduleFreq)) {
+            row.appendChild(cellFactory('module', s, moduleNum, null));
             moduleNum++;
           }
         }
         for (let t = 0; t < tailSections; t++) {
-          row.appendChild(cellFactory('tail', null, null, t, false));
+          row.appendChild(cellFactory('tail', null, null, t));
         }
+        return countHeatmapColumnRows(sectionCount, moduleFreq, tailSections);
       }
 
       // CH row — channel range labels per section column (horizontal has no SEC row)
       const chRow = document.createElement('div');
       chRow.className = 'hm-row hm-row-ch';
-      chRow.style.gridTemplateColumns = colTemplate;
+      chRow.style.gridTemplateColumns = maxColTemplate;
 
       const chCorner = document.createElement('div');
       chCorner.className = 'hm-row-label';
@@ -1350,7 +1352,8 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
       }, maxSectionsPerCable);
       wrapper.appendChild(chRow);
 
-      // One row per streamer (S1 up to highest)
+      // One row per streamer (S1 up to highest); each row is only as wide as
+      // its own active sections + EBs + tails — no inactive padding before tails.
       for (let streamerId = 1; streamerId <= cableCount; streamerId++) {
         const sections = lastCleaned[streamerId] || [];
         const deployment = deployments[streamerId] || {};
@@ -1358,7 +1361,6 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
 
         const row = document.createElement('div');
         row.className = 'hm-row';
-        row.style.gridTemplateColumns = colTemplate;
 
         const streamerLabel = document.createElement('div');
         streamerLabel.className = 'hm-row-label hm-header';
@@ -1368,12 +1370,8 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
         streamerLabel.dataset.isCoated = deployment.isCoated === true ? 'true' : deployment.isCoated === false ? 'false' : 'unknown';
         row.appendChild(streamerLabel);
 
-        buildRowCells(row, (type, s, modNum, tailIdx, inactive) => {
+        const cellCount = buildRowCells(row, (type, s, modNum, tailIdx) => {
           const cell = document.createElement('div');
-          if (inactive) {
-            cell.className = type === 'module' ? 'hm-vcell hm-module hm-vcell-inactive' : 'hm-vcell hm-vcell-inactive';
-            return cell;
-          }
           if (type === 'section') {
             const lastDate = sections[s];
             let days = null;
@@ -1418,6 +1416,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
           return cell;
         }, effectiveSections);
 
+        row.style.gridTemplateColumns = `var(--hm-label-w, 40px) repeat(${cellCount}, var(--hm-cell-w, 52px))`;
         wrapper.appendChild(row);
       }
     } else {
@@ -1482,9 +1481,10 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
         const deployment = deployments[streamerId] || {};
         const effectiveSections = getEffectiveSectionsPerCable(streamerId);
 
+        const colRows = countHeatmapColumnRows(effectiveSections, moduleFreq, tailSections);
         const col = document.createElement('div');
         col.className = 'hm-col';
-        col.style.gridTemplateRows = `36px repeat(${totalRows}, 32px)`;
+        col.style.gridTemplateRows = `36px repeat(${colRows}, 32px)`;
 
         // Streamer header (with deployment data for tooltip)
         const label = document.createElement('div');
@@ -1497,26 +1497,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
 
         let moduleNum = 1;
 
-        for (let s = 0; s < maxSectionsPerCable; s++) {
-          if (s >= effectiveSections) {
-            // Inactive placeholder for sections beyond this streamer's length
-            const inactiveCell = document.createElement('div');
-            inactiveCell.className = 'hm-vcell hm-vcell-inactive';
-            col.appendChild(inactiveCell);
-
-            const sectionNumber = s + 1;
-            const isFirstModule = sectionNumber === 1;
-            const isRegularModule = sectionNumber > 1 && (sectionNumber - 1) % moduleFreq === 0;
-            const isLastModule = sectionNumber === maxSectionsPerCable;
-            if (isFirstModule || isRegularModule || isLastModule) {
-              const inactiveModule = document.createElement('div');
-              inactiveModule.className = 'hm-vcell hm-module hm-vcell-inactive';
-              col.appendChild(inactiveModule);
-              moduleNum++;
-            }
-            continue;
-          }
-
+        for (let s = 0; s < effectiveSections; s++) {
           // Active section cell
           const cell = document.createElement('div');
           cell.className = 'hm-vcell hm-active-section';
@@ -1544,12 +1525,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
 
           col.appendChild(cell);
 
-          const sectionNumber = s + 1;
-          const isFirstModule = sectionNumber === 1;
-          const isRegularModule = sectionNumber > 1 && (sectionNumber - 1) % moduleFreq === 0;
-          const isLastModule = sectionNumber === maxSectionsPerCable;
-
-          if (isFirstModule || isRegularModule || isLastModule) {
+          if (shouldInsertModuleAfterSection(s + 1, effectiveSections, moduleFreq)) {
             const moduleCell = document.createElement('div');
             moduleCell.className = 'hm-vcell hm-module';
             moduleCell.textContent = `EB${String(moduleNum).padStart(2, '0')}`;

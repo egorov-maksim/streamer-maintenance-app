@@ -38,6 +38,10 @@ import {
 } from "./js/streamer-utils.js";
 import { validateNoiseCsv } from "./js/noise-validation.js";
 import {
+  shouldInsertModuleAfterSection,
+  countHeatmapColumnRows,
+} from "./js/heatmap-layout.js";
+import {
   DEFAULT_PREFS,
   loadHeatmapLegendPrefs,
   saveHeatmapLegendPrefs,
@@ -817,9 +821,10 @@ async function renderPlanningHeatmap() {
       const sections = lastCleaned[streamerId] || [];
       const effectiveSections = getEffectiveSectionsPerCable(streamerId);
 
+      const colRows = countHeatmapColumnRows(effectiveSections, moduleFreq, tailSections);
       const col = document.createElement("div");
       col.className = "hm-col";
-      col.style.gridTemplateRows = `36px repeat(${totalRows}, 32px)`;
+      col.style.gridTemplateRows = `36px repeat(${colRows}, 32px)`;
 
       const label = document.createElement("div");
       label.className = "hm-col-label hm-header";
@@ -828,26 +833,7 @@ async function renderPlanningHeatmap() {
 
       let moduleNum = 1;
 
-      for (let s = 0; s < maxSectionsPerCable; s++) {
-        if (s >= effectiveSections) {
-          // Inactive placeholder for sections beyond this streamer's length
-          const inactiveCell = document.createElement("div");
-          inactiveCell.className = "hm-vcell hm-vcell-inactive";
-          col.appendChild(inactiveCell);
-
-          const sectionNumber = s + 1;
-          const isFirstModule = sectionNumber === 1;
-          const isRegularModule = sectionNumber > 1 && (sectionNumber - 1) % moduleFreq === 0;
-          const isLastModule = sectionNumber === maxSectionsPerCable;
-          if (isFirstModule || isRegularModule || isLastModule) {
-            const inactiveModule = document.createElement("div");
-            inactiveModule.className = "hm-vcell hm-module hm-vcell-inactive";
-            col.appendChild(inactiveModule);
-            moduleNum++;
-          }
-          continue;
-        }
-
+      for (let s = 0; s < effectiveSections; s++) {
         const lastDate = sections[s];
         let days = null;
         if (lastDate) {
@@ -867,12 +853,7 @@ async function renderPlanningHeatmap() {
 
         col.appendChild(cell);
 
-        const sectionNumber = s + 1;
-        const isFirstModule = sectionNumber === 1;
-        const isRegularModule = sectionNumber > 1 && (sectionNumber - 1) % moduleFreq === 0;
-        const isLastModule = sectionNumber === maxSectionsPerCable;
-
-        if (isFirstModule || isRegularModule || isLastModule) {
+        if (shouldInsertModuleAfterSection(s + 1, effectiveSections, moduleFreq)) {
           const moduleCell = document.createElement("div");
           moduleCell.className = "hm-vcell hm-module";
           moduleCell.textContent = formatEB(moduleNum);
