@@ -1275,7 +1275,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
       // Horizontal layout: streamers as rows, sections as columns.
       // Cell height fits all streamer rows in ~55% of the viewport height.
       const availH = Math.max(300, window.innerHeight * 0.55);
-      const cellHeight = Math.max(24, Math.min(40, Math.floor(availH / (cableCount + 2))));
+      const cellHeight = Math.max(24, Math.min(40, Math.floor(availH / (cableCount + 1))));
 
       // Cell width: compute so ALL section columns fit the container without horizontal scroll.
       // totalRows columns + 1 label column = totalRows+1 items → totalRows gaps between them.
@@ -1291,6 +1291,9 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
       wrapper.style.setProperty('--hm-cell-w', `${cellWidth}px`);
       wrapper.style.setProperty('--hm-label-w', `${LABEL_W}px`);
       wrapper.style.setProperty('--hm-row-gap', `${GAP_H}px`);
+      // CH header is taller so channel ranges can run vertically in narrow columns.
+      const chRowHeight = Math.max(48, Math.min(88, cellWidth * 14));
+      wrapper.style.setProperty('--hm-ch-row-h', `${chRowHeight}px`);
 
 
       // Each row: label column + totalRows section/EB/tail columns
@@ -1317,38 +1320,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
         }
       }
 
-      // Header row — section/EB/tail number labels
-      const headerRow = document.createElement('div');
-      headerRow.className = 'hm-row hm-row-header';
-      headerRow.style.gridTemplateColumns = colTemplate;
-
-      const secCorner = document.createElement('div');
-      secCorner.className = 'hm-row-label hm-col-label-channel';
-      secCorner.textContent = 'SEC';
-      headerRow.appendChild(secCorner);
-
-      buildRowCells(headerRow, (type, s, modNum, tailIdx) => {
-        const cell = document.createElement('div');
-        if (type === 'section') {
-          cell.className = 'hm-vcell hm-channel-ref';
-          cell.textContent = s + 1;
-          cell.title = `Section ${s + 1}`;
-        } else if (type === 'module') {
-          const ebLabel = String(modNum).padStart(2, '0');
-          cell.className = 'hm-vcell hm-module';
-          cell.textContent = `EB${ebLabel}`;
-          cell.title = `Equipment Box ${ebLabel}`;
-          cell.dataset.ebNum = ebLabel;
-        } else {
-          cell.className = 'hm-vcell hm-channel-ref hm-tail-ref';
-          cell.textContent = formatSectionLabel(tailIdx, 'tail');
-          cell.title = 'Tail Section';
-        }
-        return cell;
-      }, maxSectionsPerCable);
-      wrapper.appendChild(headerRow);
-
-      // CH row — channel range labels per section column
+      // CH row — channel range labels per section column (horizontal has no SEC row)
       const chRow = document.createElement('div');
       chRow.className = 'hm-row hm-row-ch';
       chRow.style.gridTemplateColumns = colTemplate;
@@ -1361,7 +1333,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
       buildRowCells(chRow, (type, s, _modNum, tailIdx) => {
         const cell = document.createElement('div');
         if (type === 'section') {
-          cell.className = 'hm-vcell hm-channel-ref';
+          cell.className = 'hm-vcell hm-channel-ref hm-ch-range';
           const startCh = s * channelsPerSection + 1;
           const endCh = startCh + channelsPerSection - 1;
           cell.textContent = `${startCh}-${endCh}`;
@@ -1378,8 +1350,8 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
       }, maxSectionsPerCable);
       wrapper.appendChild(chRow);
 
-      // One row per streamer (S12 down to S1)
-      for (let streamerId = cableCount; streamerId >= 1; streamerId--) {
+      // One row per streamer (S1 up to highest)
+      for (let streamerId = 1; streamerId <= cableCount; streamerId++) {
         const sections = lastCleaned[streamerId] || [];
         const deployment = deployments[streamerId] || {};
         const effectiveSections = getEffectiveSectionsPerCable(streamerId);

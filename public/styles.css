@@ -562,22 +562,12 @@
     cursor: default;
   }
 
-  /* Header and CH rows use a muted background for the label */
-  .hm-row-header .hm-row-label,
-  .hm-row-ch .hm-row-label {
+  /* CH reference row label — taller than streamer rows for vertical channel text */
+  .hm-grid-horizontal .hm-row-ch .hm-row-label {
     background: linear-gradient(135deg, #64748b, #475569);
     box-shadow: 0 2px 4px rgba(71, 85, 105, 0.3);
     font-size: 11px;
-  }
-
-  /* Section number cells in horizontal header row */
-  .hm-row-header .hm-vcell.hm-channel-ref {
-    background: #f1f5f9;
-    color: #334155;
-    font-weight: 700;
-    border-color: #cbd5e1;
-    cursor: default;
-    pointer-events: none;
+    height: var(--hm-ch-row-h, 64px);
   }
 
   /* In horizontal mode cells are too narrow to show text — show colour only.
@@ -585,6 +575,35 @@
   .hm-grid-horizontal .hm-vcell {
     font-size: 0;
     color: transparent;
+  }
+
+  /* CH row: channel ranges written vertically to fit narrow columns */
+  .hm-grid-horizontal .hm-row-ch .hm-vcell.hm-ch-range,
+  .hm-grid-horizontal .hm-row-ch .hm-vcell.hm-tail-ref {
+    height: var(--hm-ch-row-h, 64px);
+    font-size: clamp(6px, calc(var(--hm-cell-w, 8px) * 1.15), 9px);
+    line-height: 1.05;
+    color: #334155;
+    font-weight: 700;
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    cursor: default;
+    pointer-events: none;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    /* First channel at bottom, range reads upward (matches section flow along the row). */
+    transform: rotate(180deg);
+    letter-spacing: -0.03em;
+    overflow: hidden;
+    white-space: nowrap;
+    padding: 2px 0;
+  }
+
+  .hm-grid-horizontal .hm-row-ch .hm-vcell.hm-module-row {
+    height: var(--hm-ch-row-h, 64px);
+    font-size: 0;
+    color: transparent;
+    pointer-events: none;
   }
 
   /* Re-enable pointer events on EB cells in horizontal mode so hover tooltips work. */
