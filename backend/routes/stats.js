@@ -13,6 +13,7 @@ const {
   computeNoiseEfficiency,
   computeNoiseEfficiencyByRange,
 } = require("../utils/cleaningNoiseEfficiency");
+const { buildNoiseRmsHistory } = require("../utils/noiseRmsHistory");
 
 /**
  * Build a per-streamer effective sections map for a project, using the project default
@@ -503,6 +504,75 @@ function createStatsRouter(authMiddleware) {
     } catch (err) {
       console.error("GET /api/stats/cleaning-noise-efficiency failed", err);
       sendError(res, 500, "Failed to compute cleaning noise efficiency");
+    }
+  });
+
+  /**
+   * GET /api/stats/noise-rms-history
+   *
+   * Returns average RMS per streamer for each noise upload batch on a project,
+   * averaged over all active sections with positive RMS in that upload.
+   * Uploads are ordered oldest → newest for trend charts.
+   *
+   * Query params:
+   *   project - required project_number
+   */
+  router.get("/api/stats/noise-rms-history", authMiddleware, async (req, res) => {
+    try {
+      const { project } = req.query;
+      if (!project) {
+        return sendError(res, 400, "project query param is required");
+      }
+
+      const projectRow = await getOneCamelized(
+        "SELECT id, project_number, vessel_tag, num_cables, sections_per_cable FROM projects WHERE project_number = ?",
+        [project]
+      );
+      if (!projectRow) {
+        return sendError(res, 404, `Project ${project} not found`);
+      }
+      if (req.vesselScope && projectRow.vesselTag !== req.vesselScope) {
+        return sendError(res, 403, "Project does not belong to your vessel");
+      }
+
+      const config = await loadConfig();
+      const numCables = projectRow.numCables ?? config.numCables;
+      const defaultSections = projectRow.sectionsPerCable ?? config.sectionsPerCable;
+      const sectionsPerCableMap = await buildSectionsPerCableMap(
+        projectRow.id,
+        numCables,
+        defaultSections
+      );
+
+      const uploadConditions = ["project_number = ?"];
+      const uploadParams = [project];
+      if (req.vesselScope) {
+        uploadConditions.push("vessel_tag = ?");
+        uploadParams.push(req.vesselScope);
+      }
+      const uploadWhere = uploadConditions.join(" AND ");
+
+      const uploads = await getAllCamelized(
+        `SELECT id, uploaded_at, label FROM noise_uploads WHERE ${uploadWhere} ORDER BY uploaded_at ASC`,
+        uploadParams
+      );
+
+      if (uploads.length === 0) {
+        return res.json({ uploads: [], streamers: [] });
+      }
+
+      const uploadIds = uploads.map((u) => u.id);
+      const placeholders = uploadIds.map(() => "?").join(", ");
+      const noiseRows = await getAllCamelized(
+        `SELECT upload_id, cable_number, section_number, rms_value FROM noise_data WHERE upload_id IN (${placeholders})`,
+        uploadIds
+      );
+
+      const history = buildNoiseRmsHistory(uploads, noiseRows, sectionsPerCableMap, numCables);
+      res.json(history);
+    } catch (err) {
+      console.error("GET /api/stats/noise-rms-history failed", err);
+      sendError(res, 500, "Failed to fetch noise RMS history");
     }
   });
 
