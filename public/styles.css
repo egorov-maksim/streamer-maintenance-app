@@ -374,6 +374,8 @@
     gap: 16px;
     flex-wrap: wrap;
     padding: 16px 0;
+    width: 100%;
+    box-sizing: border-box;
   }
   
   .hm-col {
@@ -384,7 +386,7 @@
   }
   
   .hm-col-label {
-    width: 52px;
+    width: var(--hm-cell-w, 52px);
     height: 36px;
     border-radius: 8px;
     font-size: 14px;
@@ -399,8 +401,8 @@
   }
   
   .hm-vcell {
-    width: 52px;
-    height: 32px;
+    width: var(--hm-cell-w, 52px);
+    height: var(--hm-cell-h, 32px);
     border-radius: 6px;
     font-size: 10px;
     font-weight: 600;
@@ -489,7 +491,93 @@
       transform: scale(1.15);
     }
   }
-  
+
+  /* =========================
+     Heatmap orientation toggle
+     ========================= */
+
+  .hm-orientation-controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .hm-orientation-controls .btn.active {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+  }
+
+  /* =========================
+     Horizontal heat-map layout
+     Streamers as rows, sections as columns.
+     Wraps when sections overflow; user scrolls horizontally.
+     ========================= */
+
+  .hm-grid-horizontal {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 16px 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .hm-row {
+    display: grid;
+    gap: var(--hm-row-gap, 4px);
+    flex-shrink: 0;
+  }
+
+  /* Streamer label cell (first column of each row) */
+  .hm-row-label {
+    width: var(--hm-label-w, 52px);
+    height: var(--hm-cell-h, 32px);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    background: linear-gradient(135deg, #2563eb, #1e40af);
+    border: none;
+    box-shadow: 0 2px 4px rgba(37, 99, 235, 0.3);
+    flex-shrink: 0;
+    cursor: default;
+  }
+
+  /* Header and CH rows use a muted background for the label */
+  .hm-row-header .hm-row-label,
+  .hm-row-ch .hm-row-label {
+    background: linear-gradient(135deg, #64748b, #475569);
+    box-shadow: 0 2px 4px rgba(71, 85, 105, 0.3);
+    font-size: 11px;
+  }
+
+  /* Section number cells in horizontal header row */
+  .hm-row-header .hm-vcell.hm-channel-ref {
+    background: #f1f5f9;
+    color: #334155;
+    font-weight: 700;
+    border-color: #cbd5e1;
+    cursor: default;
+    pointer-events: none;
+  }
+
+  /* In horizontal mode cells are too narrow to show text — show colour only.
+     EB module labels (.hm-module) are kept visible as positional anchors. */
+  .hm-grid-horizontal .hm-vcell {
+    font-size: 0;
+    color: transparent;
+  }
+
+  /* Re-enable pointer events on EB cells in horizontal mode so hover tooltips work. */
+  .hm-grid-horizontal .hm-vcell.hm-module {
+    pointer-events: auto;
+    cursor: default;
+  }
+
   /* =========================
      Modal
      ========================= */
@@ -1007,7 +1095,7 @@
      ========================= */
   
   .hm-grid-container {
-    overflow: visible;
+    overflow-x: auto;
     padding: 8px;
     display: flex;
     justify-content: center;
@@ -1082,13 +1170,10 @@
     }
   
     .hm-vcell {
-      width: 45px;
-      height: 28px;
       font-size: 9px;
     }
   
     .hm-col-label {
-      width: 45px;
       height: 32px;
     }
   }

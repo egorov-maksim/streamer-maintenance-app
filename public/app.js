@@ -220,6 +220,26 @@ function hideSectionTooltip() {
   if (tooltip) tooltip.classList.remove('show');
 }
 
+function showEBTooltip(e, ebNum) {
+  const tip = createTooltip();
+  tip.innerHTML = `<div class="tooltip-header">EB${ebNum}</div>`;
+  tip.classList.add('show');
+  positionTooltipNearCursor(tip, e);
+}
+
+/**
+ * Attaches EB module hover tooltips for horizontal mode only.
+ * Cells are tagged with data-eb-num during horizontal grid build.
+ */
+function attachHorizontalEBTooltips(wrapper) {
+  const ebCells = wrapper.querySelectorAll('.hm-module[data-eb-num]');
+  ebCells.forEach(cell => {
+    cell.addEventListener('mouseenter', (e) => showEBTooltip(e, cell.dataset.ebNum));
+    cell.addEventListener('mousemove', (e) => showEBTooltip(e, cell.dataset.ebNum));
+    cell.addEventListener('mouseleave', hideSectionTooltip);
+  });
+}
+
 /* ------------ Attach Tooltip Listeners ------------ */
 
 function attachTooltipListeners() {
@@ -1157,6 +1177,35 @@ async function renderAlerts(preloadedLastCleaned = null) {
   }
 }
 
+/* ------------ Heat-map orientation ------------ */
+
+const HEATMAP_ORIENTATION_KEY = 'heatmapOrientation';
+
+function getHeatmapOrientation() {
+  return localStorage.getItem(HEATMAP_ORIENTATION_KEY) || 'vertical';
+}
+
+function updateOrientationButtons() {
+  const orientation = getHeatmapOrientation();
+  const btnV = document.getElementById('btn-heatmap-vertical');
+  const btnH = document.getElementById('btn-heatmap-horizontal');
+  if (btnV) btnV.classList.toggle('active', orientation === 'vertical');
+  if (btnH) btnH.classList.toggle('active', orientation === 'horizontal');
+}
+
+function initOrientationToggle() {
+  document.getElementById('btn-heatmap-vertical')?.addEventListener('click', () => {
+    localStorage.setItem(HEATMAP_ORIENTATION_KEY, 'vertical');
+    updateOrientationButtons();
+    renderHeatmap();
+  });
+  document.getElementById('btn-heatmap-horizontal')?.addEventListener('click', () => {
+    localStorage.setItem(HEATMAP_ORIENTATION_KEY, 'horizontal');
+    updateOrientationButtons();
+    renderHeatmap();
+  });
+}
+
 /* ------------ Heat-map rendering ------------ */
 
 async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments = null) {
@@ -1196,6 +1245,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
     // All data is ready — clear old render now to avoid a blank intermediate state.
     container.innerHTML = '';
 
+
     const sectionsPerCable = config.sectionsPerCable;
     const cableCount = config.numCables;
     const moduleFreq = config.moduleFrequency;
@@ -1203,160 +1253,340 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
     const useTailSections = !config.useRopeForTail;
     const tailSections = useTailSections ? 5 : 0;
 
-    // Calculate total rows = sections + modules + tail sections
-    const modulesCount = Math.floor(sectionsPerCable / moduleFreq);
+    // Compute actual EB module cell count to match rendering logic:
+    // – always 1 at the first section
+    // – 1 at every section where (sectionNumber-1) % moduleFreq === 0 and sectionNumber > 1
+    // – always 1 at the last section (if not already a regular)
+    const lastSectionIsRegular = (sectionsPerCable - 1) % moduleFreq === 0;
+    const modulesCount = 1 + Math.floor((sectionsPerCable - 1) / moduleFreq) + (lastSectionIsRegular ? 0 : 1);
     const totalRows = sectionsPerCable + modulesCount + tailSections;
 
-    // Wrapper for horizontal scroll
+    const orientation = getHeatmapOrientation();
     const wrapper = document.createElement('div');
-    wrapper.className = 'hm-grid-vertical';
 
-    // Channel reference column (CH)
-    const channelCol = document.createElement('div');
-    channelCol.className = 'hm-col hm-col-channel';
-    channelCol.style.gridTemplateRows = `36px repeat(${totalRows}, 32px)`;
+    if (orientation === 'horizontal') {
+      // Horizontal layout: streamers as rows, sections as columns.
+      // Cell height fits all streamer rows in ~55% of the viewport height.
+      const availH = Math.max(300, window.innerHeight * 0.55);
+      const cellHeight = Math.max(24, Math.min(40, Math.floor(availH / (cableCount + 2))));
 
-    const channelLabel = document.createElement('div');
-    channelLabel.className = 'hm-col-label hm-col-label-channel';
-    channelLabel.textContent = 'CH';
-    channelCol.appendChild(channelLabel);
+      // Cell width: compute so ALL section columns fit the container without horizontal scroll.
+      // totalRows columns + 1 label column = totalRows+1 items → totalRows gaps between them.
+      // Use 1px gap between cells to maximise space for cells themselves.
+      const LABEL_W = 40; // minimum readable width for the streamer label column
+      const GAP_H = 1; // compact column gap (px)
+      const containerContent = container.clientWidth - 16; // subtract container's 8px padding each side
+      const cellWidth = Math.max(1, Math.floor((containerContent - LABEL_W) / totalRows - GAP_H));
 
-    let rowIndex = 0;
-    for (let s = 0; s < sectionsPerCable; s++) {
-      // Add section channel info
-      const channelCell = document.createElement('div');
-      channelCell.className = 'hm-vcell hm-channel-ref';
-      const startCh = s * channelsPerSection + 1;
-      const endCh = startCh + channelsPerSection - 1;
-      channelCell.textContent = `${startCh}-${endCh}`;
-      channelCell.title = `Channels ${startCh}–${endCh}`;
-      channelCol.appendChild(channelCell);
-      rowIndex++;
+      wrapper.className = 'hm-grid-horizontal';
+      wrapper.style.width = '100%';
+      wrapper.style.setProperty('--hm-cell-h', `${cellHeight}px`);
+      wrapper.style.setProperty('--hm-cell-w', `${cellWidth}px`);
+      wrapper.style.setProperty('--hm-label-w', `${LABEL_W}px`);
+      wrapper.style.setProperty('--hm-row-gap', `${GAP_H}px`);
 
-      // Module positioning
-      const sectionNumber = s + 1;
-      const isFirstModule = sectionNumber === 1;
-      const isRegularModule = sectionNumber > 1 && (sectionNumber - 1) % moduleFreq === 0;
-      const isLastModule = sectionNumber === sectionsPerCable;
 
-      if (isFirstModule || isRegularModule || isLastModule) {
-        const moduleChannelCell = document.createElement('div');
-        moduleChannelCell.className = 'hm-vcell hm-module-row';
-        moduleChannelCell.textContent = '—';
-        channelCol.appendChild(moduleChannelCell);
-        rowIndex++;
+      // Each row: label column + totalRows section/EB/tail columns
+      const colTemplate = `var(--hm-label-w, 40px) repeat(${totalRows}, var(--hm-cell-w, 52px))`;
+
+      // Helper: build the interleaved section/EB/tail cells for a row.
+      // For the header row, cellFactory receives (sectionIndex, isModule, moduleNum, tailIndex).
+      function buildRowCells(row, cellFactory) {
+        let moduleNum = 1;
+        for (let s = 0; s < sectionsPerCable; s++) {
+          row.appendChild(cellFactory('section', s, null, null));
+
+          const sNum = s + 1;
+          const isFirstMod = sNum === 1;
+          const isRegularMod = sNum > 1 && (sNum - 1) % moduleFreq === 0;
+          const isLastMod = sNum === sectionsPerCable;
+          if (isFirstMod || isRegularMod || isLastMod) {
+            row.appendChild(cellFactory('module', s, moduleNum, null));
+            moduleNum++;
+          }
+        }
+        for (let t = 0; t < tailSections; t++) {
+          row.appendChild(cellFactory('tail', null, null, t));
+        }
       }
-    }
 
-    // Add tail section channel references
-    for (let t = 0; t < tailSections; t++) {
-      const tailChannelCell = document.createElement('div');
-      tailChannelCell.className = 'hm-vcell hm-channel-ref hm-tail-ref';
-      tailChannelCell.textContent = '---';
-      tailChannelCell.title = 'Tail Section (no channels)';
-      channelCol.appendChild(tailChannelCell);
-    }
+      // Header row — section/EB/tail number labels
+      const headerRow = document.createElement('div');
+      headerRow.className = 'hm-row hm-row-header';
+      headerRow.style.gridTemplateColumns = colTemplate;
 
-    wrapper.appendChild(channelCol);
+      const secCorner = document.createElement('div');
+      secCorner.className = 'hm-row-label hm-col-label-channel';
+      secCorner.textContent = 'SEC';
+      headerRow.appendChild(secCorner);
 
-    // Render each streamer column
-    for (let streamerId = cableCount; streamerId >= 1; streamerId--) {
-      const sections = lastCleaned[streamerId] || [];
-      const deployment = deployments[streamerId] || {};
+      buildRowCells(headerRow, (type, s, modNum, tailIdx) => {
+        const cell = document.createElement('div');
+        if (type === 'section') {
+          cell.className = 'hm-vcell hm-channel-ref';
+          cell.textContent = s + 1;
+          cell.title = `Section ${s + 1}`;
+        } else if (type === 'module') {
+          const ebLabel = String(modNum).padStart(2, '0');
+          cell.className = 'hm-vcell hm-module';
+          cell.textContent = `EB${ebLabel}`;
+          cell.title = `Equipment Box ${ebLabel}`;
+          cell.dataset.ebNum = ebLabel;
+        } else {
+          cell.className = 'hm-vcell hm-channel-ref hm-tail-ref';
+          cell.textContent = formatSectionLabel(tailIdx, 'tail');
+          cell.title = 'Tail Section';
+        }
+        return cell;
+      });
+      wrapper.appendChild(headerRow);
 
-      const col = document.createElement('div');
-      col.className = 'hm-col';
-      col.style.gridTemplateRows = `36px repeat(${totalRows}, 32px)`;
+      // CH row — channel range labels per section column
+      const chRow = document.createElement('div');
+      chRow.className = 'hm-row hm-row-ch';
+      chRow.style.gridTemplateColumns = colTemplate;
 
-      // Streamer header (with deployment data for tooltip)
-      const label = document.createElement('div');
-      label.className = 'hm-col-label hm-header';
-      label.textContent = `S${streamerId}`;
-      label.dataset.streamerId = streamerId;
-      label.dataset.deploymentDate = deployment.deploymentDate || '';
-      label.dataset.isCoated = deployment.isCoated === true ? 'true' : deployment.isCoated === false ? 'false' : 'unknown';
-      col.appendChild(label);
+      const chCorner = document.createElement('div');
+      chCorner.className = 'hm-row-label';
+      chCorner.textContent = 'CH';
+      chRow.appendChild(chCorner);
 
-      rowIndex = 0;
-      let moduleNum = 1;
+      buildRowCells(chRow, (type, s, _modNum, tailIdx) => {
+        const cell = document.createElement('div');
+        if (type === 'section') {
+          cell.className = 'hm-vcell hm-channel-ref';
+          const startCh = s * channelsPerSection + 1;
+          const endCh = startCh + channelsPerSection - 1;
+          cell.textContent = `${startCh}-${endCh}`;
+          cell.title = `Channels ${startCh}–${endCh}`;
+        } else if (type === 'module') {
+          cell.className = 'hm-vcell hm-module-row';
+          cell.textContent = '—';
+        } else {
+          cell.className = 'hm-vcell hm-channel-ref hm-tail-ref';
+          cell.textContent = '---';
+          cell.title = 'Tail Section (no channels)';
+        }
+        return cell;
+      });
+      wrapper.appendChild(chRow);
+
+      // One row per streamer (S12 down to S1)
+      for (let streamerId = cableCount; streamerId >= 1; streamerId--) {
+        const sections = lastCleaned[streamerId] || [];
+        const deployment = deployments[streamerId] || {};
+
+        const row = document.createElement('div');
+        row.className = 'hm-row';
+        row.style.gridTemplateColumns = colTemplate;
+
+        const streamerLabel = document.createElement('div');
+        streamerLabel.className = 'hm-row-label hm-header';
+        streamerLabel.textContent = `S${streamerId}`;
+        streamerLabel.dataset.streamerId = streamerId;
+        streamerLabel.dataset.deploymentDate = deployment.deploymentDate || '';
+        streamerLabel.dataset.isCoated = deployment.isCoated === true ? 'true' : deployment.isCoated === false ? 'false' : 'unknown';
+        row.appendChild(streamerLabel);
+
+        buildRowCells(row, (type, s, modNum, tailIdx) => {
+          const cell = document.createElement('div');
+          if (type === 'section') {
+            const lastDate = sections[s];
+            let days = null;
+            if (lastDate) {
+              days = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+            }
+            cell.className = 'hm-vcell hm-active-section';
+            cell.dataset.streamer = streamerId;
+            cell.dataset.section = s;
+            cell.textContent = s + 1;
+            cell.dataset.age = ageBucket(days);
+            cell.dataset.scrapingDays = days !== null ? String(days) : "";
+            const ageText = days === null ? 'never cleaned' : days === 0 ? 'cleaned today' : `cleaned ${days} day${days === 1 ? '' : 's'} ago`;
+            cell.title = `Streamer ${streamerId}, Section ${s + 1}: ${ageText}`;
+            cell.setAttribute('aria-label', `Streamer ${streamerId}, Section ${s + 1}: ${ageText}`);
+          } else if (type === 'module') {
+            const ebLabel = String(modNum).padStart(2, '0');
+            cell.className = 'hm-vcell hm-module';
+            cell.textContent = `EB${ebLabel}`;
+            cell.title = `Equipment Box ${ebLabel}`;
+            cell.dataset.ebNum = ebLabel;
+          } else {
+            const tailSectionIdx = sectionsPerCable + tailIdx;
+            const lastDate = sections[tailSectionIdx] || null;
+            let days = null;
+            let bucket = 'never';
+            if (lastDate) {
+              days = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+              bucket = ageBucket(days);
+            }
+            cell.className = 'hm-vcell hm-tail-section';
+            cell.dataset.streamer = streamerId;
+            cell.dataset.section = tailSectionIdx;
+            cell.dataset.isTail = 'true';
+            cell.textContent = formatSectionLabel(tailIdx, 'tail');
+            cell.dataset.age = bucket;
+            cell.dataset.scrapingDays = days !== null ? String(days) : "";
+            const tailAgeText = days === null ? 'never cleaned' : days === 0 ? 'cleaned today' : `cleaned ${days} day${days === 1 ? '' : 's'} ago`;
+            cell.title = `Streamer ${streamerId}, Tail ${formatSectionLabel(tailIdx, 'tail')}: ${tailAgeText}`;
+            cell.setAttribute('aria-label', `Streamer ${streamerId}, Tail ${formatSectionLabel(tailIdx, 'tail')}: ${tailAgeText}`);
+          }
+          return cell;
+        });
+
+        wrapper.appendChild(row);
+      }
+    } else {
+      // Vertical layout (default): streamers as columns, sections as rows.
+      // Use CSS grid with fr units so all columns always fill the container
+      // without overflow — no pixel calculations needed.
+      wrapper.className = 'hm-grid-vertical';
+      wrapper.style.width = '100%';
+      wrapper.style.display = 'grid';
+      wrapper.style.gridTemplateColumns = `repeat(${cableCount + 1}, 1fr)`;
+      wrapper.style.gap = '4px';
+      wrapper.style.columnGap = '8px';
+      // Signal cells to fill their column rather than using a fixed px width
+      wrapper.style.setProperty('--hm-cell-w', '100%');
+
+
+      // Channel reference column (CH)
+      const channelCol = document.createElement('div');
+      channelCol.className = 'hm-col hm-col-channel';
+      channelCol.style.gridTemplateRows = `36px repeat(${totalRows}, 32px)`;
+
+      const channelLabel = document.createElement('div');
+      channelLabel.className = 'hm-col-label hm-col-label-channel';
+      channelLabel.textContent = 'CH';
+      channelCol.appendChild(channelLabel);
 
       for (let s = 0; s < sectionsPerCable; s++) {
-        // Active section cell
-        const cell = document.createElement('div');
-        cell.className = 'hm-vcell hm-active-section';
-        cell.dataset.streamer = streamerId;
-        cell.dataset.section = s;
-        cell.textContent = s + 1;
+        const channelCell = document.createElement('div');
+        channelCell.className = 'hm-vcell hm-channel-ref';
+        const startCh = s * channelsPerSection + 1;
+        const endCh = startCh + channelsPerSection - 1;
+        channelCell.textContent = `${startCh}-${endCh}`;
+        channelCell.title = `Channels ${startCh}–${endCh}`;
+        channelCol.appendChild(channelCell);
 
-        const lastDate = sections[s];
-        let days = null;
-        if (lastDate) {
-          days = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
-        }
-        const bucket = ageBucket(days);
-        cell.dataset.age = bucket;
-        cell.dataset.scrapingDays = days !== null ? String(days) : "";
-
-        // Accessible label so screen readers and keyboard users are not
-        // reliant on color alone to understand cleaning age.
-        const ageText = days === null
-          ? 'never cleaned'
-          : days === 0 ? 'cleaned today' : `cleaned ${days} day${days === 1 ? '' : 's'} ago`;
-        const cellLabel = `Streamer ${streamerId}, Section ${s + 1}: ${ageText}`;
-        cell.title = cellLabel;
-        cell.setAttribute('aria-label', cellLabel);
-
-        col.appendChild(cell);
-        rowIndex++;
-
-        // Module positioning
         const sectionNumber = s + 1;
         const isFirstModule = sectionNumber === 1;
         const isRegularModule = sectionNumber > 1 && (sectionNumber - 1) % moduleFreq === 0;
         const isLastModule = sectionNumber === sectionsPerCable;
 
         if (isFirstModule || isRegularModule || isLastModule) {
-          const moduleCell = document.createElement('div');
-          moduleCell.className = 'hm-vcell hm-module';
-          moduleCell.textContent = `EB${String(moduleNum).padStart(2, '0')}`;
-          moduleCell.title = `Equipment Box ${String(moduleNum).padStart(2, '0')}`;
-          col.appendChild(moduleCell);
-          moduleNum++;
-          rowIndex++;
+          const moduleChannelCell = document.createElement('div');
+          moduleChannelCell.className = 'hm-vcell hm-module-row';
+          moduleChannelCell.textContent = '—';
+          channelCol.appendChild(moduleChannelCell);
         }
       }
 
-      // Add tail sections if configured
       for (let t = 0; t < tailSections; t++) {
-        const tailIdx = sectionsPerCable + t;
-        const tailCell = document.createElement('div');
-        tailCell.className = 'hm-vcell hm-tail-section';
-        tailCell.dataset.streamer = streamerId;
-        tailCell.dataset.section = tailIdx;
-        tailCell.dataset.isTail = 'true';
-        tailCell.textContent = formatSectionLabel(t, 'tail');
-
-        const lastDate = sections[tailIdx] || null;
-        let days = null;
-        let bucket = 'never';
-        if (lastDate) {
-          days = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
-          bucket = ageBucket(days);
-        }
-        tailCell.dataset.age = bucket;
-        tailCell.dataset.scrapingDays = days !== null ? String(days) : "";
-
-        const tailAgeText = days === null
-          ? 'never cleaned'
-          : days === 0 ? 'cleaned today' : `cleaned ${days} day${days === 1 ? '' : 's'} ago`;
-        const tailLabel = `Streamer ${streamerId}, Tail ${formatSectionLabel(t, 'tail')}: ${tailAgeText}`;
-        tailCell.title = tailLabel;
-        tailCell.setAttribute('aria-label', tailLabel);
-
-        col.appendChild(tailCell);
+        const tailChannelCell = document.createElement('div');
+        tailChannelCell.className = 'hm-vcell hm-channel-ref hm-tail-ref';
+        tailChannelCell.textContent = '---';
+        tailChannelCell.title = 'Tail Section (no channels)';
+        channelCol.appendChild(tailChannelCell);
       }
 
-      wrapper.appendChild(col);
+      wrapper.appendChild(channelCol);
+
+      // Render each streamer column
+      for (let streamerId = cableCount; streamerId >= 1; streamerId--) {
+        const sections = lastCleaned[streamerId] || [];
+        const deployment = deployments[streamerId] || {};
+
+        const col = document.createElement('div');
+        col.className = 'hm-col';
+        col.style.gridTemplateRows = `36px repeat(${totalRows}, 32px)`;
+
+        // Streamer header (with deployment data for tooltip)
+        const label = document.createElement('div');
+        label.className = 'hm-col-label hm-header';
+        label.textContent = `S${streamerId}`;
+        label.dataset.streamerId = streamerId;
+        label.dataset.deploymentDate = deployment.deploymentDate || '';
+        label.dataset.isCoated = deployment.isCoated === true ? 'true' : deployment.isCoated === false ? 'false' : 'unknown';
+        col.appendChild(label);
+
+        let moduleNum = 1;
+
+        for (let s = 0; s < sectionsPerCable; s++) {
+          // Active section cell
+          const cell = document.createElement('div');
+          cell.className = 'hm-vcell hm-active-section';
+          cell.dataset.streamer = streamerId;
+          cell.dataset.section = s;
+          cell.textContent = s + 1;
+
+          const lastDate = sections[s];
+          let days = null;
+          if (lastDate) {
+            days = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+          }
+          const bucket = ageBucket(days);
+          cell.dataset.age = bucket;
+          cell.dataset.scrapingDays = days !== null ? String(days) : "";
+
+          // Accessible label so screen readers and keyboard users are not
+          // reliant on color alone to understand cleaning age.
+          const ageText = days === null
+            ? 'never cleaned'
+            : days === 0 ? 'cleaned today' : `cleaned ${days} day${days === 1 ? '' : 's'} ago`;
+          const cellLabel = `Streamer ${streamerId}, Section ${s + 1}: ${ageText}`;
+          cell.title = cellLabel;
+          cell.setAttribute('aria-label', cellLabel);
+
+          col.appendChild(cell);
+
+          const sectionNumber = s + 1;
+          const isFirstModule = sectionNumber === 1;
+          const isRegularModule = sectionNumber > 1 && (sectionNumber - 1) % moduleFreq === 0;
+          const isLastModule = sectionNumber === sectionsPerCable;
+
+          if (isFirstModule || isRegularModule || isLastModule) {
+            const moduleCell = document.createElement('div');
+            moduleCell.className = 'hm-vcell hm-module';
+            moduleCell.textContent = `EB${String(moduleNum).padStart(2, '0')}`;
+            moduleCell.title = `Equipment Box ${String(moduleNum).padStart(2, '0')}`;
+            col.appendChild(moduleCell);
+            moduleNum++;
+          }
+        }
+
+        // Add tail sections if configured
+        for (let t = 0; t < tailSections; t++) {
+          const tailIdx = sectionsPerCable + t;
+          const tailCell = document.createElement('div');
+          tailCell.className = 'hm-vcell hm-tail-section';
+          tailCell.dataset.streamer = streamerId;
+          tailCell.dataset.section = tailIdx;
+          tailCell.dataset.isTail = 'true';
+          tailCell.textContent = formatSectionLabel(t, 'tail');
+
+          const lastDate = sections[tailIdx] || null;
+          let days = null;
+          let bucket = 'never';
+          if (lastDate) {
+            days = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+            bucket = ageBucket(days);
+          }
+          tailCell.dataset.age = bucket;
+          tailCell.dataset.scrapingDays = days !== null ? String(days) : "";
+
+          const tailAgeText = days === null
+            ? 'never cleaned'
+            : days === 0 ? 'cleaned today' : `cleaned ${days} day${days === 1 ? '' : 's'} ago`;
+          const tailLabel = `Streamer ${streamerId}, Tail ${formatSectionLabel(t, 'tail')}: ${tailAgeText}`;
+          tailCell.title = tailLabel;
+          tailCell.setAttribute('aria-label', tailLabel);
+
+          col.appendChild(tailCell);
+        }
+
+        wrapper.appendChild(col);
+      }
     }
 
     // Scroll listener
@@ -1375,9 +1605,11 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
     attachScrollListener(); // Call once after heatmap rendered
 
     container.appendChild(wrapper);
+
     attachDragListeners();
     attachTooltipListeners();
     attachStreamerHeaderTooltips(wrapper, lastCleaned, deployments);
+    attachHorizontalEBTooltips(wrapper);
     paintScrapingAgeCells(container, loadHeatmapLegendPrefs());
   } catch (err) {
     console.error(err);
@@ -1399,7 +1631,7 @@ function attachStreamerHeaderTooltips(wrapper, lastCleaned, deployments) {
     document.body.appendChild(tooltipEl);
   }
 
-  const labels = wrapper.querySelectorAll('.hm-col-label.hm-header[data-streamer-id]');
+  const labels = wrapper.querySelectorAll('[data-streamer-id].hm-header');
   labels.forEach(label => {
     const streamerId = parseInt(label.dataset.streamerId, 10);
     if (!streamerId) return;
@@ -2441,6 +2673,8 @@ async function initAppContent() {
   if (evtDate) evtDate.value = dateStr;
   if (evtTime) evtTime.value = timeStr;
 
+  updateOrientationButtons();
+
   if (!dashboardDomListenersBound) {
     dashboardDomListenersBound = true;
     initModals();
@@ -2449,6 +2683,7 @@ async function initAppContent() {
     setupSidebarNavigation();
     setupProjectCollapse();
     initAgeLegendControls();
+    initOrientationToggle();
   }
 
   // Update UI based on role after everything is loaded
