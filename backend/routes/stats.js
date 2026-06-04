@@ -13,9 +13,37 @@ const {
   computeNoiseEfficiency,
   computeNoiseEfficiencyByRange,
 } = require("../utils/cleaningNoiseEfficiency");
+const { buildNoiseRmsHistory } = require("../utils/noiseRmsHistory");
+
+/**
+ * Build a per-streamer effective sections map for a project, using the project default
+ * for any streamer that does not have a specific override in streamer_deployments.
+ * @param {number|null} projectId
+ * @param {number} numCables
+ * @param {number} defaultSections
+ * @returns {Promise<Object>} e.g. { 1: 107, 2: 107, 3: 120, ... }
+ */
+async function buildSectionsPerCableMap(projectId, numCables, defaultSections) {
+  const map = {};
+  for (let i = 1; i <= numCables; i++) {
+    map[i] = defaultSections;
+  }
+  if (projectId == null) return map;
+  const overrides = await getAllCamelized(
+    "SELECT streamer_id, sections_per_cable FROM streamer_deployments WHERE project_id = ? AND sections_per_cable IS NOT NULL",
+    [projectId]
+  );
+  for (const row of overrides) {
+    if (map[row.streamerId] !== undefined) {
+      map[row.streamerId] = row.sectionsPerCable;
+    }
+  }
+  return map;
+}
 
 /**
  * Resolve config for stats/last-cleaned: when project is in query or default vessel has active project, use that project's sectionsPerCable and useRopeForTail.
+ * Also resolves a per-streamer sectionsPerCableMap for endpoints that need per-cable sizes.
  */
 async function getEffectiveConfig(req) {
   const config = await loadConfig();
@@ -27,12 +55,16 @@ async function getEffectiveConfig(req) {
   } else {
     projectRow = await getActiveProjectForVessel(vesselTag);
   }
+  const numCables = projectRow?.numCables ?? config.numCables;
+  const sectionsPerCable = projectRow?.sectionsPerCable ?? config.sectionsPerCable;
+  const sectionsPerCableMap = await buildSectionsPerCableMap(projectRow?.id ?? null, numCables, sectionsPerCable);
   return {
     ...config,
-    numCables: projectRow?.numCables ?? config.numCables,
-    sectionsPerCable: projectRow?.sectionsPerCable ?? config.sectionsPerCable,
+    numCables,
+    sectionsPerCable,
     useRopeForTail: projectRow != null ? projectRow.useRopeForTail === 1 : config.useRopeForTail,
     sectionLength: projectRow?.sectionLength ?? config.sectionLength,
+    sectionsPerCableMap,
   };
 }
 
@@ -73,9 +105,10 @@ function createStatsRouter(authMiddleware) {
       const { project } = req.query;
       const config = await getEffectiveConfig(req);
       const sectionLength = config.sectionLength || 1;
-      const sectionsPerCable = config.sectionsPerCable;
       const tailSections = config.useRopeForTail ? 0 : 5;
-      const totalAvailableSections = config.numCables * sectionsPerCable;
+      const sectionsPerCableMap = config.sectionsPerCableMap;
+      // Sum effective sections across all streamers
+      const totalAvailableSections = Object.values(sectionsPerCableMap).reduce((a, b) => a + b, 0);
       const totalAvailableTail = config.numCables * tailSections;
 
       let whereClause = "";
@@ -110,7 +143,9 @@ function createStatsRouter(authMiddleware) {
       const uniqueTailSections = new Set();
       for (const evt of allEvents) {
         const isTail = evt.sectionType === "tail";
-        const base = isTail ? sectionsPerCable : 0;
+        // Use the streamer's effective sections as tail base offset to keep keys globally unique
+        const effectiveSections = sectionsPerCableMap[evt.streamerId] ?? config.sectionsPerCable;
+        const base = isTail ? effectiveSections : 0;
         for (let s = evt.sectionIndexStart; s <= evt.sectionIndexEnd; s++) {
           const globalIdx = base + s;
           uniqueSections.add(`${evt.streamerId}-${globalIdx}`);
@@ -142,10 +177,9 @@ function createStatsRouter(authMiddleware) {
     try {
       const { project } = req.query;
       const config = await getEffectiveConfig(req);
-      const sectionsPerCable = config.sectionsPerCable;
       const cableCount = config.numCables;
       const tailSections = config.useRopeForTail ? 0 : 5;
-      const totalSections = sectionsPerCable + tailSections;
+      const sectionsPerCableMap = config.sectionsPerCableMap;
 
       let sql = `SELECT streamer_id, section_index_start, section_index_end, section_type, cleaned_at FROM cleaning_events`;
       const params = [];
@@ -166,12 +200,15 @@ function createStatsRouter(authMiddleware) {
 
       const map = {};
       for (let streamerId = 1; streamerId <= cableCount; streamerId++) {
-        map[streamerId] = Array(totalSections).fill(null);
+        const effectiveSections = sectionsPerCableMap[streamerId] ?? config.sectionsPerCable;
+        map[streamerId] = Array(effectiveSections + tailSections).fill(null);
       }
       for (const r of rows) {
         const arr = map[r.streamerId];
         if (!arr) continue;
-        const base = r.sectionType === "tail" ? sectionsPerCable : 0;
+        const effectiveSections = sectionsPerCableMap[r.streamerId] ?? config.sectionsPerCable;
+        const base = r.sectionType === "tail" ? effectiveSections : 0;
+        const totalSections = effectiveSections + tailSections;
         for (let s = r.sectionIndexStart; s <= r.sectionIndexEnd; s++) {
           const idx = base + s;
           if (idx < totalSections && !arr[idx]) arr[idx] = r.cleanedAt;
@@ -188,10 +225,9 @@ function createStatsRouter(authMiddleware) {
     try {
       const { start, end, project } = req.query;
       const config = await getEffectiveConfig(req);
-      const sectionsPerCable = config.sectionsPerCable;
       const cableCount = config.numCables;
       const tailSections = config.useRopeForTail ? 0 : 5;
-      const totalSections = sectionsPerCable + tailSections;
+      const sectionsPerCableMap = config.sectionsPerCableMap;
 
       const { sql: baseWhereSql, params: baseParams } = buildEventsWhereClause({
         project,
@@ -217,12 +253,15 @@ function createStatsRouter(authMiddleware) {
 
       const map = {};
       for (let streamerId = 1; streamerId <= cableCount; streamerId++) {
-        map[streamerId] = Array(totalSections).fill(null);
+        const effectiveSections = sectionsPerCableMap[streamerId] ?? config.sectionsPerCable;
+        map[streamerId] = Array(effectiveSections + tailSections).fill(null);
       }
       for (const r of rows) {
         const arr = map[r.streamerId];
         if (!arr) continue;
-        const base = r.sectionType === "tail" ? sectionsPerCable : 0;
+        const effectiveSections = sectionsPerCableMap[r.streamerId] ?? config.sectionsPerCable;
+        const base = r.sectionType === "tail" ? effectiveSections : 0;
+        const totalSections = effectiveSections + tailSections;
         for (let s = r.sectionIndexStart; s <= r.sectionIndexEnd; s++) {
           const idx = base + s;
           if (idx < totalSections && !arr[idx]) arr[idx] = r.cleanedAt;
@@ -240,7 +279,7 @@ function createStatsRouter(authMiddleware) {
       const { start, end, project } = req.query;
       const config = await getEffectiveConfig(req);
       const sectionLength = config.sectionLength || 1;
-      const sectionsPerCable = config.sectionsPerCable;
+      const sectionsPerCableMap = config.sectionsPerCableMap;
 
       const { sql: baseWhereSql, params: baseParams } = buildEventsWhereClause({
         project,
@@ -278,7 +317,8 @@ function createStatsRouter(authMiddleware) {
         const len = (r.sectionIndexEnd - r.sectionIndexStart + 1) * sectionLength;
         byMethod[r.cleaningMethod] = (byMethod[r.cleaningMethod] || 0) + len;
         const isTail = r.sectionType === "tail";
-        const base = isTail ? sectionsPerCable : 0;
+        const effectiveSections = sectionsPerCableMap[r.streamerId] ?? config.sectionsPerCable;
+        const base = isTail ? effectiveSections : 0;
         for (let s = r.sectionIndexStart; s <= r.sectionIndexEnd; s++) {
           const globalIdx = base + s;
           uniqueSections.add(`${r.streamerId}-${globalIdx}`);
@@ -464,6 +504,75 @@ function createStatsRouter(authMiddleware) {
     } catch (err) {
       console.error("GET /api/stats/cleaning-noise-efficiency failed", err);
       sendError(res, 500, "Failed to compute cleaning noise efficiency");
+    }
+  });
+
+  /**
+   * GET /api/stats/noise-rms-history
+   *
+   * Returns average RMS per streamer for each noise upload batch on a project,
+   * averaged over all active sections with positive RMS in that upload.
+   * Uploads are ordered oldest → newest for trend charts.
+   *
+   * Query params:
+   *   project - required project_number
+   */
+  router.get("/api/stats/noise-rms-history", authMiddleware, async (req, res) => {
+    try {
+      const { project } = req.query;
+      if (!project) {
+        return sendError(res, 400, "project query param is required");
+      }
+
+      const projectRow = await getOneCamelized(
+        "SELECT id, project_number, vessel_tag, num_cables, sections_per_cable FROM projects WHERE project_number = ?",
+        [project]
+      );
+      if (!projectRow) {
+        return sendError(res, 404, `Project ${project} not found`);
+      }
+      if (req.vesselScope && projectRow.vesselTag !== req.vesselScope) {
+        return sendError(res, 403, "Project does not belong to your vessel");
+      }
+
+      const config = await loadConfig();
+      const numCables = projectRow.numCables ?? config.numCables;
+      const defaultSections = projectRow.sectionsPerCable ?? config.sectionsPerCable;
+      const sectionsPerCableMap = await buildSectionsPerCableMap(
+        projectRow.id,
+        numCables,
+        defaultSections
+      );
+
+      const uploadConditions = ["project_number = ?"];
+      const uploadParams = [project];
+      if (req.vesselScope) {
+        uploadConditions.push("vessel_tag = ?");
+        uploadParams.push(req.vesselScope);
+      }
+      const uploadWhere = uploadConditions.join(" AND ");
+
+      const uploads = await getAllCamelized(
+        `SELECT id, uploaded_at, label FROM noise_uploads WHERE ${uploadWhere} ORDER BY uploaded_at ASC`,
+        uploadParams
+      );
+
+      if (uploads.length === 0) {
+        return res.json({ uploads: [], streamers: [] });
+      }
+
+      const uploadIds = uploads.map((u) => u.id);
+      const placeholders = uploadIds.map(() => "?").join(", ");
+      const noiseRows = await getAllCamelized(
+        `SELECT upload_id, cable_number, section_number, rms_value FROM noise_data WHERE upload_id IN (${placeholders})`,
+        uploadIds
+      );
+
+      const history = buildNoiseRmsHistory(uploads, noiseRows, sectionsPerCableMap, numCables);
+      res.json(history);
+    } catch (err) {
+      console.error("GET /api/stats/noise-rms-history failed", err);
+      sendError(res, 500, "Failed to fetch noise RMS history");
     }
   });
 

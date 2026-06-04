@@ -2,6 +2,8 @@
 node_modules/
 public/libs/
 .env
+.envdev
+.envprod
 npm-debug.log*
 backup/
 .gitignore
@@ -16,6 +18,9 @@ backend/test.db-wal
 backend/DS_Store
 public/DS_Store
 legacy-removal.md
+
+# Server-only AUTH_USERS tooling (password/hash logic; deploy via scp, not git)
+scripts/add-extra-vessel-users.js
 
 # Cursor AI local rules (machine-specific, not for version control)
 .cursor/rules/

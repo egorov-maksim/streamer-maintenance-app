@@ -34,8 +34,13 @@ import {
   getEBRangeForSectionRange,
   getChannelRangeForSectionRange,
   getConfigForProject,
+  getEffectiveSectionsPerCable,
 } from "./js/streamer-utils.js";
 import { validateNoiseCsv } from "./js/noise-validation.js";
+import {
+  shouldInsertModuleAfterSection,
+  countHeatmapColumnRows,
+} from "./js/heatmap-layout.js";
 import {
   DEFAULT_PREFS,
   loadHeatmapLegendPrefs,
@@ -334,9 +339,9 @@ function attachSectionTooltips(container, lastCleaned) {
       const streamerId = parseInt(cell.dataset.streamer, 10);
       const sectionIndex = parseInt(cell.dataset.section, 10);
       const isTail = cell.dataset.isTail === "true";
-      const sectionsPerCable = config.sectionsPerCable;
+      const effectiveSectionsForStreamer = getEffectiveSectionsPerCable(streamerId);
 
-      const relIndex = isTail ? sectionIndex - sectionsPerCable : sectionIndex;
+      const relIndex = isTail ? sectionIndex - effectiveSectionsForStreamer : sectionIndex;
       const sectionLabel = formatSectionLabel(relIndex, isTail ? "tail" : "active");
 
       const sections = lastCleaned[streamerId] || [];
@@ -407,22 +412,22 @@ let currentLastCleaned = null;
  */
 function computeCleaningSuggestions(lastCleaned, cfg, threshold) {
   const daysThreshold = (Number.isFinite(threshold) && threshold >= 1) ? threshold : DEFAULT_DAYS_THRESHOLD;
-  const sectionsPerCable = cfg.sectionsPerCable || 107;
   const tailSections = cfg.useRopeForTail ? 0 : 5;
-  const totalSections = sectionsPerCable + tailSections;
 
   const suggestions = [];
 
   Object.keys(lastCleaned).forEach((streamerIdStr) => {
     const streamerId = parseInt(streamerIdStr, 10);
     const sections = lastCleaned[streamerIdStr] || [];
+    const effectiveSections = getEffectiveSectionsPerCable(streamerId, cfg);
+    const totalSections = effectiveSections + tailSections;
 
     // Process active sections and tail sections as separate groups (never merge across boundary)
     const groups = [
-      { start: 0, end: sectionsPerCable - 1, isTail: false },
+      { start: 0, end: effectiveSections - 1, isTail: false },
     ];
     if (tailSections > 0) {
-      groups.push({ start: sectionsPerCable, end: totalSections - 1, isTail: true });
+      groups.push({ start: effectiveSections, end: totalSections - 1, isTail: true });
     }
 
     groups.forEach(({ start, end, isTail }) => {
@@ -442,7 +447,7 @@ function computeCleaningSuggestions(lastCleaned, cfg, threshold) {
         } else {
           if (rangeStart !== null) {
             const rangeEnd = s - 1;
-            suggestions.push(buildSuggestion(streamerId, rangeStart, rangeEnd, isTail, rangeDays, cfg, sectionsPerCable));
+            suggestions.push(buildSuggestion(streamerId, rangeStart, rangeEnd, isTail, rangeDays, cfg, effectiveSections));
             rangeStart = null;
             rangeDays = [];
           }
@@ -451,7 +456,7 @@ function computeCleaningSuggestions(lastCleaned, cfg, threshold) {
       // Flush trailing range
       if (rangeStart !== null) {
         const rangeEnd = end;
-        suggestions.push(buildSuggestion(streamerId, rangeStart, rangeEnd, isTail, rangeDays, cfg, sectionsPerCable));
+        suggestions.push(buildSuggestion(streamerId, rangeStart, rangeEnd, isTail, rangeDays, cfg, effectiveSections));
       }
     });
   });
@@ -657,6 +662,7 @@ function initSuggestionsThresholdControl() {
           moduleFrequency: config.moduleFrequency,
           useRopeForTail: config.useRopeForTail,
           numCables: config.numCables,
+          sectionsPerCableOverrides: config.sectionsPerCableOverrides || {},
         };
         currentSuggestions = computeCleaningSuggestions(currentLastCleaned, effectiveCfg, raw);
         const toRender = sortSuggestions(currentSuggestions, sortState.column, sortState.direction);
@@ -742,6 +748,7 @@ async function renderPlanningHeatmap() {
       moduleFrequency: config.moduleFrequency,
       useRopeForTail: config.useRopeForTail,
       numCables: config.numCables,
+      sectionsPerCableOverrides: config.sectionsPerCableOverrides || {},
     };
     const threshold = config?.suggestedCleaningThresholdDays || DEFAULT_DAYS_THRESHOLD;
     currentSuggestions = computeCleaningSuggestions(lastCleaned, effectiveCfg, threshold);
@@ -754,10 +761,15 @@ async function renderPlanningHeatmap() {
     const channelsPerSection = config.channelsPerSection;
     const useTailSections = !config.useRopeForTail;
     const tailSections = useTailSections ? 5 : 0;
+    const overrides = config.sectionsPerCableOverrides || {};
+    const maxSectionsPerCable = Object.values(overrides).length > 0
+      ? Math.max(sectionsPerCable, ...Object.values(overrides))
+      : sectionsPerCable;
 
-    // Calculate total rows = sections + modules + tail sections
-    const modulesCount = Math.floor(sectionsPerCable / moduleFreq);
-    const totalRows = sectionsPerCable + modulesCount + tailSections;
+    // Calculate total rows = sections + modules + tail sections (based on max sections across all streamers)
+    const lastSectionIsRegular = (maxSectionsPerCable - 1) % moduleFreq === 0;
+    const modulesCount = 1 + Math.floor((maxSectionsPerCable - 1) / moduleFreq) + (lastSectionIsRegular ? 0 : 1);
+    const totalRows = maxSectionsPerCable + modulesCount + tailSections;
 
     const wrapper = document.createElement("div");
     wrapper.className = "hm-grid-vertical";
@@ -772,7 +784,7 @@ async function renderPlanningHeatmap() {
     channelLabel.textContent = "CH";
     channelCol.appendChild(channelLabel);
 
-    for (let s = 0; s < sectionsPerCable; s++) {
+    for (let s = 0; s < maxSectionsPerCable; s++) {
       const channelCell = document.createElement("div");
       channelCell.className = "hm-vcell hm-channel-ref";
       const startCh = s * channelsPerSection + 1;
@@ -784,7 +796,7 @@ async function renderPlanningHeatmap() {
       const sectionNumber = s + 1;
       const isFirstModule = sectionNumber === 1;
       const isRegularModule = sectionNumber > 1 && (sectionNumber - 1) % moduleFreq === 0;
-      const isLastModule = sectionNumber === sectionsPerCable;
+      const isLastModule = sectionNumber === maxSectionsPerCable;
 
       if (isFirstModule || isRegularModule || isLastModule) {
         const moduleChannelCell = document.createElement("div");
@@ -807,10 +819,12 @@ async function renderPlanningHeatmap() {
     // Render each streamer column (right-to-left: S12..S1)
     for (let streamerId = cableCount; streamerId >= 1; streamerId--) {
       const sections = lastCleaned[streamerId] || [];
+      const effectiveSections = getEffectiveSectionsPerCable(streamerId);
 
+      const colRows = countHeatmapColumnRows(effectiveSections, moduleFreq, tailSections);
       const col = document.createElement("div");
       col.className = "hm-col";
-      col.style.gridTemplateRows = `36px repeat(${totalRows}, 32px)`;
+      col.style.gridTemplateRows = `36px repeat(${colRows}, 32px)`;
 
       const label = document.createElement("div");
       label.className = "hm-col-label hm-header";
@@ -819,7 +833,7 @@ async function renderPlanningHeatmap() {
 
       let moduleNum = 1;
 
-      for (let s = 0; s < sectionsPerCable; s++) {
+      for (let s = 0; s < effectiveSections; s++) {
         const lastDate = sections[s];
         let days = null;
         if (lastDate) {
@@ -839,12 +853,7 @@ async function renderPlanningHeatmap() {
 
         col.appendChild(cell);
 
-        const sectionNumber = s + 1;
-        const isFirstModule = sectionNumber === 1;
-        const isRegularModule = sectionNumber > 1 && (sectionNumber - 1) % moduleFreq === 0;
-        const isLastModule = sectionNumber === sectionsPerCable;
-
-        if (isFirstModule || isRegularModule || isLastModule) {
+        if (shouldInsertModuleAfterSection(s + 1, effectiveSections, moduleFreq)) {
           const moduleCell = document.createElement("div");
           moduleCell.className = "hm-vcell hm-module";
           moduleCell.textContent = formatEB(moduleNum);
@@ -856,7 +865,7 @@ async function renderPlanningHeatmap() {
 
       // Tail sections
       for (let t = 0; t < tailSections; t++) {
-        const tailIdx = sectionsPerCable + t;
+        const tailIdx = effectiveSections + t;
         const lastDate = sections[tailIdx] || null;
         let days = null;
         if (lastDate) {

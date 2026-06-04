@@ -374,6 +374,8 @@
     gap: 16px;
     flex-wrap: wrap;
     padding: 16px 0;
+    width: 100%;
+    box-sizing: border-box;
   }
   
   .hm-col {
@@ -384,7 +386,7 @@
   }
   
   .hm-col-label {
-    width: 52px;
+    width: var(--hm-cell-w, 52px);
     height: 36px;
     border-radius: 8px;
     font-size: 14px;
@@ -399,8 +401,8 @@
   }
   
   .hm-vcell {
-    width: 52px;
-    height: 32px;
+    width: var(--hm-cell-w, 52px);
+    height: var(--hm-cell-h, 32px);
     border-radius: 6px;
     font-size: 10px;
     font-weight: 600;
@@ -467,6 +469,21 @@
     border-color: #6b7280;
   }
   
+  /* Inactive placeholder for sections beyond a streamer's effective length */
+  .hm-vcell.hm-vcell-inactive {
+    background: transparent;
+    border-color: transparent;
+    cursor: default;
+    pointer-events: none;
+  }
+
+  /* EB module cells in the inactive range must override the !important rules on .hm-module */
+  .hm-vcell.hm-module.hm-vcell-inactive {
+    background: transparent !important;
+    border: none !important;
+    color: transparent;
+  }
+
   /* Drag feedback for selection */
   .hm-vcell.dragging {
     outline: 3px solid var(--primary);
@@ -489,7 +506,112 @@
       transform: scale(1.15);
     }
   }
-  
+
+  /* =========================
+     Heatmap orientation toggle
+     ========================= */
+
+  .hm-orientation-controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .hm-orientation-controls .btn.active {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+  }
+
+  /* =========================
+     Horizontal heat-map layout
+     Streamers as rows, sections as columns.
+     Wraps when sections overflow; user scrolls horizontally.
+     ========================= */
+
+  .hm-grid-horizontal {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 16px 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .hm-row {
+    display: grid;
+    gap: var(--hm-row-gap, 4px);
+    flex-shrink: 0;
+  }
+
+  /* Streamer label cell (first column of each row) */
+  .hm-row-label {
+    width: var(--hm-label-w, 52px);
+    height: var(--hm-cell-h, 32px);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    background: linear-gradient(135deg, #2563eb, #1e40af);
+    border: none;
+    box-shadow: 0 2px 4px rgba(37, 99, 235, 0.3);
+    flex-shrink: 0;
+    cursor: default;
+  }
+
+  /* CH reference row label — taller than streamer rows for vertical channel text */
+  .hm-grid-horizontal .hm-row-ch .hm-row-label {
+    background: linear-gradient(135deg, #64748b, #475569);
+    box-shadow: 0 2px 4px rgba(71, 85, 105, 0.3);
+    font-size: 11px;
+    height: var(--hm-ch-row-h, 64px);
+  }
+
+  /* In horizontal mode cells are too narrow to show text — show colour only.
+     EB module labels (.hm-module) are kept visible as positional anchors. */
+  .hm-grid-horizontal .hm-vcell {
+    font-size: 0;
+    color: transparent;
+  }
+
+  /* CH row: channel ranges written vertically to fit narrow columns */
+  .hm-grid-horizontal .hm-row-ch .hm-vcell.hm-ch-range,
+  .hm-grid-horizontal .hm-row-ch .hm-vcell.hm-tail-ref {
+    height: var(--hm-ch-row-h, 64px);
+    font-size: clamp(6px, calc(var(--hm-cell-w, 8px) * 1.15), 9px);
+    line-height: 1.05;
+    color: #334155;
+    font-weight: 700;
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    cursor: default;
+    pointer-events: none;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    /* First channel at bottom, range reads upward (matches section flow along the row). */
+    transform: rotate(180deg);
+    letter-spacing: -0.03em;
+    overflow: hidden;
+    white-space: nowrap;
+    padding: 2px 0;
+  }
+
+  .hm-grid-horizontal .hm-row-ch .hm-vcell.hm-module-row {
+    height: var(--hm-ch-row-h, 64px);
+    font-size: 0;
+    color: transparent;
+    pointer-events: none;
+  }
+
+  /* Re-enable pointer events on EB cells in horizontal mode so hover tooltips work. */
+  .hm-grid-horizontal .hm-vcell.hm-module {
+    pointer-events: auto;
+    cursor: default;
+  }
+
   /* =========================
      Modal
      ========================= */
@@ -541,6 +663,16 @@
       opacity: 1;
       transform: translateY(0) scale(1);
     }
+  }
+
+  .modal-content-wide {
+    max-width: 820px;
+  }
+
+  .modal-subtitle {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 2px 0 0;
   }
   
   .modal-header {
@@ -701,6 +833,21 @@
   .kpi-sub {
     font-size: 12px;
     color: var(--muted);
+  }
+
+  .kpi-interactive {
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .kpi-interactive:hover {
+    border-color: var(--primary);
+    background: var(--primary-100, #eef2ff);
+  }
+
+  .kpi-interactive:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
   }
   
   .bar {
@@ -982,7 +1129,7 @@
      ========================= */
   
   .hm-grid-container {
-    overflow: visible;
+    overflow-x: auto;
     padding: 8px;
     display: flex;
     justify-content: center;
@@ -1057,13 +1204,10 @@
     }
   
     .hm-vcell {
-      width: 45px;
-      height: 28px;
       font-size: 9px;
     }
   
     .hm-col-label {
-      width: 45px;
       height: 32px;
     }
   }
@@ -1831,9 +1975,18 @@
   background: var(--bg);
 }
 
-.help-parameter-item strong {
+.help-parameter-item > strong:first-child {
   display: block;
   margin-bottom: 6px;
+}
+
+.help-parameter-item > strong:not(:first-child) {
+  display: inline;
+  margin-bottom: 0;
+}
+
+.help-parameter-desc {
+  margin: 0;
 }
 
 .help-page-section + .help-page-section {
@@ -3549,4 +3702,17 @@ table.has-noise-data .noise-col {
   font-size: 14px;
   margin: 20px 0 4px;
   color: var(--text);
+}
+
+.recent-events-day-heading {
+  background: var(--primary-100, #eef2ff);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 6px 10px;
+}
+
+.recent-events-day-count {
+  font-weight: 400;
+  color: var(--muted);
 }

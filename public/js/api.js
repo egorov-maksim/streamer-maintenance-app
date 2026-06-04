@@ -341,3 +341,13 @@ export async function getCleaningNoiseEfficiency({ project, uploadBeforeId, uplo
   if (end) params.set("end", end);
   return apiCall(`api/stats/cleaning-noise-efficiency?${params}`);
 }
+
+/**
+ * Historical average RMS per streamer for each noise upload on a project.
+ * @param {string} projectNumber
+ */
+export async function getNoiseRmsHistory(projectNumber) {
+  return apiCall(
+    `api/stats/noise-rms-history?project=${encodeURIComponent(projectNumber)}`
+  );
+}

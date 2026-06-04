@@ -125,6 +125,8 @@ export function getConfigForProject(projectNumber) {
   if (projectNumberTrimmed && Array.isArray(projects)) {
     const project = projects.find((proj) => proj.projectNumber === projectNumberTrimmed);
     if (project) {
+      // Include per-streamer overrides when this project is the active one (overrides come from GET /api/config).
+      const isActiveProject = project.projectNumber === config?.activeProjectNumber;
       return {
         numCables: project.numCables || config.numCables,
         sectionsPerCable: project.sectionsPerCable || config.sectionsPerCable,
@@ -136,26 +138,39 @@ export function getConfigForProject(projectNumber) {
             ? project.useRopeForTail === true || project.useRopeForTail === 1
             : config.useRopeForTail,
         suggestedCleaningThresholdDays: project.suggestedCleaningThresholdDays ?? 10,
+        sectionsPerCableOverrides: isActiveProject ? (config?.sectionsPerCableOverrides || {}) : {},
       };
     }
   }
   return config;
 }
 
-export function getSectionsPerCableWithTail(cfg = config) {
-  const base = cfg?.sectionsPerCable || 0;
+/**
+ * Returns the effective sections per cable for a specific streamer, checking
+ * per-streamer overrides in config.sectionsPerCableOverrides before falling back to the default.
+ * @param {number} streamerId - 1-based streamer number
+ * @param {Object} [cfg] - config object (defaults to global config)
+ * @returns {number}
+ */
+export function getEffectiveSectionsPerCable(streamerId, cfg = config) {
+  const overrides = cfg?.sectionsPerCableOverrides || {};
+  return overrides[streamerId] ?? cfg?.sectionsPerCable ?? 107;
+}
+
+export function getSectionsPerCableWithTail(cfg = config, streamerId = null) {
+  const base = streamerId != null ? getEffectiveSectionsPerCable(streamerId, cfg) : (cfg?.sectionsPerCable || 0);
   const tail = cfg?.useRopeForTail ? 0 : 5;
   return base + tail;
 }
 
-export function getMaxSectionIndex(cfg = config) {
-  return getSectionsPerCableWithTail(cfg);
+export function getMaxSectionIndex(cfg = config, streamerId = null) {
+  return getSectionsPerCableWithTail(cfg, streamerId);
 }
 
 export function validateStreamerAndSections(streamerNum, startSection, endSection, projectNumber = null) {
   const eventConfig = getConfigForProject(projectNumber);
   const maxStreamer = eventConfig?.numCables;
-  const maxSection = getMaxSectionIndex(eventConfig);
+  const maxSection = getMaxSectionIndex(eventConfig, streamerNum);
 
   if (
     Number.isNaN(streamerNum) ||

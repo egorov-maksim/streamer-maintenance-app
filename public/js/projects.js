@@ -518,9 +518,10 @@ export async function renderStreamerDeploymentGrid() {
   container.innerHTML = "";
   for (let streamerNum = 1; streamerNum <= numCables; streamerNum++) {
     const deployment = deployments[streamerNum] || {};
-    const hasConfig = deployment.deploymentDate || (deployment.isCoated !== null && deployment.isCoated !== undefined);
+    const hasConfig = deployment.deploymentDate || (deployment.isCoated !== null && deployment.isCoated !== undefined) || deployment.sectionsPerCable != null;
     const deployDateValue = deployment.deploymentDate ? new Date(deployment.deploymentDate).toISOString().split("T")[0] : "";
     const coatingActive = deployment.isCoated === true ? "true" : deployment.isCoated === false ? "false" : "";
+    const sectionsOverrideValue = deployment.sectionsPerCable != null ? String(deployment.sectionsPerCable) : "";
     const card = document.createElement("div");
     card.className = `streamer-deployment-card modern ${hasConfig ? "has-config" : ""}`;
     card.dataset.streamer = streamerNum;
@@ -545,6 +546,12 @@ export async function renderStreamerDeploymentGrid() {
             <button type="button" class="coating-option ${coatingActive === "false" ? "active" : ""}" data-value="false" ${!isSuperUser() ? "disabled" : ""}>Uncoated</button>
             <button type="button" class="coating-option ${coatingActive === "" ? "active" : ""}" data-value="" ${!isSuperUser() ? "disabled" : ""}>Unknown</button>
           </div>
+        </div>
+        <div class="streamer-input-group">
+          <label>📏 Sections Override</label>
+          <input type="number" class="streamer-sections-override" data-streamer="${streamerNum}"
+            placeholder="${config.sectionsPerCable}" value="${sectionsOverrideValue}" min="1"
+            ${!isSuperUser() ? "disabled" : ""} />
         </div>
       </div>
       ${isSuperUser() && hasConfig ? `<div class="streamer-card-actions"><button type="button" class="btn-icon btn-clear streamer-card-clear" data-streamer="${streamerNum}" title="Clear configuration">🗑️ Clear</button></div>` : ""}
@@ -590,6 +597,12 @@ export async function saveStreamerDeployments() {
     const activeBtn = toggle.querySelector(".coating-option.active");
     const value = activeBtn ? activeBtn.dataset.value : "";
     deployments[streamerNum].isCoated = value === "true" ? true : value === "false" ? false : null;
+  });
+  document.querySelectorAll(".streamer-sections-override").forEach((input) => {
+    const streamerNum = input.dataset.streamer;
+    if (!deployments[streamerNum]) deployments[streamerNum] = {};
+    const parsed = input.value.trim() ? parseInt(input.value.trim(), 10) : null;
+    deployments[streamerNum].sectionsPerCable = parsed && parsed > 0 ? parsed : null;
   });
   try {
     setStatus(statusEl, "Saving configurations...", false);

@@ -169,7 +169,7 @@
             </div>
             <div class="help-parameter-item">
               <strong>Active Sections per Streamer</strong>
-              Number of working sections on each streamer.
+              Default number of active sections for every streamer in the spread. Use this when all streamers have the same length.
             </div>
             <div class="help-parameter-item">
               <strong>Section Length (m)</strong>
@@ -191,6 +191,9 @@
           <p class="info-text mt-12">
             Save the configuration after changes. The active project uses its own saved parameters.
           </p>
+          <p class="info-text mt-12">
+            If one or more streamers are shorter or longer than the rest, set <strong>Active Sections per Streamer</strong> to the value used by most streamers, then override individual lengths in <strong>Per-Streamer Deployment Configuration</strong> (see below).
+          </p>
         </section>
 
         <section class="card help-page-section">
@@ -207,9 +210,16 @@
               <strong>Coating status</strong>
               Mark each streamer as coated, uncoated, or unknown.
             </div>
+            <div class="help-parameter-item">
+              <strong>Sections override</strong>
+              <p class="help-parameter-desc">Optional active section count for this streamer only. Leave empty to use the project default from <strong>Active Sections per Streamer</strong>, or enter a value when this streamer differs from the others (if you have a configuration where any streamer has more sections than others).</p>
+            </div>
           </div>
           <p class="info-text mt-12">
-            You can use the bulk actions to set the same date or coating status for all streamers, then click <strong>Save Streamer Configurations</strong>.
+            The heatmap, planning view, and statistics use each streamer's effective section count. Streamers with fewer sections show inactive (grey) cells beyond their length; longer streamers can have more active cells than shorter ones in the same spread.
+          </p>
+          <p class="info-text mt-12">
+            You can use the bulk actions to set the same date or coating status for all streamers. Set <strong>Sections override</strong> per streamer as needed, then click <strong>Save Streamer Configurations</strong>.
           </p>
         </section>
 
@@ -248,6 +258,92 @@
             <div class="help-parameter-item">
               <strong>Planning</strong>
               Best for deciding what to clean next by looking at days since last scraping and suggested ranges.
+              Upload RMS noise CSV files here to overlay noise levels on the heatmap and rank suggestions by noise.
+            </div>
+          </div>
+        </section>
+
+        <section class="card help-page-section">
+          <h2 class="card-title">RMS Noise File Upload</h2>
+          <p class="mb-12">
+            RMS noise files are CSV exports of per-section noise measurements from the current acquisition sequence.
+            Uploading them lets the app show where noise is highest, compare noise before and after cleaning work,
+            and include a noise heatmap in PDF reports. RMS data is stored per project — each upload becomes a dated
+            snapshot you can switch between later.
+          </p>
+
+          <p class="mb-12"><strong>Upload a file</strong></p>
+          <ol class="help-quick-start">
+            <li>Open the <strong>Planning</strong> page and select the project the noise file belongs to.</li>
+            <li>Click <strong>Upload noise CSV</strong> (Administrators and above).</li>
+            <li>Choose the RMS CSV file from your survey system. The app validates the file before saving it.</li>
+            <li>Optionally enter water speed at the start and end of the line, then confirm the upload.</li>
+          </ol>
+          <p class="info-text mt-12">
+            The upload label defaults to the file name. Administrators can later edit the label and water speed
+            values, or delete an upload, using the controls next to the upload selector.
+          </p>
+
+          <p class="mb-12"><strong>Expected CSV format</strong></p>
+          <div class="help-parameter-grid">
+            <div class="help-parameter-item">
+              <strong>First column</strong>
+              Active section number, starting at 1 (one row per section). Tail sections are not included in RMS files.
+            </div>
+            <div class="help-parameter-item">
+              <strong>Remaining columns</strong>
+              One column per streamer, typically labelled like <code>Active</code>, <code>Cable 01</code>,
+              <code>Cable 02</code>, and so on — matching the project's streamer count.
+            </div>
+            <div class="help-parameter-item">
+              <strong>Cell values</strong>
+              RMS noise in µBar for that section on that streamer. Zero or blank means there is no data for this section and is ignored.
+            </div>
+            <div class="help-parameter-item">
+              <strong>Must match project config</strong>
+              The number of streamer columns and section rows must match the active project's
+              <strong>Number of Streamers</strong> and <strong>Active Sections per Streamer</strong> settings
+              (including any per-streamer section overrides). Fix the project configuration first if validation fails.
+            </div>
+          </div>
+
+          <p class="mb-12"><strong>How RMS data is used across the app</strong></p>
+          <div class="help-parameter-grid">
+            <div class="help-parameter-item">
+              <strong>Planning — noise overlay</strong>
+              Turn on <strong>Noise overlay</strong> on the planning heatmap to replace days-since-cleaning colours
+              with an RMS gradient (low noise in blue, high noise in red). Each cell shows the RMS value.
+              Use the upload dropdown to compare different acquisition snapshots. Legend thresholds can be adjusted
+              on the page.
+            </div>
+            <div class="help-parameter-item">
+              <strong>Planning — cleaning suggestions</strong>
+              When an RMS upload is loaded, the suggestions table adds an <strong>Avg Noise (RMS)</strong> column
+              for each suggested range. Sort by this column to prioritise high-noise sections that also need cleaning.
+            </div>
+            <div class="help-parameter-item">
+              <strong>Planning — section tooltips</strong>
+              Hover over a section on the planning heatmap to see its RMS value alongside days since last scraping
+              and other deployment details.
+            </div>
+            <div class="help-parameter-item">
+              <strong>Statistics — cleaning noise efficiency</strong>
+              On the Statistics page, the <strong>Cleaning Noise Efficiency</strong> section compares two RMS uploads
+              (an earlier <strong>Before</strong> snapshot and a later <strong>After</strong> snapshot) against
+              cleaning events in a chosen time window. It shows how much noise changed on sections that were cleaned
+              between those acquisitions — useful for judging whether recent scraping work reduced noise.
+            </div>
+            <div class="help-parameter-item">
+              <strong>PDF reports</strong>
+              When generating a PDF from the main page or Statistics page, check <strong>Include noise heatmap</strong>
+              to add a dedicated RMS heatmap page. You can pick a specific upload or use the latest one for the project.
+            </div>
+          </div>
+          <div class="alert alert-warning mt-12">
+            <div class="alert-icon">ℹ️</div>
+            <div>
+              Upload at least two RMS snapshots over time to use the cleaning noise efficiency KPI meaningfully.
+              A single upload is enough for the planning overlay, suggestions column, and PDF noise heatmap.
             </div>
           </div>
         </section>

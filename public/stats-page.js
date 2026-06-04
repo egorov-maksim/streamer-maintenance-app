@@ -18,7 +18,9 @@ import {
   getActiveProject,
   projects,
 } from "./js/state.js";
-import { refreshStatsFiltered, resetFilter } from "./js/stats.js";
+import { refreshStatsFiltered, resetFilter, initCleaningEventsKpiModal } from "./js/stats.js";
+import { renderNoiseRmsHistoryChart } from "./js/noise-rms-history-chart.js";
+import { initModals } from "./js/modals.js";
 import { initPDFGeneration } from "./pdf-generator.js";
 
 async function loadEvents() {
@@ -335,6 +337,7 @@ function setupStatsEventListeners() {
     if (projectNumber) {
       await populateNoiseUploadSelectors(projectNumber);
     }
+    await renderNoiseRmsHistoryChart(projectNumber);
   });
 }
 
@@ -357,7 +360,10 @@ async function initStatsApp() {
   if (initialProject) {
     await populateNoiseUploadSelectors(initialProject);
   }
+  await renderNoiseRmsHistoryChart(initialProject || null);
 
+  initModals();
+  initCleaningEventsKpiModal();
   initPDFGeneration();
   updateUIForRole();
 }

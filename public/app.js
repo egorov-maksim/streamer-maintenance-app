@@ -56,6 +56,7 @@ import {
   refreshStatsFiltered,
   resetFilter,
   renderStreamerCards,
+  initCleaningEventsKpiModal,
 } from "./js/stats.js";
 import {
   DEFAULT_PREFS,
@@ -70,6 +71,10 @@ import {
   loadDefaultCleaningMethod,
   saveDefaultCleaningMethod,
 } from "./js/cleaning-method-prefs.js";
+import {
+  shouldInsertModuleAfterSection,
+  countHeatmapColumnRows,
+} from "./js/heatmap-layout.js";
 
 const sectionCount = StreamerUtils.sectionCount;
 const eventDistance = StreamerUtils.eventDistance;
@@ -84,6 +89,7 @@ const getSectionsPerCableWithTail = StreamerUtils.getSectionsPerCableWithTail;
 const getMaxSectionIndex = StreamerUtils.getMaxSectionIndex;
 const validateStreamerAndSections = StreamerUtils.validateStreamerAndSections;
 const getEBRangeForSectionRange = StreamerUtils.getEBRangeForSectionRange;
+const getEffectiveSectionsPerCable = StreamerUtils.getEffectiveSectionsPerCable;
 
 /* ------------ Heatmap ------------ */
 /* ============================================================================
@@ -120,11 +126,11 @@ function positionTooltipNearCursor(element, event) {
 function showSectionTooltip(e, streamerId, sectionIndex) {
   const tooltip = createTooltip();
   const streamerNum = streamerId;
-  const sectionsPerCable = config.sectionsPerCable;
+  const effectiveSectionsForStreamer = getEffectiveSectionsPerCable(streamerId);
 
-  // Determine if it's a tail section
-  const isTail = sectionIndex >= sectionsPerCable;
-  const relIndex = isTail ? sectionIndex - sectionsPerCable : sectionIndex;
+  // Determine if it's a tail section based on this streamer's effective section count
+  const isTail = sectionIndex >= effectiveSectionsForStreamer;
+  const relIndex = isTail ? sectionIndex - effectiveSectionsForStreamer : sectionIndex;
   const sectionLabel = formatSectionLabel(relIndex, isTail ? 'tail' : 'active');
 
   // Get cleaning history for this specific section (by section_type and indices)
@@ -217,6 +223,26 @@ function showSectionTooltip(e, streamerId, sectionIndex) {
 
 function hideSectionTooltip() {
   if (tooltip) tooltip.classList.remove('show');
+}
+
+function showEBTooltip(e, ebNum) {
+  const tip = createTooltip();
+  tip.innerHTML = `<div class="tooltip-header">EB${ebNum}</div>`;
+  tip.classList.add('show');
+  positionTooltipNearCursor(tip, e);
+}
+
+/**
+ * Attaches EB module hover tooltips for horizontal mode only.
+ * Cells are tagged with data-eb-num during horizontal grid build.
+ */
+function attachHorizontalEBTooltips(wrapper) {
+  const ebCells = wrapper.querySelectorAll('.hm-module[data-eb-num]');
+  ebCells.forEach(cell => {
+    cell.addEventListener('mouseenter', (e) => showEBTooltip(e, cell.dataset.ebNum));
+    cell.addEventListener('mousemove', (e) => showEBTooltip(e, cell.dataset.ebNum));
+    cell.addEventListener('mouseleave', hideSectionTooltip);
+  });
 }
 
 /* ------------ Attach Tooltip Listeners ------------ */
@@ -321,20 +347,20 @@ function checkRecentCleanings(streamerId, startIndex, endIndex, cleanedAtIso) {
  * @returns {{ evt, mergedStart, mergedEnd, sectionType, diffMs } | null}
  */
 function checkAdjacentEvents(streamerId, startIndex, endIndex, cleaningMethod, cleanedAtIso) {
-  const sectionsPerCable = config.sectionsPerCable ?? 107;
+  const effectiveSectionsForStreamer = getEffectiveSectionsPerCable(streamerId);
 
   let proposedType;
   let proposedStart;
   let proposedEnd;
 
-  if (endIndex < sectionsPerCable) {
+  if (endIndex < effectiveSectionsForStreamer) {
     proposedType = 'active';
     proposedStart = startIndex;
     proposedEnd = endIndex;
-  } else if (startIndex >= sectionsPerCable) {
+  } else if (startIndex >= effectiveSectionsForStreamer) {
     proposedType = 'tail';
-    proposedStart = startIndex - sectionsPerCable;
-    proposedEnd = endIndex - sectionsPerCable;
+    proposedStart = startIndex - effectiveSectionsForStreamer;
+    proposedEnd = endIndex - effectiveSectionsForStreamer;
   } else {
     // Spans active + tail — skip merge suggestion for now
     return null;
@@ -396,15 +422,15 @@ function showRecentCleanWarning(recentClean, body) {
 /** Populates and opens the adjacent-merge modal, storing the payload and merge target. */
 function showAdjacentMergeModal(adjacentMatch, body) {
   const { evt, mergedStart, mergedEnd, sectionType, diffMs } = adjacentMatch;
-  const sectionsPerCable = config.sectionsPerCable ?? 107;
+  const effectiveSectionsForStreamer = getEffectiveSectionsPerCable(evt.streamerId ?? body.streamerId);
 
   const existingRange = `${formatSectionLabel(evt.sectionIndexStart, sectionType)}–${formatSectionLabel(evt.sectionIndexEnd, sectionType)}`;
 
   const proposedStart = sectionType === 'tail'
-    ? body.sectionIndexStart - sectionsPerCable
+    ? body.sectionIndexStart - effectiveSectionsForStreamer
     : body.sectionIndexStart;
   const proposedEnd = sectionType === 'tail'
-    ? body.sectionIndexEnd - sectionsPerCable
+    ? body.sectionIndexEnd - effectiveSectionsForStreamer
     : body.sectionIndexEnd;
   const proposedRange = `${formatSectionLabel(proposedStart, sectionType)}–${formatSectionLabel(proposedEnd, sectionType)}`;
   const mergedRange = `${formatSectionLabel(mergedStart, sectionType)}–${formatSectionLabel(mergedEnd, sectionType)}`;
@@ -1156,6 +1182,35 @@ async function renderAlerts(preloadedLastCleaned = null) {
   }
 }
 
+/* ------------ Heat-map orientation ------------ */
+
+const HEATMAP_ORIENTATION_KEY = 'heatmapOrientation';
+
+function getHeatmapOrientation() {
+  return localStorage.getItem(HEATMAP_ORIENTATION_KEY) || 'vertical';
+}
+
+function updateOrientationButtons() {
+  const orientation = getHeatmapOrientation();
+  const btnV = document.getElementById('btn-heatmap-vertical');
+  const btnH = document.getElementById('btn-heatmap-horizontal');
+  if (btnV) btnV.classList.toggle('active', orientation === 'vertical');
+  if (btnH) btnH.classList.toggle('active', orientation === 'horizontal');
+}
+
+function initOrientationToggle() {
+  document.getElementById('btn-heatmap-vertical')?.addEventListener('click', () => {
+    localStorage.setItem(HEATMAP_ORIENTATION_KEY, 'vertical');
+    updateOrientationButtons();
+    renderHeatmap();
+  });
+  document.getElementById('btn-heatmap-horizontal')?.addEventListener('click', () => {
+    localStorage.setItem(HEATMAP_ORIENTATION_KEY, 'horizontal');
+    updateOrientationButtons();
+    renderHeatmap();
+  });
+}
+
 /* ------------ Heat-map rendering ------------ */
 
 async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments = null) {
@@ -1195,6 +1250,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
     // All data is ready — clear old render now to avoid a blank intermediate state.
     container.innerHTML = '';
 
+
     const sectionsPerCable = config.sectionsPerCable;
     const cableCount = config.numCables;
     const moduleFreq = config.moduleFrequency;
@@ -1202,160 +1258,315 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
     const useTailSections = !config.useRopeForTail;
     const tailSections = useTailSections ? 5 : 0;
 
-    // Calculate total rows = sections + modules + tail sections
-    const modulesCount = Math.floor(sectionsPerCable / moduleFreq);
-    const totalRows = sectionsPerCable + modulesCount + tailSections;
+    // Determine maximum section count across all streamers (project default or any override)
+    const overrides = config.sectionsPerCableOverrides || {};
+    const maxSectionsPerCable = Object.values(overrides).length > 0
+      ? Math.max(sectionsPerCable, ...Object.values(overrides))
+      : sectionsPerCable;
 
-    // Wrapper for horizontal scroll
+    // Compute actual EB module cell count to match rendering logic:
+    // – always 1 at the first section
+    // – 1 at every section where (sectionNumber-1) % moduleFreq === 0 and sectionNumber > 1
+    // – always 1 at the last section (if not already a regular)
+    const lastSectionIsRegular = (maxSectionsPerCable - 1) % moduleFreq === 0;
+    const modulesCount = 1 + Math.floor((maxSectionsPerCable - 1) / moduleFreq) + (lastSectionIsRegular ? 0 : 1);
+    const totalRows = maxSectionsPerCable + modulesCount + tailSections;
+
+    const orientation = getHeatmapOrientation();
     const wrapper = document.createElement('div');
-    wrapper.className = 'hm-grid-vertical';
 
-    // Channel reference column (CH)
-    const channelCol = document.createElement('div');
-    channelCol.className = 'hm-col hm-col-channel';
-    channelCol.style.gridTemplateRows = `36px repeat(${totalRows}, 32px)`;
+    if (orientation === 'horizontal') {
+      // Horizontal layout: streamers as rows, sections as columns.
+      // Cell height fits all streamer rows in ~55% of the viewport height.
+      const availH = Math.max(300, window.innerHeight * 0.55);
+      const cellHeight = Math.max(24, Math.min(40, Math.floor(availH / (cableCount + 1))));
 
-    const channelLabel = document.createElement('div');
-    channelLabel.className = 'hm-col-label hm-col-label-channel';
-    channelLabel.textContent = 'CH';
-    channelCol.appendChild(channelLabel);
+      // Cell width: compute so ALL section columns fit the container without horizontal scroll.
+      // totalRows columns + 1 label column = totalRows+1 items → totalRows gaps between them.
+      // Use 1px gap between cells to maximise space for cells themselves.
+      const LABEL_W = 40; // minimum readable width for the streamer label column
+      const GAP_H = 1; // compact column gap (px)
+      const containerContent = container.clientWidth - 16; // subtract container's 8px padding each side
+      const cellWidth = Math.max(1, Math.floor((containerContent - LABEL_W) / totalRows - GAP_H));
 
-    let rowIndex = 0;
-    for (let s = 0; s < sectionsPerCable; s++) {
-      // Add section channel info
-      const channelCell = document.createElement('div');
-      channelCell.className = 'hm-vcell hm-channel-ref';
-      const startCh = s * channelsPerSection + 1;
-      const endCh = startCh + channelsPerSection - 1;
-      channelCell.textContent = `${startCh}-${endCh}`;
-      channelCell.title = `Channels ${startCh}–${endCh}`;
-      channelCol.appendChild(channelCell);
-      rowIndex++;
+      wrapper.className = 'hm-grid-horizontal';
+      wrapper.style.width = '100%';
+      wrapper.style.setProperty('--hm-cell-h', `${cellHeight}px`);
+      wrapper.style.setProperty('--hm-cell-w', `${cellWidth}px`);
+      wrapper.style.setProperty('--hm-label-w', `${LABEL_W}px`);
+      wrapper.style.setProperty('--hm-row-gap', `${GAP_H}px`);
+      // CH header is taller so channel ranges can run vertically in narrow columns.
+      const chRowHeight = Math.max(48, Math.min(88, cellWidth * 14));
+      wrapper.style.setProperty('--hm-ch-row-h', `${chRowHeight}px`);
 
-      // Module positioning
-      const sectionNumber = s + 1;
-      const isFirstModule = sectionNumber === 1;
-      const isRegularModule = sectionNumber > 1 && (sectionNumber - 1) % moduleFreq === 0;
-      const isLastModule = sectionNumber === sectionsPerCable;
 
-      if (isFirstModule || isRegularModule || isLastModule) {
-        const moduleChannelCell = document.createElement('div');
-        moduleChannelCell.className = 'hm-vcell hm-module-row';
-        moduleChannelCell.textContent = '—';
-        channelCol.appendChild(moduleChannelCell);
-        rowIndex++;
-      }
-    }
+      // CH row spans the full max-length grid so channel labels are always visible.
+      const maxColTemplate = `var(--hm-label-w, 40px) repeat(${totalRows}, var(--hm-cell-w, 52px))`;
 
-    // Add tail section channel references
-    for (let t = 0; t < tailSections; t++) {
-      const tailChannelCell = document.createElement('div');
-      tailChannelCell.className = 'hm-vcell hm-channel-ref hm-tail-ref';
-      tailChannelCell.textContent = '---';
-      tailChannelCell.title = 'Tail Section (no channels)';
-      channelCol.appendChild(tailChannelCell);
-    }
+      // Helper: append the interleaved section/EB/tail cells for a single row.
+      // sectionCount is the active section count for this row (determines loop bound
+      // and last-EB placement). Returns total data cells appended (for gridTemplateColumns).
+      function buildRowCells(row, cellFactory, sectionCount) {
+        let moduleNum = 1;
+        for (let s = 0; s < sectionCount; s++) {
+          row.appendChild(cellFactory('section', s, null, null));
 
-    wrapper.appendChild(channelCol);
-
-    // Render each streamer column
-    for (let streamerId = cableCount; streamerId >= 1; streamerId--) {
-      const sections = lastCleaned[streamerId] || [];
-      const deployment = deployments[streamerId] || {};
-
-      const col = document.createElement('div');
-      col.className = 'hm-col';
-      col.style.gridTemplateRows = `36px repeat(${totalRows}, 32px)`;
-
-      // Streamer header (with deployment data for tooltip)
-      const label = document.createElement('div');
-      label.className = 'hm-col-label hm-header';
-      label.textContent = `S${streamerId}`;
-      label.dataset.streamerId = streamerId;
-      label.dataset.deploymentDate = deployment.deploymentDate || '';
-      label.dataset.isCoated = deployment.isCoated === true ? 'true' : deployment.isCoated === false ? 'false' : 'unknown';
-      col.appendChild(label);
-
-      rowIndex = 0;
-      let moduleNum = 1;
-
-      for (let s = 0; s < sectionsPerCable; s++) {
-        // Active section cell
-        const cell = document.createElement('div');
-        cell.className = 'hm-vcell hm-active-section';
-        cell.dataset.streamer = streamerId;
-        cell.dataset.section = s;
-        cell.textContent = s + 1;
-
-        const lastDate = sections[s];
-        let days = null;
-        if (lastDate) {
-          days = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+          if (shouldInsertModuleAfterSection(s + 1, sectionCount, moduleFreq)) {
+            row.appendChild(cellFactory('module', s, moduleNum, null));
+            moduleNum++;
+          }
         }
-        const bucket = ageBucket(days);
-        cell.dataset.age = bucket;
-        cell.dataset.scrapingDays = days !== null ? String(days) : "";
+        for (let t = 0; t < tailSections; t++) {
+          row.appendChild(cellFactory('tail', null, null, t));
+        }
+        return countHeatmapColumnRows(sectionCount, moduleFreq, tailSections);
+      }
 
-        // Accessible label so screen readers and keyboard users are not
-        // reliant on color alone to understand cleaning age.
-        const ageText = days === null
-          ? 'never cleaned'
-          : days === 0 ? 'cleaned today' : `cleaned ${days} day${days === 1 ? '' : 's'} ago`;
-        const cellLabel = `Streamer ${streamerId}, Section ${s + 1}: ${ageText}`;
-        cell.title = cellLabel;
-        cell.setAttribute('aria-label', cellLabel);
+      // CH row — channel range labels per section column (horizontal has no SEC row)
+      const chRow = document.createElement('div');
+      chRow.className = 'hm-row hm-row-ch';
+      chRow.style.gridTemplateColumns = maxColTemplate;
 
-        col.appendChild(cell);
-        rowIndex++;
+      const chCorner = document.createElement('div');
+      chCorner.className = 'hm-row-label';
+      chCorner.textContent = 'CH';
+      chRow.appendChild(chCorner);
 
-        // Module positioning
+      buildRowCells(chRow, (type, s, _modNum, tailIdx) => {
+        const cell = document.createElement('div');
+        if (type === 'section') {
+          cell.className = 'hm-vcell hm-channel-ref hm-ch-range';
+          const startCh = s * channelsPerSection + 1;
+          const endCh = startCh + channelsPerSection - 1;
+          cell.textContent = `${startCh}-${endCh}`;
+          cell.title = `Channels ${startCh}–${endCh}`;
+        } else if (type === 'module') {
+          cell.className = 'hm-vcell hm-module-row';
+          cell.textContent = '—';
+        } else {
+          cell.className = 'hm-vcell hm-channel-ref hm-tail-ref';
+          cell.textContent = '---';
+          cell.title = 'Tail Section (no channels)';
+        }
+        return cell;
+      }, maxSectionsPerCable);
+      wrapper.appendChild(chRow);
+
+      // One row per streamer (S1 up to highest); each row is only as wide as
+      // its own active sections + EBs + tails — no inactive padding before tails.
+      for (let streamerId = 1; streamerId <= cableCount; streamerId++) {
+        const sections = lastCleaned[streamerId] || [];
+        const deployment = deployments[streamerId] || {};
+        const effectiveSections = getEffectiveSectionsPerCable(streamerId);
+
+        const row = document.createElement('div');
+        row.className = 'hm-row';
+
+        const streamerLabel = document.createElement('div');
+        streamerLabel.className = 'hm-row-label hm-header';
+        streamerLabel.textContent = `S${streamerId}`;
+        streamerLabel.dataset.streamerId = streamerId;
+        streamerLabel.dataset.deploymentDate = deployment.deploymentDate || '';
+        streamerLabel.dataset.isCoated = deployment.isCoated === true ? 'true' : deployment.isCoated === false ? 'false' : 'unknown';
+        row.appendChild(streamerLabel);
+
+        const cellCount = buildRowCells(row, (type, s, modNum, tailIdx) => {
+          const cell = document.createElement('div');
+          if (type === 'section') {
+            const lastDate = sections[s];
+            let days = null;
+            if (lastDate) {
+              days = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+            }
+            cell.className = 'hm-vcell hm-active-section';
+            cell.dataset.streamer = streamerId;
+            cell.dataset.section = s;
+            cell.textContent = s + 1;
+            cell.dataset.age = ageBucket(days);
+            cell.dataset.scrapingDays = days !== null ? String(days) : "";
+            const ageText = days === null ? 'never cleaned' : days === 0 ? 'cleaned today' : `cleaned ${days} day${days === 1 ? '' : 's'} ago`;
+            cell.title = `Streamer ${streamerId}, Section ${s + 1}: ${ageText}`;
+            cell.setAttribute('aria-label', `Streamer ${streamerId}, Section ${s + 1}: ${ageText}`);
+          } else if (type === 'module') {
+            const ebLabel = String(modNum).padStart(2, '0');
+            cell.className = 'hm-vcell hm-module';
+            cell.textContent = `EB${ebLabel}`;
+            cell.title = `Equipment Box ${ebLabel}`;
+            cell.dataset.ebNum = ebLabel;
+          } else {
+            const tailSectionIdx = effectiveSections + tailIdx;
+            const lastDate = sections[tailSectionIdx] || null;
+            let days = null;
+            let bucket = 'never';
+            if (lastDate) {
+              days = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+              bucket = ageBucket(days);
+            }
+            cell.className = 'hm-vcell hm-tail-section';
+            cell.dataset.streamer = streamerId;
+            cell.dataset.section = tailSectionIdx;
+            cell.dataset.isTail = 'true';
+            cell.textContent = formatSectionLabel(tailIdx, 'tail');
+            cell.dataset.age = bucket;
+            cell.dataset.scrapingDays = days !== null ? String(days) : "";
+            const tailAgeText = days === null ? 'never cleaned' : days === 0 ? 'cleaned today' : `cleaned ${days} day${days === 1 ? '' : 's'} ago`;
+            cell.title = `Streamer ${streamerId}, Tail ${formatSectionLabel(tailIdx, 'tail')}: ${tailAgeText}`;
+            cell.setAttribute('aria-label', `Streamer ${streamerId}, Tail ${formatSectionLabel(tailIdx, 'tail')}: ${tailAgeText}`);
+          }
+          return cell;
+        }, effectiveSections);
+
+        row.style.gridTemplateColumns = `var(--hm-label-w, 40px) repeat(${cellCount}, var(--hm-cell-w, 52px))`;
+        wrapper.appendChild(row);
+      }
+    } else {
+      // Vertical layout (default): streamers as columns, sections as rows.
+      // Use CSS grid with fr units so all columns always fill the container
+      // without overflow — no pixel calculations needed.
+      wrapper.className = 'hm-grid-vertical';
+      wrapper.style.width = '100%';
+      wrapper.style.display = 'grid';
+      wrapper.style.gridTemplateColumns = `repeat(${cableCount + 1}, 1fr)`;
+      wrapper.style.gap = '4px';
+      wrapper.style.columnGap = '8px';
+      // Signal cells to fill their column rather than using a fixed px width
+      wrapper.style.setProperty('--hm-cell-w', '100%');
+
+
+      // Channel reference column (CH)
+      const channelCol = document.createElement('div');
+      channelCol.className = 'hm-col hm-col-channel';
+      channelCol.style.gridTemplateRows = `36px repeat(${totalRows}, 32px)`;
+
+      const channelLabel = document.createElement('div');
+      channelLabel.className = 'hm-col-label hm-col-label-channel';
+      channelLabel.textContent = 'CH';
+      channelCol.appendChild(channelLabel);
+
+      for (let s = 0; s < maxSectionsPerCable; s++) {
+        const channelCell = document.createElement('div');
+        channelCell.className = 'hm-vcell hm-channel-ref';
+        const startCh = s * channelsPerSection + 1;
+        const endCh = startCh + channelsPerSection - 1;
+        channelCell.textContent = `${startCh}-${endCh}`;
+        channelCell.title = `Channels ${startCh}–${endCh}`;
+        channelCol.appendChild(channelCell);
+
         const sectionNumber = s + 1;
         const isFirstModule = sectionNumber === 1;
         const isRegularModule = sectionNumber > 1 && (sectionNumber - 1) % moduleFreq === 0;
-        const isLastModule = sectionNumber === sectionsPerCable;
+        const isLastModule = sectionNumber === maxSectionsPerCable;
 
         if (isFirstModule || isRegularModule || isLastModule) {
-          const moduleCell = document.createElement('div');
-          moduleCell.className = 'hm-vcell hm-module';
-          moduleCell.textContent = `EB${String(moduleNum).padStart(2, '0')}`;
-          moduleCell.title = `Equipment Box ${String(moduleNum).padStart(2, '0')}`;
-          col.appendChild(moduleCell);
-          moduleNum++;
-          rowIndex++;
+          const moduleChannelCell = document.createElement('div');
+          moduleChannelCell.className = 'hm-vcell hm-module-row';
+          moduleChannelCell.textContent = '—';
+          channelCol.appendChild(moduleChannelCell);
         }
       }
 
-      // Add tail sections if configured
       for (let t = 0; t < tailSections; t++) {
-        const tailIdx = sectionsPerCable + t;
-        const tailCell = document.createElement('div');
-        tailCell.className = 'hm-vcell hm-tail-section';
-        tailCell.dataset.streamer = streamerId;
-        tailCell.dataset.section = tailIdx;
-        tailCell.dataset.isTail = 'true';
-        tailCell.textContent = formatSectionLabel(t, 'tail');
-
-        const lastDate = sections[tailIdx] || null;
-        let days = null;
-        let bucket = 'never';
-        if (lastDate) {
-          days = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
-          bucket = ageBucket(days);
-        }
-        tailCell.dataset.age = bucket;
-        tailCell.dataset.scrapingDays = days !== null ? String(days) : "";
-
-        const tailAgeText = days === null
-          ? 'never cleaned'
-          : days === 0 ? 'cleaned today' : `cleaned ${days} day${days === 1 ? '' : 's'} ago`;
-        const tailLabel = `Streamer ${streamerId}, Tail ${formatSectionLabel(t, 'tail')}: ${tailAgeText}`;
-        tailCell.title = tailLabel;
-        tailCell.setAttribute('aria-label', tailLabel);
-
-        col.appendChild(tailCell);
+        const tailChannelCell = document.createElement('div');
+        tailChannelCell.className = 'hm-vcell hm-channel-ref hm-tail-ref';
+        tailChannelCell.textContent = '---';
+        tailChannelCell.title = 'Tail Section (no channels)';
+        channelCol.appendChild(tailChannelCell);
       }
 
-      wrapper.appendChild(col);
+      wrapper.appendChild(channelCol);
+
+      // Render each streamer column
+      for (let streamerId = cableCount; streamerId >= 1; streamerId--) {
+        const sections = lastCleaned[streamerId] || [];
+        const deployment = deployments[streamerId] || {};
+        const effectiveSections = getEffectiveSectionsPerCable(streamerId);
+
+        const colRows = countHeatmapColumnRows(effectiveSections, moduleFreq, tailSections);
+        const col = document.createElement('div');
+        col.className = 'hm-col';
+        col.style.gridTemplateRows = `36px repeat(${colRows}, 32px)`;
+
+        // Streamer header (with deployment data for tooltip)
+        const label = document.createElement('div');
+        label.className = 'hm-col-label hm-header';
+        label.textContent = `S${streamerId}`;
+        label.dataset.streamerId = streamerId;
+        label.dataset.deploymentDate = deployment.deploymentDate || '';
+        label.dataset.isCoated = deployment.isCoated === true ? 'true' : deployment.isCoated === false ? 'false' : 'unknown';
+        col.appendChild(label);
+
+        let moduleNum = 1;
+
+        for (let s = 0; s < effectiveSections; s++) {
+          // Active section cell
+          const cell = document.createElement('div');
+          cell.className = 'hm-vcell hm-active-section';
+          cell.dataset.streamer = streamerId;
+          cell.dataset.section = s;
+          cell.textContent = s + 1;
+
+          const lastDate = sections[s];
+          let days = null;
+          if (lastDate) {
+            days = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+          }
+          const bucket = ageBucket(days);
+          cell.dataset.age = bucket;
+          cell.dataset.scrapingDays = days !== null ? String(days) : "";
+
+          // Accessible label so screen readers and keyboard users are not
+          // reliant on color alone to understand cleaning age.
+          const ageText = days === null
+            ? 'never cleaned'
+            : days === 0 ? 'cleaned today' : `cleaned ${days} day${days === 1 ? '' : 's'} ago`;
+          const cellLabel = `Streamer ${streamerId}, Section ${s + 1}: ${ageText}`;
+          cell.title = cellLabel;
+          cell.setAttribute('aria-label', cellLabel);
+
+          col.appendChild(cell);
+
+          if (shouldInsertModuleAfterSection(s + 1, effectiveSections, moduleFreq)) {
+            const moduleCell = document.createElement('div');
+            moduleCell.className = 'hm-vcell hm-module';
+            moduleCell.textContent = `EB${String(moduleNum).padStart(2, '0')}`;
+            moduleCell.title = `Equipment Box ${String(moduleNum).padStart(2, '0')}`;
+            col.appendChild(moduleCell);
+            moduleNum++;
+          }
+        }
+
+        // Add tail sections if configured
+        for (let t = 0; t < tailSections; t++) {
+          const tailIdx = effectiveSections + t;
+          const tailCell = document.createElement('div');
+          tailCell.className = 'hm-vcell hm-tail-section';
+          tailCell.dataset.streamer = streamerId;
+          tailCell.dataset.section = tailIdx;
+          tailCell.dataset.isTail = 'true';
+          tailCell.textContent = formatSectionLabel(t, 'tail');
+
+          const lastDate = sections[tailIdx] || null;
+          let days = null;
+          let bucket = 'never';
+          if (lastDate) {
+            days = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+            bucket = ageBucket(days);
+          }
+          tailCell.dataset.age = bucket;
+          tailCell.dataset.scrapingDays = days !== null ? String(days) : "";
+
+          const tailAgeText = days === null
+            ? 'never cleaned'
+            : days === 0 ? 'cleaned today' : `cleaned ${days} day${days === 1 ? '' : 's'} ago`;
+          const tailLabel = `Streamer ${streamerId}, Tail ${formatSectionLabel(t, 'tail')}: ${tailAgeText}`;
+          tailCell.title = tailLabel;
+          tailCell.setAttribute('aria-label', tailLabel);
+
+          col.appendChild(tailCell);
+        }
+
+        wrapper.appendChild(col);
+      }
     }
 
     // Scroll listener
@@ -1374,9 +1585,11 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
     attachScrollListener(); // Call once after heatmap rendered
 
     container.appendChild(wrapper);
+
     attachDragListeners();
     attachTooltipListeners();
     attachStreamerHeaderTooltips(wrapper, lastCleaned, deployments);
+    attachHorizontalEBTooltips(wrapper);
     paintScrapingAgeCells(container, loadHeatmapLegendPrefs());
   } catch (err) {
     console.error(err);
@@ -1398,7 +1611,7 @@ function attachStreamerHeaderTooltips(wrapper, lastCleaned, deployments) {
     document.body.appendChild(tooltipEl);
   }
 
-  const labels = wrapper.querySelectorAll('.hm-col-label.hm-header[data-streamer-id]');
+  const labels = wrapper.querySelectorAll('[data-streamer-id].hm-header');
   labels.forEach(label => {
     const streamerId = parseInt(label.dataset.streamerId, 10);
     if (!streamerId) return;
@@ -1575,7 +1788,7 @@ function showConfirmationModal() {
   dragState.active = false;
   
   const { streamerId, start, end } = dragState;
-  const sectionsPerCable = config.sectionsPerCable ?? 107;
+  const effectiveSectionsForStreamer = getEffectiveSectionsPerCable(streamerId);
   const min = Math.min(start, end);
   const max = Math.max(start, end);
   const streamerNum = streamerId;
@@ -1584,8 +1797,8 @@ function showConfirmationModal() {
   const endInput = safeGet('modal-end');
   const methodSelect = safeGet('modal-method');
   
-  const totalSections = getSectionsPerCableWithTail(config);
-  const tailOnly = min >= sectionsPerCable;
+  const totalSections = getSectionsPerCableWithTail(config, streamerId);
+  const tailOnly = min >= effectiveSectionsForStreamer;
 
   streamerInput.max = config.numCables;
   startInput.min = 1;
@@ -1594,8 +1807,8 @@ function showConfirmationModal() {
     confirmationModalTailOnly = true;
     startInput.max = 5;
     endInput.max = 5;
-    startInput.value = min - sectionsPerCable + 1;  // Tail 1-based 1..5
-    endInput.value = max - sectionsPerCable + 1;
+    startInput.value = min - effectiveSectionsForStreamer + 1;  // Tail 1-based 1..5
+    endInput.value = max - effectiveSectionsForStreamer + 1;
     safeGet('modal-first-section-label').childNodes[0].textContent = 'First Tail Section ';
     safeGet('modal-last-section-label').childNodes[0].textContent = 'Last Tail Section ';
   } else {
@@ -1625,14 +1838,15 @@ function showConfirmationModal() {
 }
 
 function updateModalSummary() {
-  const sectionsPerCable = config.sectionsPerCable ?? 107;
+  const modalStreamerId = parseInt(safeGet('modal-streamer')?.value || '1', 10);
+  const effectiveSectionsForStreamer = getEffectiveSectionsPerCable(modalStreamerId);
   let min;
   let max;
   if (confirmationModalTailOnly) {
     const startVal = parseInt(safeGet('modal-start').value || 1, 10) - 1;
     const endVal = parseInt(safeGet('modal-end').value || 1, 10) - 1;
-    min = Math.min(startVal, endVal) + sectionsPerCable;
-    max = Math.max(startVal, endVal) + sectionsPerCable;
+    min = Math.min(startVal, endVal) + effectiveSectionsForStreamer;
+    max = Math.max(startVal, endVal) + effectiveSectionsForStreamer;
   } else {
     const start = parseInt(safeGet('modal-start').value || 1, 10) - 1;
     const end = parseInt(safeGet('modal-end').value || 1, 10) - 1;
@@ -1640,12 +1854,12 @@ function updateModalSummary() {
     max = Math.max(start, end);
   }
   const labelFor = (s) =>
-    s >= sectionsPerCable
-      ? formatSectionLabel(s - sectionsPerCable, 'tail')
+    s >= effectiveSectionsForStreamer
+      ? formatSectionLabel(s - effectiveSectionsForStreamer, 'tail')
       : formatSectionLabel(s, 'active');
   const rangeText = `${labelFor(min)} – ${labelFor(max)}`;
-  const channelStart = min < sectionsPerCable ? getChannelRange(min).split('–')[0] : '—';
-  const channelEnd = max < sectionsPerCable ? getChannelRange(max).split('–')[1] : '—';
+  const channelStart = min < effectiveSectionsForStreamer ? getChannelRange(min).split('–')[0] : '—';
+  const channelEnd = max < effectiveSectionsForStreamer ? getChannelRange(max).split('–')[1] : '—';
   const channelText = `${channelStart} – ${channelEnd}`;
   const distance = (max - min + 1) * config.sectionLength;
 
@@ -1672,12 +1886,12 @@ async function confirmCleaning() {
   setIsFinalizing(true);
   
   const streamerNum = parseInt(safeGet('modal-streamer').value, 10);
-  const sectionsPerCable = config.sectionsPerCable ?? 107;
+  const effectiveSectionsForStreamer = getEffectiveSectionsPerCable(streamerNum);
   let startSection = parseInt(safeGet('modal-start').value, 10);
   let endSection = parseInt(safeGet('modal-end').value, 10);
   if (confirmationModalTailOnly) {
-    startSection = (startSection - 1) + sectionsPerCable + 1;
-    endSection = (endSection - 1) + sectionsPerCable + 1;
+    startSection = (startSection - 1) + effectiveSectionsForStreamer + 1;
+    endSection = (endSection - 1) + effectiveSectionsForStreamer + 1;
   }
   const method = safeGet('modal-method').value;
   
@@ -2440,13 +2654,17 @@ async function initAppContent() {
   if (evtDate) evtDate.value = dateStr;
   if (evtTime) evtTime.value = timeStr;
 
+  updateOrientationButtons();
+
   if (!dashboardDomListenersBound) {
     dashboardDomListenersBound = true;
     initModals();
+    initCleaningEventsKpiModal();
     setupEventListeners();
     setupSidebarNavigation();
     setupProjectCollapse();
     initAgeLegendControls();
+    initOrientationToggle();
   }
 
   // Update UI based on role after everything is loaded
