@@ -725,6 +725,35 @@ function buildNoiseBadgeHtml(avgNoise, isTail) {
   return `<span class="noise-rms-badge" style="background:${bg};color:${color}">${avgNoise.toFixed(1)}</span>`;
 }
 
+/* ------------ Heat map orientation ------------ */
+
+const PLANNING_HEATMAP_ORIENTATION_KEY = 'planningHeatmapOrientation';
+
+function getPlanningHeatmapOrientation() {
+  return localStorage.getItem(PLANNING_HEATMAP_ORIENTATION_KEY) || 'vertical';
+}
+
+function updatePlanningOrientationButtons() {
+  const orientation = getPlanningHeatmapOrientation();
+  const btnV = document.getElementById('btn-planning-heatmap-vertical');
+  const btnH = document.getElementById('btn-planning-heatmap-horizontal');
+  if (btnV) btnV.classList.toggle('active', orientation === 'vertical');
+  if (btnH) btnH.classList.toggle('active', orientation === 'horizontal');
+}
+
+function initPlanningOrientationToggle() {
+  document.getElementById('btn-planning-heatmap-vertical')?.addEventListener('click', () => {
+    localStorage.setItem(PLANNING_HEATMAP_ORIENTATION_KEY, 'vertical');
+    updatePlanningOrientationButtons();
+    renderPlanningHeatmap();
+  });
+  document.getElementById('btn-planning-heatmap-horizontal')?.addEventListener('click', () => {
+    localStorage.setItem(PLANNING_HEATMAP_ORIENTATION_KEY, 'horizontal');
+    updatePlanningOrientationButtons();
+    renderPlanningHeatmap();
+  });
+}
+
 /* ------------ Heat map rendering ------------ */
 
 async function renderPlanningHeatmap() {
@@ -771,122 +800,256 @@ async function renderPlanningHeatmap() {
     const modulesCount = 1 + Math.floor((maxSectionsPerCable - 1) / moduleFreq) + (lastSectionIsRegular ? 0 : 1);
     const totalRows = maxSectionsPerCable + modulesCount + tailSections;
 
+    const orientation = getPlanningHeatmapOrientation();
     const wrapper = document.createElement("div");
-    wrapper.className = "hm-grid-vertical";
 
-    // Channel reference column (CH)
-    const channelCol = document.createElement("div");
-    channelCol.className = "hm-col hm-col-channel";
-    channelCol.style.gridTemplateRows = `36px repeat(${totalRows}, 32px)`;
+    if (orientation === 'horizontal') {
+      // Horizontal layout: streamers as rows, sections as columns.
+      // Cell height fits all streamer rows in ~55% of the viewport height.
+      const availH = Math.max(300, window.innerHeight * 0.55);
+      const cellHeight = Math.max(24, Math.min(40, Math.floor(availH / (cableCount + 1))));
 
-    const channelLabel = document.createElement("div");
-    channelLabel.className = "hm-col-label hm-col-label-channel";
-    channelLabel.textContent = "CH";
-    channelCol.appendChild(channelLabel);
+      // Cell width: compute so ALL section columns fit the container without horizontal scroll.
+      const LABEL_W = 40;
+      const GAP_H = 1;
+      const containerContent = container.clientWidth - 16;
+      const cellWidth = Math.max(1, Math.floor((containerContent - LABEL_W) / totalRows - GAP_H));
 
-    for (let s = 0; s < maxSectionsPerCable; s++) {
-      const channelCell = document.createElement("div");
-      channelCell.className = "hm-vcell hm-channel-ref";
-      const startCh = s * channelsPerSection + 1;
-      const endCh = startCh + channelsPerSection - 1;
-      channelCell.textContent = `${startCh}-${endCh}`;
-      channelCell.title = `Channels ${startCh}–${endCh}`;
-      channelCol.appendChild(channelCell);
+      wrapper.className = 'hm-grid-horizontal';
+      wrapper.style.width = '100%';
+      wrapper.style.setProperty('--hm-cell-h', `${cellHeight}px`);
+      wrapper.style.setProperty('--hm-cell-w', `${cellWidth}px`);
+      wrapper.style.setProperty('--hm-label-w', `${LABEL_W}px`);
+      wrapper.style.setProperty('--hm-row-gap', `${GAP_H}px`);
+      const chRowHeight = Math.max(48, Math.min(88, cellWidth * 14));
+      wrapper.style.setProperty('--hm-ch-row-h', `${chRowHeight}px`);
 
-      const sectionNumber = s + 1;
-      const isFirstModule = sectionNumber === 1;
-      const isRegularModule = sectionNumber > 1 && (sectionNumber - 1) % moduleFreq === 0;
-      const isLastModule = sectionNumber === maxSectionsPerCable;
+      const maxColTemplate = `var(--hm-label-w, 40px) repeat(${totalRows}, var(--hm-cell-w, 52px))`;
 
-      if (isFirstModule || isRegularModule || isLastModule) {
-        const moduleChannelCell = document.createElement("div");
-        moduleChannelCell.className = "hm-vcell hm-module-row";
-        moduleChannelCell.textContent = "—";
-        channelCol.appendChild(moduleChannelCell);
-      }
-    }
-
-    for (let t = 0; t < tailSections; t++) {
-      const tailChannelCell = document.createElement("div");
-      tailChannelCell.className = "hm-vcell hm-channel-ref hm-tail-ref";
-      tailChannelCell.textContent = "---";
-      tailChannelCell.title = "Tail Section (no channels)";
-      channelCol.appendChild(tailChannelCell);
-    }
-
-    wrapper.appendChild(channelCol);
-
-    // Render each streamer column (right-to-left: S12..S1)
-    for (let streamerId = cableCount; streamerId >= 1; streamerId--) {
-      const sections = lastCleaned[streamerId] || [];
-      const effectiveSections = getEffectiveSectionsPerCable(streamerId);
-
-      const colRows = countHeatmapColumnRows(effectiveSections, moduleFreq, tailSections);
-      const col = document.createElement("div");
-      col.className = "hm-col";
-      col.style.gridTemplateRows = `36px repeat(${colRows}, 32px)`;
-
-      const label = document.createElement("div");
-      label.className = "hm-col-label hm-header";
-      label.textContent = `S${streamerId}`;
-      col.appendChild(label);
-
-      let moduleNum = 1;
-
-      for (let s = 0; s < effectiveSections; s++) {
-        const lastDate = sections[s];
-        let days = null;
-        if (lastDate) {
-          days = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+      // Build interleaved section/EB/tail cells for a single row.
+      function buildRowCells(row, cellFactory, sectionCount) {
+        let moduleNum = 1;
+        for (let s = 0; s < sectionCount; s++) {
+          row.appendChild(cellFactory('section', s, null, null));
+          if (shouldInsertModuleAfterSection(s + 1, sectionCount, moduleFreq)) {
+            row.appendChild(cellFactory('module', s, moduleNum, null));
+            moduleNum++;
+          }
         }
-        const bucket = ageBucket(days);
-
-        const cell = document.createElement("div");
-        cell.className = "hm-vcell hm-active-section hm-planning-cell";
-        cell.dataset.streamer = streamerId;
-        cell.dataset.section = s;
-        cell.dataset.age = bucket;
-        // Store days text so noise toggle can restore it
-        const daysText = days !== null ? String(days) : "—";
-        cell.dataset.daysText = daysText;
-        cell.textContent = daysText;
-
-        col.appendChild(cell);
-
-        if (shouldInsertModuleAfterSection(s + 1, effectiveSections, moduleFreq)) {
-          const moduleCell = document.createElement("div");
-          moduleCell.className = "hm-vcell hm-module";
-          moduleCell.textContent = formatEB(moduleNum);
-          moduleCell.title = `Equipment Box ${String(moduleNum).padStart(2, "0")}`;
-          col.appendChild(moduleCell);
-          moduleNum++;
+        for (let t = 0; t < tailSections; t++) {
+          row.appendChild(cellFactory('tail', null, null, t));
         }
+        return countHeatmapColumnRows(sectionCount, moduleFreq, tailSections);
       }
 
-      // Tail sections
+      // CH row — channel range labels per section column
+      const chRow = document.createElement('div');
+      chRow.className = 'hm-row hm-row-ch';
+      chRow.style.gridTemplateColumns = maxColTemplate;
+
+      const chCorner = document.createElement('div');
+      chCorner.className = 'hm-row-label';
+      chCorner.textContent = 'CH';
+      chRow.appendChild(chCorner);
+
+      buildRowCells(chRow, (type, s, _modNum, _tailIdx) => {
+        const cell = document.createElement('div');
+        if (type === 'section') {
+          cell.className = 'hm-vcell hm-channel-ref hm-ch-range';
+          const startCh = s * channelsPerSection + 1;
+          const endCh = startCh + channelsPerSection - 1;
+          cell.textContent = `${startCh}-${endCh}`;
+          cell.title = `Channels ${startCh}–${endCh}`;
+        } else if (type === 'module') {
+          cell.className = 'hm-vcell hm-module-row';
+          cell.textContent = '—';
+        } else {
+          cell.className = 'hm-vcell hm-channel-ref hm-tail-ref';
+          cell.textContent = '---';
+          cell.title = 'Tail Section (no channels)';
+        }
+        return cell;
+      }, maxSectionsPerCable);
+      wrapper.appendChild(chRow);
+
+      // One row per streamer (S1 up to highest)
+      for (let streamerId = 1; streamerId <= cableCount; streamerId++) {
+        const sections = lastCleaned[streamerId] || [];
+        const effectiveSections = getEffectiveSectionsPerCable(streamerId);
+
+        const row = document.createElement('div');
+        row.className = 'hm-row';
+
+        const streamerLabel = document.createElement('div');
+        streamerLabel.className = 'hm-row-label hm-header';
+        streamerLabel.textContent = `S${streamerId}`;
+        row.appendChild(streamerLabel);
+
+        const cellCount = buildRowCells(row, (type, s, modNum, tailIdx) => {
+          const cell = document.createElement('div');
+          if (type === 'section') {
+            const lastDate = sections[s];
+            let days = null;
+            if (lastDate) {
+              days = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+            }
+            const daysText = days !== null ? String(days) : "—";
+            cell.className = 'hm-vcell hm-active-section hm-planning-cell';
+            cell.dataset.streamer = streamerId;
+            cell.dataset.section = s;
+            cell.dataset.age = ageBucket(days);
+            cell.dataset.daysText = daysText;
+            cell.textContent = daysText;
+          } else if (type === 'module') {
+            const ebLabel = String(modNum).padStart(2, '0');
+            cell.className = 'hm-vcell hm-module';
+            cell.textContent = `EB${ebLabel}`;
+            cell.title = `Equipment Box ${ebLabel}`;
+          } else {
+            const tailSectionIdx = effectiveSections + tailIdx;
+            const lastDate = sections[tailSectionIdx] || null;
+            let days = null;
+            if (lastDate) {
+              days = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+            }
+            const tailDaysText = days !== null ? String(days) : "—";
+            cell.className = 'hm-vcell hm-tail-section hm-planning-cell';
+            cell.dataset.streamer = streamerId;
+            cell.dataset.section = tailSectionIdx;
+            cell.dataset.isTail = 'true';
+            cell.dataset.age = days !== null ? ageBucket(days) : 'never';
+            cell.dataset.daysText = tailDaysText;
+            cell.textContent = tailDaysText;
+          }
+          return cell;
+        }, effectiveSections);
+
+        row.style.gridTemplateColumns = `var(--hm-label-w, 40px) repeat(${cellCount}, var(--hm-cell-w, 52px))`;
+        wrapper.appendChild(row);
+      }
+    } else {
+      // Vertical layout (default): streamers as columns, sections as rows.
+      // CSS grid with fr units so all columns fill the container width — same as main page.
+      wrapper.className = "hm-grid-vertical";
+      wrapper.style.width = "100%";
+      wrapper.style.display = "grid";
+      wrapper.style.gridTemplateColumns = `repeat(${cableCount + 1}, 1fr)`;
+      wrapper.style.gap = "4px";
+      wrapper.style.columnGap = "8px";
+      wrapper.style.setProperty("--hm-cell-w", "100%");
+      wrapper.style.setProperty("--hm-cell-h", "32px");
+
+      // Channel reference column (CH)
+      const channelCol = document.createElement("div");
+      channelCol.className = "hm-col hm-col-channel";
+      channelCol.style.gridTemplateRows = `36px repeat(${totalRows}, 32px)`;
+
+      const channelLabel = document.createElement("div");
+      channelLabel.className = "hm-col-label hm-col-label-channel";
+      channelLabel.textContent = "CH";
+      channelCol.appendChild(channelLabel);
+
+      for (let s = 0; s < maxSectionsPerCable; s++) {
+        const channelCell = document.createElement("div");
+        channelCell.className = "hm-vcell hm-channel-ref";
+        const startCh = s * channelsPerSection + 1;
+        const endCh = startCh + channelsPerSection - 1;
+        channelCell.textContent = `${startCh}-${endCh}`;
+        channelCell.title = `Channels ${startCh}–${endCh}`;
+        channelCol.appendChild(channelCell);
+
+        const sectionNumber = s + 1;
+        const isFirstModule = sectionNumber === 1;
+        const isRegularModule = sectionNumber > 1 && (sectionNumber - 1) % moduleFreq === 0;
+        const isLastModule = sectionNumber === maxSectionsPerCable;
+
+        if (isFirstModule || isRegularModule || isLastModule) {
+          const moduleChannelCell = document.createElement("div");
+          moduleChannelCell.className = "hm-vcell hm-module-row";
+          moduleChannelCell.textContent = "—";
+          channelCol.appendChild(moduleChannelCell);
+        }
+      }
+
       for (let t = 0; t < tailSections; t++) {
-        const tailIdx = effectiveSections + t;
-        const lastDate = sections[tailIdx] || null;
-        let days = null;
-        if (lastDate) {
-          days = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
-        }
-        const bucket = days !== null ? ageBucket(days) : "never";
-
-        const tailCell = document.createElement("div");
-        tailCell.className = "hm-vcell hm-tail-section hm-planning-cell";
-        tailCell.dataset.streamer = streamerId;
-        tailCell.dataset.section = tailIdx;
-        tailCell.dataset.isTail = "true";
-        tailCell.dataset.age = bucket;
-        const tailDaysText = days !== null ? String(days) : "—";
-        tailCell.dataset.daysText = tailDaysText;
-        tailCell.textContent = tailDaysText;
-
-        col.appendChild(tailCell);
+        const tailChannelCell = document.createElement("div");
+        tailChannelCell.className = "hm-vcell hm-channel-ref hm-tail-ref";
+        tailChannelCell.textContent = "---";
+        tailChannelCell.title = "Tail Section (no channels)";
+        channelCol.appendChild(tailChannelCell);
       }
 
-      wrapper.appendChild(col);
+      wrapper.appendChild(channelCol);
+
+      // Render each streamer column (right-to-left: S12..S1)
+      for (let streamerId = cableCount; streamerId >= 1; streamerId--) {
+        const sections = lastCleaned[streamerId] || [];
+        const effectiveSections = getEffectiveSectionsPerCable(streamerId);
+
+        const colRows = countHeatmapColumnRows(effectiveSections, moduleFreq, tailSections);
+        const col = document.createElement("div");
+        col.className = "hm-col";
+        col.style.gridTemplateRows = `36px repeat(${colRows}, 32px)`;
+
+        const label = document.createElement("div");
+        label.className = "hm-col-label hm-header";
+        label.textContent = `S${streamerId}`;
+        col.appendChild(label);
+
+        let moduleNum = 1;
+
+        for (let s = 0; s < effectiveSections; s++) {
+          const lastDate = sections[s];
+          let days = null;
+          if (lastDate) {
+            days = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+          }
+          const daysText = days !== null ? String(days) : "—";
+
+          const cell = document.createElement("div");
+          cell.className = "hm-vcell hm-active-section hm-planning-cell";
+          cell.dataset.streamer = streamerId;
+          cell.dataset.section = s;
+          cell.dataset.age = ageBucket(days);
+          cell.dataset.daysText = daysText;
+          cell.textContent = daysText;
+
+          col.appendChild(cell);
+
+          if (shouldInsertModuleAfterSection(s + 1, effectiveSections, moduleFreq)) {
+            const moduleCell = document.createElement("div");
+            moduleCell.className = "hm-vcell hm-module";
+            moduleCell.textContent = formatEB(moduleNum);
+            moduleCell.title = `Equipment Box ${String(moduleNum).padStart(2, "0")}`;
+            col.appendChild(moduleCell);
+            moduleNum++;
+          }
+        }
+
+        // Tail sections
+        for (let t = 0; t < tailSections; t++) {
+          const tailIdx = effectiveSections + t;
+          const lastDate = sections[tailIdx] || null;
+          let days = null;
+          if (lastDate) {
+            days = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+          }
+          const tailDaysText = days !== null ? String(days) : "—";
+
+          const tailCell = document.createElement("div");
+          tailCell.className = "hm-vcell hm-tail-section hm-planning-cell";
+          tailCell.dataset.streamer = streamerId;
+          tailCell.dataset.section = tailIdx;
+          tailCell.dataset.isTail = "true";
+          tailCell.dataset.age = days !== null ? ageBucket(days) : "never";
+          tailCell.dataset.daysText = tailDaysText;
+          tailCell.textContent = tailDaysText;
+
+          col.appendChild(tailCell);
+        }
+
+        wrapper.appendChild(col);
+      }
     }
 
     container.appendChild(wrapper);
@@ -1505,6 +1668,8 @@ async function initPlanningApp() {
   initSuggestionsThresholdControl(); // populates threshold input and wires save button
   initNoiseControls();  // registers noise toggle/upload event listeners
   initSuggestionsSortHandlers();
+  initPlanningOrientationToggle();
+  updatePlanningOrientationButtons();
   setupPlanningNavigation(); // left-rail sidebar nav (must run after initNoiseControls)
 
   // Initial data load — refreshNoiseForProject calls renderPlanningHeatmap internally
