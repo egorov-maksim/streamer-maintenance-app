@@ -553,12 +553,12 @@ function createStatsRouter(authMiddleware) {
       const uploadWhere = uploadConditions.join(" AND ");
 
       const uploads = await getAllCamelized(
-        `SELECT id, uploaded_at, label FROM noise_uploads WHERE ${uploadWhere} ORDER BY uploaded_at ASC`,
+        `SELECT id, uploaded_at, label, water_speed_start, water_speed_end FROM noise_uploads WHERE ${uploadWhere} ORDER BY uploaded_at ASC`,
         uploadParams
       );
 
       if (uploads.length === 0) {
-        return res.json({ uploads: [], streamers: [] });
+        return res.json({ uploads: [], streamers: [], waterSpeedAvg: [] });
       }
 
       const uploadIds = uploads.map((u) => u.id);

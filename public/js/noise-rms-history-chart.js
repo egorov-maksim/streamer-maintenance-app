@@ -68,7 +68,11 @@ export async function renderNoiseRmsHistoryChart(projectNumber) {
     }
 
     const labels = data.uploads.map((u, i) => shortUploadLabel(u, i));
-    const datasets = (data.streamers || []).map((s, idx) => ({
+
+    const waterSpeedAvg = data.waterSpeedAvg || [];
+    const hasSpeed = waterSpeedAvg.some((v) => v != null);
+
+    const datasets = (data.streamers || []).map((s) => ({
       label: `Streamer ${s.streamerId}`,
       data: s.avgRms,
       borderColor: STREAMER_COLORS[(s.streamerId - 1) % STREAMER_COLORS.length],
@@ -77,12 +81,56 @@ export async function renderNoiseRmsHistoryChart(projectNumber) {
       pointRadius: 3,
       spanGaps: false,
       tension: 0.1,
+      yAxisID: "y",
     }));
+
+    if (hasSpeed) {
+      datasets.push({
+        label: "Water speed (kts)",
+        data: waterSpeedAvg,
+        borderColor: "rgba(55, 65, 81, 0.85)",
+        backgroundColor: "transparent",
+        borderWidth: 2,
+        borderDash: [6, 3],
+        pointRadius: 4,
+        pointStyle: "triangle",
+        spanGaps: false,
+        tension: 0.1,
+        yAxisID: "y1",
+        order: -1,
+      });
+    }
 
     container.replaceChildren();
     const canvas = document.createElement("canvas");
     canvas.className = "stats-daily-chart-canvas";
     container.appendChild(canvas);
+
+    const scales = {
+      x: {
+        title: { display: true, text: "Noise upload" },
+        ticks: {
+          maxRotation: 45,
+          minRotation: 0,
+          autoSkip: true,
+          maxTicksLimit: 16,
+        },
+      },
+      y: {
+        beginAtZero: true,
+        title: { display: true, text: "Avg RMS (active sections)" },
+        position: "left",
+      },
+    };
+
+    if (hasSpeed) {
+      scales.y1 = {
+        beginAtZero: true,
+        title: { display: true, text: "Water speed (kts)" },
+        position: "right",
+        grid: { drawOnChartArea: false },
+      };
+    }
 
     noiseRmsChartInstance = new window.Chart(canvas, {
       type: "line",
@@ -91,7 +139,7 @@ export async function renderNoiseRmsHistoryChart(projectNumber) {
         responsive: true,
         maintainAspectRatio: true,
         aspectRatio: 2.4,
-        interaction: { mode: "nearest", intersect: false },
+        interaction: { mode: "index", intersect: false },
         plugins: {
           legend: {
             display: true,
@@ -108,26 +156,15 @@ export async function renderNoiseRmsHistoryChart(projectNumber) {
               label(item) {
                 const v = item.parsed.y;
                 if (v == null) return ` ${item.dataset.label}: —`;
+                if (item.dataset.yAxisID === "y1") {
+                  return ` ${item.dataset.label}: ${v.toFixed(2)} kts`;
+                }
                 return ` ${item.dataset.label}: ${v.toFixed(2)} RMS`;
               },
             },
           },
         },
-        scales: {
-          x: {
-            title: { display: true, text: "Noise upload" },
-            ticks: {
-              maxRotation: 45,
-              minRotation: 0,
-              autoSkip: true,
-              maxTicksLimit: 16,
-            },
-          },
-          y: {
-            beginAtZero: true,
-            title: { display: true, text: "Avg RMS (active sections)" },
-          },
-        },
+        scales,
       },
     });
 

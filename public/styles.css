@@ -404,7 +404,8 @@
     width: var(--hm-cell-w, 52px);
     height: var(--hm-cell-h, 32px);
     border-radius: 6px;
-    font-size: 10px;
+    font-size: calc(var(--hm-cell-h, 32px) * 0.5);
+    line-height: 1;
     font-weight: 600;
     display: inline-flex;
     align-items: center;
@@ -429,7 +430,6 @@
     border: 2px solid #f59e0b !important;
     color: #78350f;
     font-weight: 700;
-    font-size: 10px;
     cursor: default;
     pointer-events: none;
   }
@@ -570,9 +570,10 @@
     height: var(--hm-ch-row-h, 64px);
   }
 
-  /* In horizontal mode cells are too narrow to show text — show colour only.
-     EB module labels (.hm-module) are kept visible as positional anchors. */
-  .hm-grid-horizontal .hm-vcell {
+  /* Horizontal mode: colour-only data cells — section numbers and EB labels hidden. */
+  .hm-grid-horizontal .hm-vcell.hm-active-section,
+  .hm-grid-horizontal .hm-vcell.hm-tail-section,
+  .hm-grid-horizontal .hm-vcell.hm-module {
     font-size: 0;
     color: transparent;
   }
@@ -1057,7 +1058,7 @@
   .hm-channel-ref,
   .hm-tail-ref {
     background: #f3f4f6 !important;
-    font-size: 9px;
+    font-size: calc(var(--hm-cell-h, 32px) * 0.38);
     color: #6b7280;
     pointer-events: none;
     font-weight: 600;
@@ -1202,9 +1203,9 @@
     .hm-col {
       grid-template-rows: 32px repeat(var(--sections, 107), 28px);
     }
-  
-    .hm-vcell {
-      font-size: 9px;
+
+    .hm-grid-vertical {
+      --hm-cell-h: 28px;
     }
   
     .hm-col-label {

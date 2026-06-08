@@ -1431,6 +1431,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
       wrapper.style.columnGap = '8px';
       // Signal cells to fill their column rather than using a fixed px width
       wrapper.style.setProperty('--hm-cell-w', '100%');
+      wrapper.style.setProperty('--hm-cell-h', '32px');
 
 
       // Channel reference column (CH)
