@@ -1978,7 +1978,10 @@ async function refreshEverything(preloadedLastCleaned = null) {
   await Promise.allSettled([
     renderLog(),
     renderAlerts(lastCleanedData),
-    renderStreamerCards(null, null, lastCleanedData),
+    renderStreamerCards(
+      safeGet('filter-start')?.value || null,
+      safeGet('filter-end')?.value || null
+    ),
   ]);
 }
 
@@ -2501,8 +2504,9 @@ let dashboardVisibilityHandler = null;
 let dashboardRefreshInFlight = false;
 
 /**
- * Fetches events, last-cleaned, deployments, and KPI stats in one round-trip pattern
- * shared by initial load and background refresh.
+ * Fetches events, last-cleaned, deployments, and overall KPI stats in one round-trip pattern
+ * shared by initial load and background refresh. Date-filtered stats are fetched inside
+ * refreshStatsFiltered() so the active filter-start/filter-end inputs are always respected.
  */
 async function fetchDashboardDataBundle() {
   const projectParam = selectedProjectFilter ? encodeURIComponent(selectedProjectFilter) : null;
@@ -2510,23 +2514,19 @@ async function fetchDashboardDataBundle() {
     ? `api/last-cleaned?project=${projectParam}`
     : "api/last-cleaned";
   const statsUrl = projectParam ? `/api/stats?project=${projectParam}` : "/api/stats";
-  const statsFilterUrl = projectParam
-    ? `/api/stats/filter?project=${projectParam}`
-    : "/api/stats/filter";
   const active = getActiveProject();
   const deploymentsPromise = active
     ? API.apiCall(`/api/projects/${active.id}/streamer-deployments`).catch(() => ({}))
     : Promise.resolve({});
 
-  const [, lastCleanedData, deployments, overallStats, filterStats] = await Promise.all([
+  const [, lastCleanedData, deployments, overallStats] = await Promise.all([
     loadEvents(),
     API.apiCall(lastCleanedUrl),
     deploymentsPromise,
     API.apiCall(statsUrl),
-    API.apiCall(statsFilterUrl),
   ]);
 
-  return { lastCleanedData, deployments, overallStats, filterStats };
+  return { lastCleanedData, deployments, overallStats };
 }
 
 function stopDashboardAutoRefresh() {
@@ -2549,12 +2549,12 @@ async function silentRefreshDashboardData() {
   if (dashboardRefreshInFlight) return;
   dashboardRefreshInFlight = true;
   try {
-    const { lastCleanedData, deployments, overallStats, filterStats } = await fetchDashboardDataBundle();
+    const { lastCleanedData, deployments, overallStats } = await fetchDashboardDataBundle();
     await Promise.allSettled([
       renderLog(),
       renderAlerts(lastCleanedData),
       renderHeatmap(lastCleanedData, deployments),
-      refreshStatsFiltered(lastCleanedData, deployments, overallStats, filterStats),
+      refreshStatsFiltered(lastCleanedData, deployments, overallStats),
     ]);
   } catch (err) {
     console.debug("Background dashboard refresh failed:", err?.message ?? err);
@@ -2638,13 +2638,13 @@ async function initAppContent() {
   const evtMethodEl = safeGet('evt-method');
   if (evtMethodEl) evtMethodEl.value = selectedMethod;
 
-  const { lastCleanedData, deployments, overallStats, filterStats } = await fetchDashboardDataBundle();
+  const { lastCleanedData, deployments, overallStats } = await fetchDashboardDataBundle();
 
   // Render using pre-fetched data — no duplicate network calls.
   await renderLog();
   await renderAlerts(lastCleanedData);
   await renderHeatmap(lastCleanedData, deployments);
-  await refreshStatsFiltered(lastCleanedData, deployments, overallStats, filterStats);
+  await refreshStatsFiltered(lastCleanedData, deployments, overallStats);
 
   // Set default date/time for manual entry
   const now = new Date();

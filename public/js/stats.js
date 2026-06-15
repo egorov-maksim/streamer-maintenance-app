@@ -16,82 +16,69 @@
 import { config, events, projects, selectedProjectFilter, getFilteredEvents } from "./state.js";
 import * as API from "./api.js";
 import { safeGet, showErrorToast, formatDateTime } from "./ui.js";
-import { fmtKm, formatSectionLabel, eventDistance, getEBRangeForSectionRange, getEffectiveSectionsPerCable } from "./streamer-utils.js";
+import {
+  fmtKm, formatSectionLabel, eventDistance, getEBRangeForSectionRange, getEffectiveSectionsPerCable,
+  countUniqueSectionsInPeriod,
+} from "./streamer-utils.js";
 import { openModal, closeModal } from "./modals.js";
 import { renderDailyDistanceChart } from "./daily-distance-chart.js";
 
-export async function renderStreamerCards(startDate = null, endDate = null, preloadedLastCleaned = null) {
+/**
+ * Compute per-streamer and spread coverage from unique sections touched in the date window.
+ * Spread KPI and streamer cards share this single counting rule.
+ * @param {Object} p
+ * @param {string|null} p.startDate - YYYY-MM-DD lower bound
+ * @param {string|null} p.endDate - YYYY-MM-DD upper bound
+ * @returns {{ perStreamer: Array, spreadActive: number, spreadTail: number, spreadTotal: number }}
+ */
+function computeCoverageStats({ startDate, endDate }) {
+  const cableCount = config.numCables;
+  const tailSections = config.useRopeForTail ? 0 : 5;
+  const allEvents = getFilteredEvents();
+  const perStreamer = [];
+  let spreadActive = 0, spreadTail = 0;
+
+  for (let streamerId = 1; streamerId <= cableCount; streamerId++) {
+    const effectiveSections = getEffectiveSectionsPerCable(streamerId);
+    const totalPerCable = effectiveSections + tailSections;
+    const counts = countUniqueSectionsInPeriod(allEvents, streamerId, effectiveSections, startDate, endDate);
+
+    spreadActive += counts.active;
+    spreadTail += counts.tail;
+
+    const cleanedCount = counts.total;
+    const coverage = totalPerCable > 0 ? Math.round((cleanedCount / totalPerCable) * 100) : 0;
+    const untouched = totalPerCable - cleanedCount;
+    const detailLine = `${cleanedCount}/${totalPerCable} unique · ${untouched} untouched`;
+
+    perStreamer.push({ streamerId, cleanedCount, totalPerCable, coverage, detailLine });
+  }
+
+  return { perStreamer, spreadActive, spreadTail, spreadTotal: spreadActive + spreadTail };
+}
+
+export async function renderStreamerCards(startDate = null, endDate = null, precomputedPerStreamer = null) {
   const container = safeGet("streamer-cards-container");
   if (!container) return;
 
   container.innerHTML = "";
 
   try {
-    let data;
-    if (preloadedLastCleaned) {
-      data = preloadedLastCleaned;
-    } else {
-      let url = "api/last-cleaned";
-      if (selectedProjectFilter) url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
-      data = await API.apiCall(url);
-    }
-    const lastCleaned = data.lastCleaned;
+    const rows = precomputedPerStreamer ?? computeCoverageStats({ startDate, endDate }).perStreamer;
 
-    const cableCount = config.numCables;
-    const tailSections = config.useRopeForTail ? 0 : 5;
-
-    for (let streamerId = 1; streamerId <= cableCount; streamerId++) {
-      const sections = lastCleaned[streamerId] || [];
-      const effectiveSections = getEffectiveSectionsPerCable(streamerId);
-      const totalPerCable = effectiveSections + tailSections;
-
-      let filteredEvents = events.filter((evt) => evt.streamerId === streamerId);
-
-      if (startDate || endDate) {
-        filteredEvents = filteredEvents.filter((evt) => {
-          const evtDate = new Date(evt.cleanedAt).toISOString().split("T")[0];
-          if (startDate && evtDate < startDate) return false;
-          if (endDate && evtDate > endDate) return false;
-          return true;
-        });
-      }
-
-      let cleanedCount = 0;
-      const totalCleanings = filteredEvents.length;
-
-      sections.forEach((date) => {
-        if (!date) return;
-        if (startDate || endDate) {
-          const sectionDate = new Date(date).toISOString().split("T")[0];
-          if (startDate && sectionDate < startDate) return;
-          if (endDate && sectionDate > endDate) return;
-        }
-        cleanedCount++;
-      });
-
-      const coverage =
-        totalPerCable > 0 ? Math.round((cleanedCount / totalPerCable) * 100) : 0;
-
-      let totalSectionCleanings = 0;
-      filteredEvents.forEach((evt) => {
-        totalSectionCleanings += evt.sectionIndexEnd - evt.sectionIndexStart + 1;
-      });
-
-      const avgCleanings =
-        totalPerCable > 0 ? (totalSectionCleanings / totalPerCable).toFixed(1) : 0;
-
+    for (const row of rows) {
       const card = document.createElement("div");
       card.className = "streamer-card";
       card.innerHTML = `
         <div class="streamer-card-header">
-          <div class="streamer-card-title">Streamer ${streamerId}</div>
-          <div class="streamer-card-percent">${coverage}%</div>
+          <div class="streamer-card-title">Streamer ${row.streamerId}</div>
+          <div class="streamer-card-percent">${row.coverage}%</div>
         </div>
         <div class="streamer-card-detail">
-          ${cleanedCount}/${totalPerCable} sections · ${avgCleanings} avg cleanings
+          ${row.detailLine}
         </div>
         <div class="progress-bar">
-          <div class="progress-fill" style="width: ${coverage}%"></div>
+          <div class="progress-fill" style="width: ${row.coverage}%"></div>
         </div>
       `;
       container.appendChild(card);
@@ -105,11 +92,10 @@ export async function renderStreamerCards(startDate = null, endDate = null, prel
 export async function refreshStatsFiltered(
   preloadedLastCleaned = null,
   preloadedDeployments = null,
-  preloadedStats = null,
-  preloadedFilterStats = null
+  preloadedStats = null
 ) {
-  const startDate = safeGet("filter-start")?.value;
-  const endDate = safeGet("filter-end")?.value;
+  const startDate = safeGet("filter-start")?.value || null;
+  const endDate = safeGet("filter-end")?.value || null;
 
   try {
     let overallStats;
@@ -121,50 +107,42 @@ export async function refreshStatsFiltered(
       overallStats = await API.apiCall(`/api/stats?${statsParams}`);
     }
 
-    let data;
-    if (preloadedFilterStats) {
-      data = preloadedFilterStats;
-    } else {
-      const params = new URLSearchParams();
-      if (startDate) params.append("start", startDate);
-      if (endDate) params.append("end", endDate);
-      if (selectedProjectFilter) params.append("project", selectedProjectFilter);
-      data = await API.apiCall(`/api/stats/filter?${params}`);
-    }
+    // Always read filter-start/filter-end from the DOM so background refresh cannot
+    // overwrite date-filtered KPIs with a stale unfiltered /api/stats/filter payload.
+    const params = new URLSearchParams();
+    if (startDate) params.append("start", startDate);
+    if (endDate) params.append("end", endDate);
+    if (selectedProjectFilter) params.append("project", selectedProjectFilter);
+    const data = await API.apiCall(`/api/stats/filter?${params}`);
+
+    const coverage = computeCoverageStats({ startDate, endDate });
 
     const totalActiveSections = overallStats.totalAvailableSections;
     const totalTailSections = overallStats.totalAvailableTail;
     const totalSections = totalActiveSections + totalTailSections;
 
-    const displayStats = startDate || endDate ? data : overallStats;
-
-    const totalCleanedSections = displayStats.uniqueCleanedSections || 0;
     const overallCoverage =
       totalSections > 0
-        ? ((totalCleanedSections / totalSections) * 100).toFixed(1)
+        ? ((coverage.spreadTotal / totalSections) * 100).toFixed(1)
         : 0;
-
-    const cleanedActiveCount = displayStats.activeCleanedSections || 0;
     const activeCoverage =
       totalActiveSections > 0
-        ? ((cleanedActiveCount / totalActiveSections) * 100).toFixed(1)
+        ? ((coverage.spreadActive / totalActiveSections) * 100).toFixed(1)
         : 0;
-
-    const cleanedTailCount = displayStats.tailCleanedSections || 0;
     const tailCoverage =
       totalTailSections > 0
-        ? ((cleanedTailCount / totalTailSections) * 100).toFixed(1)
+        ? ((coverage.spreadTail / totalTailSections) * 100).toFixed(1)
         : 0;
 
     safeGet("kpi-coverage").textContent = `${overallCoverage}%`;
-    safeGet("kpi-coverage-sub").textContent = `${totalCleanedSections} / ${totalSections} sections`;
+    safeGet("kpi-coverage-sub").textContent = `${coverage.spreadTotal} / ${totalSections} sections`;
 
     if (totalTailSections > 0) {
       safeGet("kpi-breakdown").textContent =
-        `Active: ${activeCoverage}% (${cleanedActiveCount}/${totalActiveSections}) · Tail: ${tailCoverage}% (${cleanedTailCount}/${totalTailSections})`;
+        `Active: ${activeCoverage}% (${coverage.spreadActive}/${totalActiveSections}) · Tail: ${tailCoverage}% (${coverage.spreadTail}/${totalTailSections})`;
     } else {
       safeGet("kpi-breakdown").textContent =
-        `Active: ${activeCoverage}% (${cleanedActiveCount}/${totalActiveSections})`;
+        `Active: ${activeCoverage}% (${coverage.spreadActive}/${totalActiveSections})`;
     }
 
     safeGet("kpi-distance").textContent = fmtKm(data.totalDistance);
@@ -291,7 +269,7 @@ export async function refreshStatsFiltered(
       });
     }
 
-    await renderStreamerCards(startDate, endDate, preloadedLastCleaned);
+    await renderStreamerCards(startDate, endDate, coverage.perStreamer);
     renderDailyDistanceChart(startDate, endDate);
   } catch (err) {
     console.error("refreshStatsFiltered failed", err);
