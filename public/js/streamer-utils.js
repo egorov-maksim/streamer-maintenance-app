@@ -192,3 +192,54 @@ export function validateStreamerAndSections(streamerNum, startSection, endSectio
   }
   return { valid: true, maxStreamer, maxSection };
 }
+
+// ── Coverage counting helpers ─────────────────────────────────────────────────
+
+/**
+ * Convert an ISO timestamp string to a local YYYY-MM-DD string.
+ * Avoids UTC day boundary shifts that occur with toISOString().split("T")[0].
+ */
+function isoToLocalDay(isoString) {
+  const d = new Date(isoString);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Count unique section slots touched by at least one event in [startDate, endDate].
+ * Mirrors the Set-dedup logic in /api/stats/filter for the "unique-in-period" mode,
+ * enabling per-streamer gap analysis (untouched = totalPerCable − unique).
+ * @param {Array} allEvents - events array (any streamer, any date)
+ * @param {number} streamerId - which streamer to tally
+ * @param {number} effectiveSections - active section count; tail base offset for key
+ * @param {string|null} startDate - YYYY-MM-DD lower bound, or null
+ * @param {string|null} endDate - YYYY-MM-DD upper bound, or null
+ * @returns {{ total: number, active: number, tail: number }}
+ */
+export function countUniqueSectionsInPeriod(allEvents, streamerId, effectiveSections, startDate, endDate) {
+  const uniqueActive = new Set();
+  const uniqueTail = new Set();
+  for (const evt of allEvents) {
+    if (evt.streamerId !== streamerId) continue;
+    if (startDate || endDate) {
+      const evtDay = isoToLocalDay(evt.cleanedAt);
+      if (startDate && evtDay < startDate) continue;
+      if (endDate && evtDay > endDate) continue;
+    }
+    const isTail = evt.sectionType === "tail";
+    for (let s = evt.sectionIndexStart; s <= evt.sectionIndexEnd; s++) {
+      if (isTail) {
+        uniqueTail.add(effectiveSections + s);
+      } else {
+        uniqueActive.add(s);
+      }
+    }
+  }
+  return {
+    total: uniqueActive.size + uniqueTail.size,
+    active: uniqueActive.size,
+    tail: uniqueTail.size,
+  };
+}
