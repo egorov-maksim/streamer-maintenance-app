@@ -31,7 +31,10 @@ import {
   showSuccessToast,
   showAccessDeniedToast,
   formatDateTime,
+  escapeHtml,
 } from "./js/ui.js";
+import { toDateInputValue, toTimeInputValue } from "./js/date-utils.js";
+import { parseCsvEventRows } from "./js/csv-import.js";
 import {
   setOnShowAppCallback,
   loadSession,
@@ -83,6 +86,7 @@ const fmtKm = StreamerUtils.fmtKm;
 const getChannelRange = StreamerUtils.getChannelRange;
 const formatAS = StreamerUtils.formatAS;
 const formatSectionLabel = StreamerUtils.formatSectionLabel;
+const formatRangeLabel = StreamerUtils.formatRangeLabel;
 const formatEB = StreamerUtils.formatEB;
 const getConfigForProject = StreamerUtils.getConfigForProject;
 const getSectionsPerCableWithTail = StreamerUtils.getSectionsPerCableWithTail;
@@ -171,7 +175,7 @@ function showSectionTooltip(e, streamerId, sectionIndex) {
         <span class="tooltip-label">Last Cleaned</span>
       </div>
       <div class="tooltip-row" style="margin-top: 4px">
-        <span class="tooltip-value">${lastMethod}</span>
+        <span class="tooltip-value">${escapeHtml(lastMethod)}</span>
       </div>
       <div class="tooltip-row">
         <span class="tooltip-value">${formatDateTime(lastCleaned)}</span>
@@ -207,7 +211,7 @@ function showSectionTooltip(e, streamerId, sectionIndex) {
       html += `
         <div class="tooltip-row">
           <span class="tooltip-value">${formatDateTime(evt.cleanedAt)}</span>
-          <span class="tooltip-method">${icon} ${evt.cleaningMethod}</span>
+          <span class="tooltip-method">${icon} ${escapeHtml(evt.cleaningMethod)}</span>
         </div>
       `;
     });
@@ -627,9 +631,10 @@ function editEventPrompt(id) {
   safeGet("edit-project-number").value = evt.projectNumber || "";
   safeGet("edit-vessel-tag").value = evt.vesselTag || "TTN";
 
+  // Both inputs are read back as LOCAL time, so fill both from local getters.
   const dateObj = new Date(evt.cleanedAt);
-  safeGet('edit-date').value = dateObj.toISOString().split('T')[0];
-  safeGet('edit-time').value = dateObj.toTimeString().slice(0, 5);
+  safeGet('edit-date').value = toDateInputValue(dateObj);
+  safeGet('edit-time').value = toTimeInputValue(dateObj);
 
   safeGet('edit-modal').classList.add('show');
 }
@@ -898,10 +903,6 @@ function importCsv() {
   input.click();
 }
 
-function normalizeCsvRow(row) {
-  return row.map((field) => String(field ?? "").trim().replace(/^"|"$/g, ""));
-}
-
 async function handleCsvFile(file) {
   if (!isAdminOrAbove()) {
     showAccessDeniedToast('import CSV data');
@@ -923,69 +924,9 @@ async function handleCsvFile(file) {
     const importBtn = safeGet('btn-import-csv');
     const progressEl = safeGet('csv-import-progress');
     const dataRows = rows.slice(1).filter((row) => row.some((cell) => String(cell ?? "").trim()));
-    const total = dataRows.length;
 
-    const hasSectionTypeColumn = total > 0 && (() => {
-      const firstParts = normalizeCsvRow(dataRows[0]);
-      return firstParts.length >= 8 && (firstParts[1] === 'active' || firstParts[1] === 'tail');
-    })();
-
-    // Parse and client-side-validate all rows first; collect valid ones for batch send.
-    const validRows = [];
-    let parseErrorCount = 0;
-
-    for (const rawRow of dataRows) {
-      const parts = normalizeCsvRow(rawRow);
-      if (!parts.length) continue;
-      let streamerNum, startSection, endSection, method, dateTimeStr, projectNumber, vesselTag, sectionType;
-
-      if (hasSectionTypeColumn && parts.length >= 8 && (parts[1] === 'active' || parts[1] === 'tail')) {
-        streamerNum   = parseInt(parts[0], 10);
-        sectionType   = parts[1];
-        startSection  = parseInt(parts[2], 10);
-        endSection    = parseInt(parts[3], 10);
-        method        = parts[4];
-        dateTimeStr   = parts[5].replace(/"/g, '').trim();
-        projectNumber = parts[6] ? parts[6].replace(/"/g, '').trim() : null;
-        vesselTag     = parts[7] ? parts[7].replace(/"/g, '').trim() : 'TTN';
-      } else if (parts.length >= 5) {
-        streamerNum   = parseInt(parts[0], 10);
-        startSection  = parseInt(parts[1], 10);
-        endSection    = parseInt(parts[2], 10);
-        method        = parts[3];
-        dateTimeStr   = parts[4].replace(/"/g, '').trim();
-        projectNumber = parts[5] ? parts[5].replace(/"/g, '').trim() : null;
-        vesselTag     = parts[6] ? parts[6].replace(/"/g, '').trim() : 'TTN';
-        sectionType   = null;
-      } else {
-        parseErrorCount++;
-        continue;
-      }
-
-      if (
-        isNaN(streamerNum) || isNaN(startSection) || isNaN(endSection) ||
-        streamerNum < 1 || streamerNum > (config.numCables + 1)
-      ) { parseErrorCount++; continue; }
-
-      const dateObj = new Date(dateTimeStr);
-      if (isNaN(dateObj.getTime())) { parseErrorCount++; continue; }
-
-      const actualStart = Math.min(startSection, endSection) - 1;
-      const actualEnd   = Math.max(startSection, endSection) - 1;
-
-      const row = {
-        streamerId: streamerNum,
-        sectionIndexStart: actualStart,
-        sectionIndexEnd: actualEnd,
-        cleaningMethod: method,
-        cleanedAt: dateObj.toISOString(),
-        cleaningCount: 1,
-        projectNumber,
-        vesselTag,
-      };
-      if (sectionType) row.sectionType = sectionType;
-      validRows.push(row);
-    }
+    // Parse and client-side-validate all rows first (see js/csv-import.js); collect valid ones for batch send.
+    const { validRows, parseErrorCount } = parseCsvEventRows(dataRows, config);
 
     if (validRows.length === 0) {
       showErrorToast('Import Failed', `No valid rows found. ${parseErrorCount} row(s) could not be parsed.`);
@@ -1049,14 +990,15 @@ async function renderLog() {
     const tr = document.createElement('tr');
     const streamerNum = evt.streamerId;
     const sectionType = evt.sectionType || 'active';
-    const rangeLabel = `${formatSectionLabel(evt.sectionIndexEnd, sectionType)}–${formatSectionLabel(evt.sectionIndexStart, sectionType)}`;
+    const rangeLabel = formatRangeLabel(evt);
     const ebRange = sectionType === 'tail'
       ? '—'
       : getEBRangeForSectionRange(evt.sectionIndexStart, evt.sectionIndexEnd, config);
     const distance = eventDistance(evt);
-    const projectDisplay = evt.projectNumber || '<span style="color:#9ca3af">—</span>';
-    const vesselDisplay = evt.vesselTag || 'TTN';
-    const addedByDisplay = evt.addedByUsertag || '—';
+    // API text goes through escapeHtml: this row is built with innerHTML.
+    const projectDisplay = evt.projectNumber ? escapeHtml(evt.projectNumber) : '<span style="color:#9ca3af">—</span>';
+    const vesselDisplay = escapeHtml(evt.vesselTag || 'TTN');
+    const addedByDisplay = escapeHtml(evt.addedByUsertag || '—');
 
     const actionButtons = isAdminUser
       ? `<button class="btn btn-outline btn-edit" data-id="${evt.id}">✏️</button>
@@ -1072,7 +1014,7 @@ async function renderLog() {
       <td>${rangeLabel}</td>
       <td>${ebRange}</td>
       <td>${distance} m</td>
-      <td>${evt.cleaningMethod}</td>
+      <td>${escapeHtml(evt.cleaningMethod)}</td>
       <td>${actionButtons}</td>
     `;
     tbody.appendChild(tr);
@@ -1570,9 +1512,12 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
       }
     }
 
-    // Scroll listener
+    // Scroll listener — bound once; renderHeatmap runs every 45 s and on every filter
+    // change, so re-adding it here would accumulate handlers for the life of the tab.
     function attachScrollListener() {
       const container = safeGet('heatmap-container');
+      if (container.dataset.scrollListenerBound === '1') return;
+      container.dataset.scrollListenerBound = '1';
       let scrollTimeout;
       container.addEventListener('scroll', () => {
         container.classList.add('scrolling');
@@ -1701,7 +1646,31 @@ function _stopScrollLoop() {
   if (_scrollRAF) { cancelAnimationFrame(_scrollRAF); _scrollRAF = null; }
 }
 
+let dragDocumentListenersBound = false;
+
+/**
+ * Document-level drag handlers are registered exactly once. Per-cell handlers are
+ * re-attached on every render because the cells themselves are rebuilt.
+ */
+function bindDragDocumentListeners() {
+  if (dragDocumentListenersBound) return;
+  dragDocumentListenersBound = true;
+
+  document.addEventListener('mousemove', (e) => {
+    _mouseY = e.clientY;
+    if (dragState.active) _startScrollLoop();
+  });
+
+  document.addEventListener('mouseup', () => {
+    _stopScrollLoop();
+    if (dragState.active) {
+      showConfirmationModal();
+    }
+  });
+}
+
 function attachDragListeners() {
+  bindDragDocumentListeners();
   const cells = document.querySelectorAll('.hm-vcell:not(.hm-module)');
 
   cells.forEach(cell => {
@@ -1732,18 +1701,6 @@ function attachDragListeners() {
         updateDragHighlight();
       }
     });
-  });
-
-  document.addEventListener('mousemove', (e) => {
-    _mouseY = e.clientY;
-    if (dragState.active) _startScrollLoop();
-  });
-
-  document.addEventListener('mouseup', () => {
-    _stopScrollLoop();
-    if (dragState.active) {
-      showConfirmationModal();
-    }
   });
 }
 
@@ -1825,8 +1782,8 @@ function showConfirmationModal() {
   methodSelect.value = selectedMethod;
 
   const now = new Date();
-  safeGet('modal-date').value = now.toISOString().split('T')[0];
-  safeGet('modal-time').value = now.toTimeString().slice(0, 5);
+  safeGet('modal-date').value = toDateInputValue(now);
+  safeGet('modal-time').value = toTimeInputValue(now);
 
   updateModalSummary();
   safeGet('confirmation-modal').classList.add('show');
@@ -2648,8 +2605,8 @@ async function initAppContent() {
 
   // Set default date/time for manual entry
   const now = new Date();
-  const dateStr = now.toISOString().split('T')[0];
-  const timeStr = now.toTimeString().slice(0, 5);
+  const dateStr = toDateInputValue(now);
+  const timeStr = toTimeInputValue(now);
   const evtDate = safeGet('evt-date');
   const evtTime = safeGet('evt-time');
   if (evtDate) evtDate.value = dateStr;

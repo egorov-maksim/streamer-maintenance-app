@@ -1,6 +1,6 @@
 // routes/noise.js
 const express = require("express");
-const { runAsync, getAllCamelized, getOneCamelized } = require("../db");
+const { runAsync, getAllCamelized, getOneCamelized, execAtomic, sqlLiteral } = require("../db");
 const { sendError } = require("../utils/errors");
 const { requireValidId } = require("../utils/validation");
 
@@ -33,6 +33,44 @@ function getScopedUpload(uploadId, vesselScope) {
     [uploadId, vesselScope]
   );
 }
+
+/**
+ * Flattens and validates the { cable: { section: rms } } upload payload before anything
+ * is written, so a bad cell can never leave a half-written batch behind.
+ * Zero, empty and null cells mean "section not deployed" and are skipped.
+ *
+ * @param {Object} noiseData
+ * @returns {{ rows: Array<[number, number, number]> } | { error: string }}
+ */
+function flattenNoisePayload(noiseData) {
+  const rows = [];
+  for (const [cableKey, sections] of Object.entries(noiseData)) {
+    const cableNumber = Number(cableKey);
+    if (!Number.isInteger(cableNumber) || cableNumber < 1) {
+      return { error: `Invalid cable number "${cableKey}"` };
+    }
+    if (!sections || typeof sections !== "object") {
+      return { error: `Sections for cable ${cableNumber} must be an object` };
+    }
+    for (const [sectionKey, rawValue] of Object.entries(sections)) {
+      const sectionNumber = Number(sectionKey);
+      if (!Number.isInteger(sectionNumber) || sectionNumber < 1) {
+        return { error: `Invalid section number "${sectionKey}" for cable ${cableNumber}` };
+      }
+      if (rawValue === null || rawValue === undefined || rawValue === "") continue;
+      const rms = typeof rawValue === "number" ? rawValue : typeof rawValue === "string" ? Number(rawValue) : NaN;
+      if (!Number.isFinite(rms)) {
+        return { error: `RMS value for cable ${cableNumber} section ${sectionNumber} must be a number` };
+      }
+      if (rms <= 0) continue;
+      rows.push([cableNumber, sectionNumber, rms]);
+    }
+  }
+  return { rows };
+}
+
+/** Rows per INSERT statement inside the atomic script (keeps each statement a sane size). */
+const NOISE_INSERT_CHUNK = 500;
 
 /**
  * Create noise data router (upload RMS batch, fetch by upload ID, list batches).
@@ -149,6 +187,11 @@ function createNoiseRouter(authMiddleware, adminOrAbove) {
         return sendError(res, 400, "noiseData object is required");
       }
 
+      const flattened = flattenNoisePayload(noiseData);
+      if (flattened.error) {
+        return sendError(res, 400, flattened.error);
+      }
+
       const speedStart = waterSpeedStart != null ? parseFloat(waterSpeedStart) : null;
       const speedEnd = waterSpeedEnd != null ? parseFloat(waterSpeedEnd) : null;
 
@@ -173,30 +216,31 @@ function createNoiseRouter(authMiddleware, adminOrAbove) {
         return sendError(res, 403, "Project does not belong to your vessel");
       }
 
-      // Insert the batch header
+      // Insert the batch header (payload is already fully validated above).
       const headerResult = await runAsync(
         "INSERT INTO noise_uploads (project_number, vessel_tag, label, water_speed_start, water_speed_end) VALUES (?, ?, ?, ?, ?)",
         [projectNumber, project.vesselTag, label || null, speedStart, speedEnd]
       );
       const uploadId = headerResult.lastID;
 
-      // Bulk-insert measurements inside a transaction for atomicity
-      await runAsync("BEGIN");
+      // All measurements go in as ONE atomic script so no other request's statement
+      // can interleave with (and be rolled back by) this transaction.
       try {
-        for (const [cableNum, sections] of Object.entries(noiseData)) {
-          const cableNumber = parseInt(cableNum, 10);
-          for (const [sectionNum, rmsValue] of Object.entries(sections)) {
-            // Skip zero values — sections not deployed on this cable
-            if (!rmsValue || rmsValue <= 0) continue;
-            await runAsync(
-              "INSERT INTO noise_data (upload_id, cable_number, section_number, rms_value) VALUES (?, ?, ?, ?)",
-              [uploadId, cableNumber, parseInt(sectionNum, 10), rmsValue]
-            );
-          }
+        const statements = [];
+        for (let i = 0; i < flattened.rows.length; i += NOISE_INSERT_CHUNK) {
+          const values = flattened.rows
+            .slice(i, i + NOISE_INSERT_CHUNK)
+            .map(([cable, section, rms]) =>
+              `(${sqlLiteral(uploadId)}, ${sqlLiteral(cable)}, ${sqlLiteral(section)}, ${sqlLiteral(rms)})`)
+            .join(",\n");
+          statements.push(`INSERT INTO noise_data (upload_id, cable_number, section_number, rms_value) VALUES ${values}`);
         }
-        await runAsync("COMMIT");
+        if (statements.length > 0) {
+          await execAtomic(statements);
+        }
       } catch (insertErr) {
-        await runAsync("ROLLBACK");
+        // Never leave an empty batch header behind (it would become the "latest upload").
+        await runAsync("DELETE FROM noise_uploads WHERE id = ?", [uploadId]).catch(() => {});
         throw insertErr;
       }
 

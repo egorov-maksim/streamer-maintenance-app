@@ -50,6 +50,17 @@ export function formatSectionLabel(sectionIndex, sectionType) {
   return formatAS(sectionIndex);
 }
 
+/**
+ * "AS05–AS10" / "Tail 1–Tail 3": start label first, then end label. Shared by the
+ * log table, the recent-events modal and the modals so every view agrees.
+ * @param {{ sectionIndexStart: number, sectionIndexEnd: number, sectionType?: string }} evt
+ * @returns {string}
+ */
+export function formatRangeLabel(evt) {
+  const sectionType = evt.sectionType || "active";
+  return `${formatSectionLabel(evt.sectionIndexStart, sectionType)}–${formatSectionLabel(evt.sectionIndexEnd, sectionType)}`;
+}
+
 export function formatEB(num) {
   return `EB${String(num).padStart(2, "0")}`;
 }

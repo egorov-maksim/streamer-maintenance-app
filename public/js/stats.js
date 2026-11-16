@@ -15,9 +15,9 @@
 
 import { config, events, projects, selectedProjectFilter, getFilteredEvents } from "./state.js";
 import * as API from "./api.js";
-import { safeGet, showErrorToast, formatDateTime } from "./ui.js";
+import { safeGet, showErrorToast, formatDateTime, escapeHtml } from "./ui.js";
 import {
-  fmtKm, formatSectionLabel, eventDistance, getEBRangeForSectionRange, getEffectiveSectionsPerCable,
+  fmtKm, formatRangeLabel, eventDistance, getEBRangeForSectionRange, getEffectiveSectionsPerCable,
   countUniqueSectionsInPeriod,
 } from "./streamer-utils.js";
 import { openModal, closeModal } from "./modals.js";
@@ -258,7 +258,7 @@ export async function refreshStatsFiltered(
         const bar = document.createElement("div");
         bar.innerHTML = `
           <div class="bar-label">
-            <span>${method}</span>
+            <span>${escapeHtml(method)}</span>
             <span>${distance} m</span>
           </div>
           <div class="bar">
@@ -360,7 +360,7 @@ function renderRecentCleaningEventsModal() {
 
   function appendEventRow(evt) {
     const sectionType = evt.sectionType || "active";
-    const rangeLabel = `${formatSectionLabel(evt.sectionIndexStart, sectionType)}–${formatSectionLabel(evt.sectionIndexEnd, sectionType)}`;
+    const rangeLabel = formatRangeLabel(evt);
     const ebRange = sectionType === "tail" ? "—" : getEBRangeForSectionRange(evt.sectionIndexStart, evt.sectionIndexEnd, config);
     const tr = document.createElement("tr");
     tr.innerHTML = `
@@ -369,7 +369,7 @@ function renderRecentCleaningEventsModal() {
       <td>${rangeLabel}</td>
       <td>${ebRange}</td>
       <td>${eventDistance(evt)}</td>
-      <td>${evt.cleaningMethod}</td>
+      <td>${escapeHtml(evt.cleaningMethod)}</td>
     `;
     tbody.appendChild(tr);
   }

@@ -10,7 +10,9 @@ const DB_FILE = process.env.DB_FILE
   : path.join(__dirname, "streamer.db");
 
 const SCHEMA_FILE = path.join(__dirname, "schema.sql");
-const BACKUP_DIR = path.join(__dirname, "..", "backup");
+const BACKUP_DIR = process.env.BACKUP_DIR
+  ? path.resolve(process.cwd(), process.env.BACKUP_DIR)
+  : path.join(__dirname, "..", "backup");
 const MAX_BACKUPS = 14; // Keep last 14 backups (7 days worth at 12hr intervals)
 const { stopBackupScheduler } = require("./backupScheduler");
 
@@ -141,6 +143,30 @@ function createBackup() {
 }
 
 /**
+ * Replaces the contents of the live database with the contents of a backup file,
+ * using SQLite's online backup API on the open connection. Unlike copying the file
+ * over DB_FILE, this is safe while the server is running: the connection's page
+ * cache and WAL stay consistent, and no restart is needed.
+ * @param {string} sourcePath - Path to a SQLite database file to restore from
+ * @returns {Promise<void>}
+ */
+function restoreFromFile(sourcePath) {
+  return new Promise((resolve, reject) => {
+    // filenameIsDest=false: copy sourcePath's "main" schema INTO this connection's "main".
+    const backup = db.backup(sourcePath, "main", "main", false, (initErr) => {
+      if (initErr) return reject(initErr);
+      backup.step(-1, (stepErr) => {
+        backup.finish((finishErr) => {
+          const err = stepErr || finishErr;
+          if (err) return reject(err);
+          resolve();
+        });
+      });
+    });
+  });
+}
+
+/**
  * Removes old backups keeping only the most recent MAX_BACKUPS
  */
 function cleanupOldBackups() {
@@ -178,6 +204,49 @@ function runAsync(sql, params = []) {
     db.run(sql, params, function (err) {
       if (err) reject(err);
       else resolve({ lastID: this.lastID, changes: this.changes });
+    });
+  });
+}
+
+/**
+ * Renders a validated scalar as a SQL literal for use in execAtomic scripts.
+ * Only finite numbers, strings and null are accepted; anything else throws so a
+ * caller can never splice unchecked input into SQL.
+ * @param {number|string|null} value
+ * @returns {string}
+ */
+function sqlLiteral(value) {
+  if (value === null || value === undefined) return "NULL";
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new TypeError("sqlLiteral: number must be finite");
+    return String(value);
+  }
+  if (typeof value === "string") return `'${value.replace(/'/g, "''")}'`;
+  throw new TypeError(`sqlLiteral: unsupported value type ${typeof value}`);
+}
+
+/**
+ * Runs several statements as ONE atomic unit on the shared connection.
+ *
+ * node-sqlite3 queues every statement from every request on a single connection,
+ * so an `await` between BEGIN and COMMIT lets other requests' writes slip inside
+ * the transaction (and get rolled back with it). Sending the whole script to a
+ * single db.exec call closes that window: it is one queued operation, and SQLite
+ * either commits all of it or none of it.
+ *
+ * Statements must already contain their values as literals (see sqlLiteral);
+ * exec does not take bound parameters.
+ * @param {string[]} statements - Complete SQL statements (trailing ';' optional)
+ * @returns {Promise<void>}
+ */
+function execAtomic(statements) {
+  const body = statements.map((stmt) => stmt.trim().replace(/;*$/, ";"));
+  const script = ["BEGIN IMMEDIATE;", ...body, "COMMIT;"].join("\n");
+  return new Promise((resolve, reject) => {
+    db.exec(script, (err) => {
+      if (!err) return resolve();
+      // The failing statement leaves the transaction open; undo it before reporting.
+      db.exec("ROLLBACK;", () => reject(err));
     });
   });
 }
@@ -244,6 +313,9 @@ module.exports = {
   db,
   initDb,
   createBackup,
+  restoreFromFile,
+  execAtomic,
+  sqlLiteral,
   runAsync,
   allAsync,
   getAsync,
