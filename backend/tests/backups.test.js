@@ -1,7 +1,8 @@
 const fs = require("fs");
 const path = require("path");
 const { app, request, resetDb, login, createProject } = require("./helpers/app");
-const { getAsync } = require("../db");
+const sqlite3 = require("sqlite3");
+const { getAsync, allAsync } = require("../db");
 
 describe("database backups", () => {
   beforeEach(resetDb);
@@ -38,5 +39,25 @@ describe("database backups", () => {
     await createProject({ projectNumber: "POST-RESTORE" });
     const after = await request(app).get("/api/projects").set("Authorization", auth);
     expect(after.body.map((p) => p.projectNumber).sort()).toEqual(["BEFORE-1", "POST-RESTORE"]);
+  });
+
+  it("has finished upgrading an older backup's schema by the time the restore returns", async () => {
+    const auth = await login("grand");
+    const backupRes = await request(app).post("/api/backups").set("Authorization", auth);
+
+    // Make the backup look like one from before the noise sequence time was added.
+    await new Promise((resolve, reject) => {
+      const old = new sqlite3.Database(backupRes.body.path);
+      old.run("ALTER TABLE noise_uploads DROP COLUMN recorded_at", (err) => old.close(() => (err ? reject(err) : resolve())));
+    });
+
+    const restoreRes = await request(app)
+      .post(`/api/backups/${encodeURIComponent(path.basename(backupRes.body.path))}/restore`)
+      .set("Authorization", auth);
+    expect(restoreRes.status).toBe(200);
+
+    // No waiting: the column must already be back when the request completes.
+    const columns = await allAsync("PRAGMA table_info(noise_uploads)");
+    expect(columns.map((c) => c.name)).toContain("recorded_at");
   });
 });
