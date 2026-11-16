@@ -32,6 +32,7 @@ import {
   showAccessDeniedToast,
   formatDateTime,
   escapeHtml,
+  methodLabel,
 } from "./js/ui.js";
 import { toDateInputValue, toTimeInputValue } from "./js/date-utils.js";
 import { parseCsvEventRows } from "./js/csv-import.js";
@@ -213,7 +214,7 @@ function showSectionTooltip(e, streamerId, sectionIndex) {
       html += `
         <div class="tooltip-row">
           <span class="tooltip-value">${formatDateTime(evt.cleanedAt)}</span>
-          <span class="tooltip-method">${icon} ${escapeHtml(evt.cleaningMethod)}</span>
+          <span class="tooltip-method">${icon} ${escapeHtml(methodLabel(evt.cleaningMethod))}</span>
         </div>
       `;
     });
@@ -419,7 +420,7 @@ function showRecentCleanWarning(recentClean, body) {
   safeGet('recent-clean-headline').textContent =
     `Streamer ${evt.streamerId}, sections ${rangeLabel} was cleaned ${formatTimeAgo(diffMs)}.`;
   safeGet('recent-clean-detail').textContent =
-    `Method: ${evt.cleaningMethod} · Recorded: ${formatDateTime(evt.cleanedAt)}`;
+    `Method: ${methodLabel(evt.cleaningMethod)} · Recorded: ${formatDateTime(evt.cleanedAt)}`;
 
   pendingCleaningPayload = body;
   openModal('recent-clean-warning-modal');
@@ -442,7 +443,7 @@ function showAdjacentMergeModal(adjacentMatch, body) {
   const mergedRange = `${formatSectionLabel(mergedStart, sectionType)}–${formatSectionLabel(mergedEnd, sectionType)}`;
 
   safeGet('adjacent-merge-headline').textContent =
-    `Streamer ${evt.streamerId}: "${evt.cleaningMethod}" was applied to sections ${existingRange} ${formatTimeAgo(diffMs)}.`;
+    `Streamer ${evt.streamerId}: "${methodLabel(evt.cleaningMethod)}" was applied to sections ${existingRange} ${formatTimeAgo(diffMs)}.`;
   safeGet('adjacent-merge-detail').textContent =
     `Your new event covers adjacent sections ${proposedRange}. Merge into one event covering ${mergedRange}?`;
 
@@ -584,7 +585,7 @@ async function deleteEvent(id) {
     : getEBRangeForSectionRange(evt.sectionIndexStart, evt.sectionIndexEnd, config);
 
   safeGet('delete-eb-display').textContent = ebRangeRaw;
-  safeGet('delete-method-display').textContent = evt.cleaningMethod;
+  safeGet('delete-method-display').textContent = methodLabel(evt.cleaningMethod);
   safeGet('delete-date-display').textContent = formatDateTime(evt.cleanedAt);
   safeGet('delete-distance-display').textContent = `${eventDistance(evt)} m`;
 
@@ -999,21 +1000,21 @@ async function renderLog() {
     const addedByDisplay = escapeHtml(evt.addedByUsertag || '—');
 
     const actionButtons = isAdminUser
-      ? `<button class="btn btn-outline btn-edit" data-id="${evt.id}">✏️</button>
-         <button class="btn btn-outline btn-delete" data-id="${evt.id}">🗑️</button>`
+      ? `<button class="btn btn-outline btn-icon btn-edit" data-id="${evt.id}" aria-label="Edit event" title="Edit event">✏️</button>
+         <button class="btn btn-outline btn-icon btn-delete" data-id="${evt.id}" aria-label="Delete event" title="Delete event">🗑️</button>`
       : '<span class="view-only-badge">View Only</span>';
 
     tr.innerHTML = `
-      <td>${formatDateTime(evt.cleanedAt)}</td>
-      <td>${projectDisplay}</td>
-      <td>${vesselDisplay}</td>
-      <td>${addedByDisplay}</td>
-      <td>Streamer ${streamerNum}</td>
-      <td>${rangeLabel}</td>
-      <td>${ebRange}</td>
-      <td>${distance} m</td>
-      <td>${escapeHtml(evt.cleaningMethod)}</td>
-      <td>${actionButtons}</td>
+      <td data-label="Date & Time">${formatDateTime(evt.cleanedAt)}</td>
+      <td data-label="Project">${projectDisplay}</td>
+      <td data-label="Vessel">${vesselDisplay}</td>
+      <td data-label="Added by">${addedByDisplay}</td>
+      <td data-label="Streamer">Streamer ${streamerNum}</td>
+      <td data-label="Section Range">${rangeLabel}</td>
+      <td data-label="EB Range">${ebRange}</td>
+      <td data-label="Length">${distance} m</td>
+      <td data-label="Method">${escapeHtml(methodLabel(evt.cleaningMethod))}</td>
+      <td data-label="Action" class="log-actions-cell">${actionButtons}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -1366,7 +1367,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
       wrapper.className = 'hm-grid-vertical';
       wrapper.style.width = '100%';
       wrapper.style.display = 'grid';
-      wrapper.style.gridTemplateColumns = `repeat(${cableCount + 1}, 1fr)`;
+      wrapper.style.gridTemplateColumns = `repeat(${cableCount + 1}, minmax(var(--hm-col-min, auto), 1fr))`;
       wrapper.style.gap = '4px';
       wrapper.style.columnGap = '8px';
       // Signal cells to fill their column rather than using a fixed px width
@@ -2651,8 +2652,6 @@ async function init() {
   const loginForm = safeGet("login-form");
   if (loginForm) loginForm.addEventListener("submit", handleLogin);
 
-  const loginBtn = safeGet("login-submit");
-  if (loginBtn) loginBtn.addEventListener("click", handleLogin);
 
   const logoutBtn = safeGet("logout-btn");
   if (logoutBtn) logoutBtn.addEventListener("click", handleLogout);

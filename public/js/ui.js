@@ -101,6 +101,26 @@ export function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+/** Display names for the stored cleaning method values, as shown on the method tiles. */
+const METHOD_LABELS = {
+  rope: "Rope",
+  scraper: "Scraper",
+  "scraper-rope": "Scraper&Rope",
+  scue: "SCUE",
+  knife: "Knife",
+};
+
+/**
+ * Display name for a stored cleaning method value; unknown values are shown as stored.
+ * The result is not HTML-escaped.
+ * @param {string|null|undefined} method
+ * @returns {string}
+ */
+export function methodLabel(method) {
+  if (method === null || method === undefined) return "";
+  return METHOD_LABELS[method] || String(method);
+}
+
 export function formatDateTime(iso) {
   if (!iso) return "-";
   const d = new Date(iso);

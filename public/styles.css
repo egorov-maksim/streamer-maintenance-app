@@ -7,6 +7,12 @@
     --card-bg: #ffffff;
     --text: #1f2937;
     --muted: #6b7280;
+    /* Muted text that still reaches 4.5:1 on tinted backgrounds (page header, heatmap labels) */
+    --muted-strong: #4b5563;
+    /* Height of the sticky top bar on wide screens; sticky heatmap headers sit below it */
+    --top-bar-h: 71px;
+    /* Smallest comfortable touch target */
+    --touch-target: 44px;
     --border: #e5e7eb;
     --primary: #2563eb;
     --primary-100: #dbeafe;
@@ -61,7 +67,7 @@
   
   .subheader {
     font-size: 13px;
-    color: #6b7280;
+    color: var(--muted-strong);
   }
   
   /* =========================
@@ -370,7 +376,8 @@
     display: flex;
     flex-direction: row;
     align-items: flex-start;
-    justify-content: center;
+    /* Start-aligned: a centred grid that overflows hides its left columns beyond the scroll range */
+    justify-content: start;
     gap: 16px;
     flex-wrap: wrap;
     padding: 16px 0;
@@ -437,7 +444,6 @@
   /* Heat buckets */
   .hm-vcell[data-age="fresh"] {
     background: var(--heat-fresh);
-    color: #fff;
     border-color: #16a34a;
   }
   
@@ -453,19 +459,16 @@
   
   .hm-vcell[data-age="10plus"] {
     background: var(--heat-10plus);
-    color: #fff;
     border-color: #ea580c;
   }
   
   .hm-vcell[data-age="14plus"] {
     background: var(--heat-14plus);
-    color: #fff;
     border-color: #dc2626;
   }
   
   .hm-vcell[data-age="never"] {
     background: var(--heat-never);
-    color: #fff;
     border-color: #6b7280;
   }
   
@@ -1059,7 +1062,7 @@
   .hm-tail-ref {
     background: #f3f4f6 !important;
     font-size: calc(var(--hm-cell-h, 32px) * 0.38);
-    color: #6b7280;
+    color: var(--muted-strong);
     pointer-events: none;
     font-weight: 600;
   }
@@ -1133,7 +1136,7 @@
     overflow-x: auto;
     padding: 8px;
     display: flex;
-    justify-content: center;
+    justify-content: flex-start;
     align-items: flex-start;
   }
   
@@ -1341,30 +1344,6 @@
     line-height: 2.0;
   }
   
-
-  /* PDF Generation Button */
-#generatePdfBtn {
-  width: 100%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  padding: 12px 24px;
-  font-weight: 600;
-  cursor: pointer;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-  font-size: 14px;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
-}
-
-#generatePdfBtn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-}
-
-#generatePdfBtn:active {
-  transform: translateY(0);
-}
 
 #pdf-status {
   margin-top: 10px;
@@ -1808,42 +1787,7 @@
 .login-footer p {
   font-size: 13px;
   color: #64748b;
-  margin: 0 0 12px 0;
-}
-
-.access-info {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.access-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.access-badge.superuser {
-  background: linear-gradient(135deg, #fae8ff 0%, #f3e8ff 100%);
-  color: #6b21a8;
-  border: 1px solid #a855f7;
-}
-
-.access-badge.admin {
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-  color: #92400e;
-  border: 1px solid #f59e0b;
-}
-
-.access-badge.viewer {
-  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-  color: #1e40af;
-  border: 1px solid #3b82f6;
+  margin: 0;
 }
 
 /* =========================
@@ -1852,8 +1796,10 @@
 
 .user-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: 8px 12px;
   padding: 12px 24px;
   background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -1905,6 +1851,7 @@
 
 .user-header-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
 }
@@ -3417,14 +3364,17 @@ table.has-noise-data .noise-col {
   font-size: 22px;
   cursor: pointer;
   padding: 6px 10px;
-  color: var(--text);
+  color: #fff;
   line-height: 1;
   border-radius: 6px;
   flex-shrink: 0;
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+  justify-content: center;
 }
 
 .nav-toggle-btn:hover {
-  background: var(--primary-100);
+  background: rgba(255, 255, 255, 0.15);
 }
 
 @media (max-width: 768px) {
@@ -3443,7 +3393,8 @@ table.has-noise-data .noise-col {
     bottom: 0;
     transform-origin: left center;
     border-radius: 0 12px 12px 0;
-    z-index: 200;
+    /* Above the sticky top bar (500) so the first item is not hidden behind it */
+    z-index: 600;
   }
 
   /* Reveal sidebar when body has .nav-open */
@@ -3457,7 +3408,7 @@ table.has-noise-data .noise-col {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.35);
-    z-index: 199;
+    z-index: 550;
   }
 
   /* Remove the left margin that reserves space for the sidebar */
@@ -3539,6 +3490,8 @@ table.has-noise-data .noise-col {
 }
 
 .log-pagination select {
+  width: auto;
+  margin-top: 0;
   font-size: 13px;
   padding: 4px 8px;
   border: 1px solid var(--border);
@@ -3941,4 +3894,210 @@ table.has-noise-data .noise-col {
 .recent-events-day-count {
   font-weight: 400;
   color: var(--muted);
+}
+
+/* =========================
+   Alerts row, compact method tiles
+   ========================= */
+
+/* Alerts sit side by side so the heatmap starts higher on the page */
+#alerts-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+#alerts-container:not(:empty) {
+  margin-bottom: 16px;
+}
+
+#alerts-container .alert {
+  margin-bottom: 0;
+}
+
+/* Icon and name on one line: half the height of the stacked tile */
+.method-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 14px;
+  min-height: var(--touch-target);
+}
+
+.method-tile .method-icon { font-size: 22px; }
+.method-tile .method-name { margin-top: 0; }
+
+/* The marking hint matches the input device */
+.hint-touch { display: none; }
+
+@media (hover: none) and (pointer: coarse) {
+  .hint-pointer { display: none; }
+  .hint-touch { display: block; }
+}
+
+/* Icon-only buttons (log row edit / delete) */
+.btn-icon {
+  justify-content: center;
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+  padding: 8px;
+}
+
+/* Sections reached from the side navigation stop below the sticky top bar, not under it */
+main > section[id] {
+  scroll-margin-top: calc(var(--top-bar-h) + 12px);
+}
+
+/* =========================
+   Sticky streamer headers (vertical heatmap, wide screens)
+   ========================= */
+
+@media (min-width: 901px) {
+  /* The scroll container must not clip, or the headers cannot stick to the page */
+  .hm-grid-container:has(> .hm-grid-vertical) {
+    overflow: visible;
+  }
+
+  .hm-grid-vertical .hm-col-label {
+    position: sticky;
+    top: var(--top-bar-h);
+    z-index: 60;
+    /* Card-coloured ring hides the cells sliding underneath the gaps between headers */
+    box-shadow: 0 0 0 4px var(--card-bg);
+  }
+}
+
+/* =========================
+   Narrow screens: top bar, touch targets, tables
+   ========================= */
+
+@media (max-width: 900px) {
+  /* Two rows tall here, so it scrolls away instead of covering the content */
+  .user-header {
+    position: static;
+    padding: 10px 16px;
+  }
+
+  main > section[id] {
+    scroll-margin-top: 12px;
+  }
+
+  /* Page links take their own full-width row under the user name */
+  .user-header-actions {
+    flex: 1 1 100%;
+    gap: 6px;
+  }
+
+  .user-header-actions .back-to-main-btn,
+  .user-header-actions .logout-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+    min-height: var(--touch-target);
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  /* Let the threshold row wrap inside the legend box instead of running past its edge */
+  .heatmap-legend-breakpoints {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .noise-legend-main {
+    min-width: 0;
+  }
+
+  .heatmap-legend-break-inputs {
+    flex-wrap: wrap;
+  }
+
+  .heatmap-legend-break-input {
+    width: 56px;
+    min-height: var(--touch-target);
+    font-size: 14px;
+  }
+
+  .btn,
+  .btn-sm,
+  .log-pagination .btn,
+  .log-pagination select {
+    min-height: var(--touch-target);
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]),
+  select {
+    min-height: var(--touch-target);
+  }
+}
+
+@media (max-width: 600px) {
+  /* Every heatmap column stays wide enough to tap; the grid scrolls sideways instead */
+  .hm-grid-vertical {
+    --hm-col-min: var(--touch-target);
+  }
+
+  /* Text-only links so all five fit on one or two short rows */
+  .user-header-actions .back-to-main-btn > span,
+  .user-header-actions .logout-btn > span {
+    display: none;
+  }
+
+  .user-header-actions .back-to-main-btn,
+  .user-header-actions .logout-btn {
+    padding: 8px 6px;
+  }
+
+  /* Cleaning log: one card per event instead of a table that scrolls both ways */
+  .table-wrapper:has(> #events-table) {
+    max-height: 70vh;
+    box-shadow: none;
+  }
+
+  #events-table {
+    min-width: 0;
+  }
+
+  #events-table thead {
+    display: none;
+  }
+
+  #events-table tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  #events-table td {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0;
+    border-bottom: none;
+  }
+
+  #events-table td::before {
+    content: attr(data-label);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  #events-table td.log-actions-cell {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  #events-table td.log-actions-cell::before {
+    content: none;
+  }
+
+  /* Wide stats table scrolls inside its card instead of spilling out of it */
+  .most-cleaned-table {
+    display: block;
+    overflow-x: auto;
+  }
 }

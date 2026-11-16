@@ -11,6 +11,7 @@ import {
   setupPasswordToggle,
   isGrandSuperUser,
   isAdminOrAbove,
+  isSuperUser,
 } from "./js/auth.js";
 import * as Projects from "./js/projects.js";
 import * as API from "./js/api.js";
@@ -677,7 +678,11 @@ function initSuggestionsThresholdControl() {
 
   const currentThreshold = config?.suggestedCleaningThresholdDays ?? DEFAULT_DAYS_THRESHOLD;
 
-  if (displayEl) displayEl.textContent = `${currentThreshold}d`;
+  if (displayEl) {
+    displayEl.textContent = `${currentThreshold} days`;
+    // Editors see the same number in the input next to it.
+    displayEl.classList.toggle("hidden", isSuperUser());
+  }
   if (inputEl) inputEl.value = currentThreshold;
 
   if (!saveBtn) return;
@@ -714,7 +719,7 @@ function initSuggestionsThresholdControl() {
 
       // Update shared config state so computeCleaningSuggestions picks it up immediately.
       if (config) config.suggestedCleaningThresholdDays = raw;
-      if (displayEl) displayEl.textContent = `${raw}d`;
+      if (displayEl) displayEl.textContent = `${raw} days`;
 
       // Recompute suggestions from cached data without re-fetching the heatmap.
       if (currentLastCleaned) {
@@ -995,7 +1000,7 @@ async function renderPlanningHeatmap() {
       wrapper.className = "hm-grid-vertical";
       wrapper.style.width = "100%";
       wrapper.style.display = "grid";
-      wrapper.style.gridTemplateColumns = `repeat(${cableCount + 1}, 1fr)`;
+      wrapper.style.gridTemplateColumns = `repeat(${cableCount + 1}, minmax(var(--hm-col-min, auto), 1fr))`;
       wrapper.style.gap = "4px";
       wrapper.style.columnGap = "8px";
       wrapper.style.setProperty("--hm-cell-w", "100%");
@@ -1837,8 +1842,6 @@ async function init() {
   const loginForm = safeGet("login-form");
   if (loginForm) loginForm.addEventListener("submit", handleLogin);
 
-  const loginBtn = safeGet("login-submit");
-  if (loginBtn) loginBtn.addEventListener("click", handleLogin);
 
   const logoutBtn = safeGet("logout-btn");
   if (logoutBtn) logoutBtn.addEventListener("click", handleLogout);

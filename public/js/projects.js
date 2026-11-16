@@ -442,6 +442,21 @@ export function populateProjectSelector() {
   });
   const activeProject = projects.find((p) => p.isActive === true);
   if (activeProject) selector.value = activeProject.projectNumber;
+  syncActivateProjectButton();
+}
+
+/**
+ * Disables "Set as Active" while the selected project is already the active one,
+ * so the button is only offered when pressing it would change something.
+ */
+export function syncActivateProjectButton() {
+  const selector = safeGet("project-selector");
+  const btn = document.getElementById("btn-activate-project");
+  if (!selector || !btn) return;
+  const activeProject = projects.find((p) => p.isActive === true);
+  const alreadyActive = Boolean(activeProject) && selector.value === activeProject.projectNumber;
+  btn.disabled = alreadyActive;
+  btn.title = alreadyActive ? "This project is already active" : "";
 }
 
 export function updateActiveProjectBanner() {

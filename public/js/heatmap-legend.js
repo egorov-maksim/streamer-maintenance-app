@@ -26,7 +26,7 @@ const AGE_COLOR_ANCHORS = [
 
 const NEVER_STYLE = {
   backgroundColor: "#9ca3af",
-  color: "#ffffff",
+  color: "#111827",
   borderColor: "#6b7280",
 };
 
@@ -109,8 +109,30 @@ function lerpRgb(c0, c1, t) {
   ];
 }
 
-function perceivedLightness(r, g, b) {
-  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+/** WCAG relative luminance of an sRGB colour (0 = black, 1 = white). */
+function relativeLuminance(r, g, b) {
+  const [lr, lg, lb] = [r, g, b].map((v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * lr + 0.7152 * lg + 0.0722 * lb;
+}
+
+const DARK_TEXT = "#111827";
+const DARK_TEXT_LUMINANCE = relativeLuminance(0x11, 0x18, 0x27);
+
+/**
+ * Text colour (dark or white) with the higher WCAG contrast on the given background.
+ * @param {number} r
+ * @param {number} g
+ * @param {number} b
+ * @returns {string}
+ */
+export function readableTextColor(r, g, b) {
+  const bg = relativeLuminance(r, g, b);
+  const onDark = (bg + 0.05) / (DARK_TEXT_LUMINANCE + 0.05);
+  const onWhite = 1.05 / (bg + 0.05);
+  return onDark >= onWhite ? DARK_TEXT : "#ffffff";
 }
 
 function rgbToHex(r, g, b) {
@@ -154,7 +176,7 @@ export function scrapingAgeStyle(days, prefs) {
   if (days === null || days === undefined) return NEVER_STYLE;
   const rgb = interpolateAgeRgb(days, prefs.ageBreaks);
   const bg = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
-  const textColor = perceivedLightness(...rgb) > 0.67 ? "#111827" : "#ffffff";
+  const textColor = readableTextColor(...rgb);
   const borderRgb = rgb.map((v) => Math.max(0, Math.round(v * 0.78)));
   const border = `rgb(${borderRgb[0]},${borderRgb[1]},${borderRgb[2]})`;
   return { backgroundColor: bg, color: textColor, borderColor: border };

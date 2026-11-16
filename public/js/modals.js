@@ -37,24 +37,34 @@ export function trapFocus(modalEl) {
       (el) => el.offsetParent !== null && !el.closest('[hidden]')
     );
 
-  // Move focus into the modal immediately.
-  const focusable = getFocusable();
-  if (focusable.length > 0) focusable[0].focus();
+  // Move focus into the modal, unless the caller already placed it on a field inside.
+  if (!modalEl.contains(document.activeElement)) {
+    const focusable = getFocusable();
+    if (focusable.length > 0) focusable[0].focus();
+  }
 
+  // Listen on the document so Tab is also caught when focus has slipped out of the modal
+  // (for example after the focused button became disabled).
   trapKeyHandler = (e) => {
     if (e.key !== 'Tab') return;
     const nodes = getFocusable();
     if (nodes.length === 0) { e.preventDefault(); return; }
     const first = nodes[0];
     const last = nodes[nodes.length - 1];
-    if (e.shiftKey) {
-      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
-    } else {
-      if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+    const active = document.activeElement;
+    if (!modalEl.contains(active)) {
+      e.preventDefault();
+      (e.shiftKey ? last : first).focus();
+    } else if (e.shiftKey && active === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
     }
   };
 
-  modalEl.addEventListener('keydown', trapKeyHandler);
+  document.addEventListener('keydown', trapKeyHandler);
 }
 
 /**
@@ -62,8 +72,8 @@ export function trapFocus(modalEl) {
  * was active when the modal opened.
  */
 export function releaseFocusTrap() {
-  if (trapModalEl && trapKeyHandler) {
-    trapModalEl.removeEventListener('keydown', trapKeyHandler);
+  if (trapKeyHandler) {
+    document.removeEventListener('keydown', trapKeyHandler);
   }
   trapKeyHandler = null;
   trapModalEl = null;
@@ -95,10 +105,31 @@ export function closeModal(modalId) {
 }
 
 /**
- * Bind Escape key to close the topmost visible modal.
+ * Keeps the focus trap in step with every `.modal`, including the ones that are shown
+ * and hidden by toggling the `show` class directly instead of calling openModal/closeModal.
+ */
+function watchModalVisibility() {
+  if (typeof MutationObserver === 'undefined') return;
+  const observer = new MutationObserver((mutations) => {
+    for (const { target } of mutations) {
+      if (!(target instanceof HTMLElement) || !target.classList.contains('modal')) continue;
+      const shown = target.classList.contains('show');
+      if (shown && trapModalEl !== target) {
+        trapFocus(target);
+      } else if (!shown && trapModalEl === target) {
+        releaseFocusTrap();
+      }
+    }
+  });
+  observer.observe(document.body, { attributes: true, attributeFilter: ['class'], subtree: true });
+}
+
+/**
+ * Bind Escape key to close the topmost visible modal, and trap focus in any open modal.
  * Call once after DOM ready (e.g. from initApp).
  */
 export function initModals() {
+  watchModalVisibility();
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     const openModalEl = document.querySelector('.modal.show');
