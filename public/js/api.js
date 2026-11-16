@@ -240,6 +240,19 @@ export async function fetchStats(params = {}) {
   return apiCall(`api/stats${searchParams.toString() ? "?" + searchParams : ""}`);
 }
 
+/**
+ * Per-section clean counts (how many times each section was cleaned) and the ranking of
+ * the most frequently cleaned section ranges.
+ * @param {{ project?: string, start?: string, end?: string, limit?: number }} params
+ */
+export async function fetchSectionCleanCounts(params = {}) {
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== null && value !== undefined && value !== "") searchParams.append(key, value);
+  }
+  return apiCall(`api/stats/section-clean-counts?${searchParams}`);
+}
+
 export async function fetchFilteredStats(params) {
   const searchParams = new URLSearchParams(params);
   return apiCall(`api/stats/filter?${searchParams}`);

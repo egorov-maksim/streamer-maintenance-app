@@ -3703,6 +3703,53 @@ table.has-noise-data .noise-col {
   font-weight: 600;
 }
 
+.most-cleaned-hint {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 4px 0 8px;
+}
+
+.most-cleaned-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.most-cleaned-table th {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 2px solid var(--border);
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.most-cleaned-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.most-cleaned-table tr:last-child td {
+  border-bottom: none;
+}
+
+.most-cleaned-count {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 140px;
+}
+
+.most-cleaned-count .bar {
+  flex: 1;
+  margin: 0;
+}
+
+.most-cleaned-note {
+  color: var(--muted);
+}
+
 .ne-breakdown-outside td {
   background: #fffbeb;
 }

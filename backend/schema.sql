@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS cleaning_events (
   section_type TEXT NOT NULL DEFAULT 'active' CHECK (section_type IN ('active', 'tail')),
   cleaning_method TEXT NOT NULL,
   cleaned_at TEXT NOT NULL,
+  -- Each logged event counts as one cleaning of every section in its range. A section's
+  -- clean count is the sum of this value over the events that cover it.
   cleaning_count INTEGER DEFAULT 1,
   project_number TEXT,
   vessel_tag TEXT DEFAULT 'TTN',

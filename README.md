@@ -127,6 +127,10 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
   - Count of events by cleaning method
   - Distance cleaned by each method
   - Visualization of method distribution
+- **Most Frequently Cleaned Sections**: ranks the sections that were cleaned most often in the selected project and date range
+  - A section's **clean count** is how many times it was cleaned: the number of logged cleaning events whose range covers it (the same number the heatmap tooltip shows as "total times cleaned")
+  - Neighbouring sections on one streamer with the same count are shown as one range; each row also shows the count per cleaning method and the last cleaning date
+  - Sections beyond a streamer's sections override are not counted
 - **Streamer Overview Cards**: Quick stats for each individual cable (distance, coverage %)
 - **Days to First Scraping per Streamer**: Horizontal bar chart showing how many days elapsed from each streamer's deployment date to its first recorded cleaning event; only shown when the active project has deployment dates configured and at least some cleaning events recorded
 - **Cleaning Noise Efficiency** (`/stats` page, single project selected): compares two RMS noise uploads — an earlier one as **Before** and a later one as **After** — on the sections cleaned within a chosen cleaning window (last 1, 2, 3, 7 or 30 days, or the stats filter dates)
@@ -148,7 +152,6 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
   - eBird range affected
   - Total distance cleaned (meters)
   - Cleaning method used
-  - Cleaning count
   - **Added By**: username of the person who logged the event (automatically recorded on create; preserved on CSV import)
   - Edit/Delete actions
 - **Chronological Tracking**: Events listed newest first
@@ -499,6 +502,7 @@ CSV export is generated in the browser from the loaded events (includes Added By
 ### Statistics
 - `GET /api/stats` - Get overall statistics (supports `?project=X`)
 - `GET /api/stats/filter` - Get filtered statistics (supports `?start=`, `?end=`, `?project=X`)
+- `GET /api/stats/section-clean-counts` - How many times each section was cleaned (supports `?start=`, `?end=`, `?project=X`, `?limit=N`). Returns `sections` (count, `byMethod` and `lastCleanedAt` per section), `mostCleaned` (top `limit` section ranges, default 10), `perStreamer`, `maxCount`, `sectionsCleaned` and `totalCleanings`
 - `GET /api/last-cleaned` - Get last cleaned data for heatmap (supports `?project=X`)
 - `GET /api/last-cleaned-filtered` - Get filtered heatmap data (supports `?start=`, `?end=`, `?project=X`)
 - `GET /api/stats/cleaning-noise-efficiency` - Compare RMS noise between two uploads for sections cleaned in a date window (`?project=X` required; optional `uploadBeforeId`, `uploadAfterId`, `start`, `end`; defaults to the two latest uploads). The response includes `warnings` (codes `uploads_reversed`, `events_outside_period`, `all_events_outside_period`, `upload_time_used`) and each entry in `ranges` has `period` (`inside` / `before` / `after`) and `outsidePeriod`
@@ -645,6 +649,7 @@ streamer-maintenance-app/
 │       ├── noiseRmsHistory.js # Average RMS per streamer per upload (pure)
 │       ├── noiseUploadTime.js # Sequence time vs. upload time; cleaning-period warnings (pure)
 │       ├── queryHelpers.js # Dynamic SQL WHERE clause builder
+│       ├── sectionCleanCounts.js # Times cleaned per section and most-cleaned ranking (pure)
 │       ├── sectionType.js  # Active/tail section split & validation (pure)
 │       └── validation.js  # toInt(), requireValidId() guards
 ├── public/

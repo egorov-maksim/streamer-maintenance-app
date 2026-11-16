@@ -7,6 +7,12 @@ const { toInt } = require("../utils/validation");
 const { sendError, httpError, handleRouteError } = require("../utils/errors");
 const { buildEventsWhereClause } = require("../utils/queryHelpers");
 const { calculateEBRange } = require("../utils/eb");
+const {
+  computeSectionCleanCounts,
+  groupSectionCleanCounts,
+  rankMostCleaned,
+  summarizeByStreamer,
+} = require("../utils/sectionCleanCounts");
 const { MEASURED_AT_SQL, withMeasuredAt, assessCleaningPeriod } = require("../utils/noiseUploadTime");
 const {
   expandEventsToSectionKeys,
@@ -272,6 +278,58 @@ function createStatsRouter(authMiddleware) {
       res.json({ lastCleaned: map });
     } catch (err) {
       handleRouteError(res, err, "Failed to compute filtered last-cleaned");
+    }
+  });
+
+  /**
+   * GET /api/stats/section-clean-counts
+   *
+   * How many times each section was cleaned: the sum of cleaning_count (1 per logged event)
+   * over the events whose range covers the section.
+   *
+   * Query params:
+   *   project - optional project_number (defaults to all events in the caller's vessel scope)
+   *   start   - optional ISO date (YYYY-MM-DD); lower bound for cleaned_at
+   *   end     - optional ISO date (YYYY-MM-DD); upper bound for cleaned_at
+   *   limit   - optional size of the mostCleaned ranking (default 10, max 100)
+   *
+   * Response:
+   *   sections    - one row per cleaned section: streamerId, sectionType, sectionIndex (0-based),
+   *                 count, byMethod, lastCleanedAt
+   *   mostCleaned - neighbouring sections with the same count joined into ranges, highest count first
+   *   perStreamer - sectionsCleaned, totalCleanings and maxCount per streamer
+   *   maxCount, sectionsCleaned, totalCleanings - totals over all sections
+   */
+  router.get("/api/stats/section-clean-counts", authMiddleware, async (req, res) => {
+    try {
+      const { start, end, project } = req.query;
+      const limit = Math.min(Math.max(toInt(req.query.limit, 10), 1), 100);
+      const config = await getEffectiveConfig(req);
+
+      const { sql: baseWhereSql, params } = buildEventsWhereClause({ project, start, end });
+      let whereSql = baseWhereSql;
+      if (req.vesselScope) {
+        whereSql += whereSql ? " AND vessel_tag = ?" : " WHERE vessel_tag = ?";
+        params.push(req.vesselScope);
+      }
+
+      const events = await getAllCamelized(
+        "SELECT streamer_id, section_index_start, section_index_end, section_type, cleaning_method, cleaned_at, cleaning_count " +
+          `FROM cleaning_events${whereSql}`,
+        params
+      );
+
+      const sections = computeSectionCleanCounts(events, config);
+      res.json({
+        sectionsCleaned: sections.length,
+        totalCleanings: sections.reduce((sum, s) => sum + s.count, 0),
+        maxCount: sections.reduce((max, s) => Math.max(max, s.count), 0),
+        mostCleaned: rankMostCleaned(groupSectionCleanCounts(sections), limit),
+        perStreamer: summarizeByStreamer(sections),
+        sections,
+      });
+    } catch (err) {
+      handleRouteError(res, err, "Failed to get section clean counts");
     }
   });
 

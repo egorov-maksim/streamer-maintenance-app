@@ -149,7 +149,8 @@ function showSectionTooltip(e, streamerId, sectionIndex) {
     return sectionIndex >= evt.sectionIndexStart && sectionIndex <= evt.sectionIndexEnd;
   });
 
-  const totalCleanings = sectionEvents.length;
+  // Same rule as the stats clean count: each event adds its cleaningCount (1 per logged event).
+  const totalCleanings = sectionEvents.reduce((sum, evt) => sum + (evt.cleaningCount > 0 ? evt.cleaningCount : 1), 0);
 
   // Sort by date (newest first) — copy so we don't mutate before methodCounts
   const sortedByDate = [...sectionEvents].sort((a, b) =>

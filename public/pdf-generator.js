@@ -867,7 +867,6 @@ async function addAllEventsSection(doc, startDate, endDate) {
       evt.cleaningMethod,
       evt.addedByUsertag || "—",
       `${eventDistance(evt)}m`,
-      String(evt.cleaningCount || 1),
     ];
   });
 
@@ -875,7 +874,7 @@ async function addAllEventsSection(doc, startDate, endDate) {
   doc.text(sectionTitle, 20, 16);
 
   doc.autoTable({
-    head: [["Date", "Cable", "Sections", "EB Range", "Method", "Added by", "Length", "Count"]],
+    head: [["Date", "Cable", "Sections", "EB Range", "Method", "Added by", "Length"]],
     body: tableBody,
     startY: 22,
     margin: { left: 15, right: 15 },
