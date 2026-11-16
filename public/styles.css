@@ -3059,6 +3059,60 @@ table.has-noise-data .noise-col {
   box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
+/* Sequence picker for averaging several RMS uploads */
+.noise-compare-panel {
+  position: relative;
+  font-size: 13px;
+}
+
+.noise-compare-summary {
+  cursor: pointer;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-bg, #fff);
+  color: var(--text);
+  list-style: none;
+  user-select: none;
+}
+
+.noise-compare-summary::-webkit-details-marker {
+  display: none;
+}
+
+.noise-compare-panel[open] .noise-compare-summary {
+  border-color: var(--accent, #2563eb);
+}
+
+.noise-compare-hint {
+  margin: 8px 0 4px;
+  color: var(--text-muted, #64748b);
+  font-size: 12px;
+}
+
+.noise-compare-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  min-width: 280px;
+  max-width: 360px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-bg, #fff);
+  position: absolute;
+  z-index: 20;
+}
+
+.noise-compare-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
 /* Upload button — styled as a file label */
 .noise-upload-btn {
   font-size: 13px;

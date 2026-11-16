@@ -200,6 +200,11 @@
                 <p id="noise-toolbar-status" class="noise-toolbar-status hidden"></p>
                 <select id="noise-upload-selector" class="noise-upload-selector hidden" title="Select a historical noise upload to display">
                 </select>
+                <details id="noise-compare-panel" class="noise-compare-panel hidden" title="Tick two or more sequences to average their RMS per section">
+                  <summary class="noise-compare-summary">Average of sequences</summary>
+                  <p class="noise-compare-hint">Tick two or more sequences to see the average per section and the range in the tooltip.</p>
+                  <div id="noise-compare-list" class="noise-compare-list"></div>
+                </details>
                 <div class="noise-dataset-actions">
                   <button
                     type="button"

@@ -37,6 +37,7 @@ import {
   getEffectiveSectionsPerCable,
 } from "./js/streamer-utils.js";
 import { validateNoiseCsv } from "./js/noise-validation.js";
+import { aggregateNoiseDatasets } from "./js/noise-aggregate.js";
 import { toDateTimeLocalInputValue, dateTimeLocalInputToIso } from "./js/date-utils.js";
 import {
   shouldInsertModuleAfterSection,
@@ -161,6 +162,49 @@ function setNoiseSelectorValue(uploadId) {
   if (selector && uploadId != null) selector.value = String(uploadId);
 }
 
+/**
+ * Render the sequence checkboxes for averaging. Drops ticks for uploads that no longer exist.
+ * @param {Array<{ id: number, label: string|null, uploadedAt: string, measuredAt?: string }>} uploads
+ * @returns {number[]} ids still ticked after pruning
+ */
+function populateComparePicker(uploads) {
+  const panel = safeGet("noise-compare-panel");
+  const list = safeGet("noise-compare-list");
+  const available = new Set(uploads.map((u) => u.id));
+  [...selectedNoiseUploadIds].forEach((id) => {
+    if (!available.has(id)) selectedNoiseUploadIds.delete(id);
+  });
+
+  if (list) {
+    list.replaceChildren();
+    uploads.forEach((u) => {
+      const label = document.createElement("label");
+      label.className = "noise-compare-option";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = String(u.id);
+      checkbox.checked = selectedNoiseUploadIds.has(u.id);
+      const text = document.createElement("span");
+      const date = new Date(u.measuredAt || u.uploadedAt).toLocaleDateString();
+      text.textContent = u.label ? `${date} — ${u.label}` : date;
+      label.append(checkbox, text);
+      list.appendChild(label);
+    });
+  }
+
+  if (uploads.length === 0 && panel) panel.open = false;
+  panel?.classList.toggle("hidden", uploads.length === 0);
+  updateComparePickerSummary();
+  return [...selectedNoiseUploadIds];
+}
+
+function updateComparePickerSummary() {
+  const summary = safeGet("noise-compare-panel")?.querySelector("summary");
+  if (!summary) return;
+  const count = selectedNoiseUploadIds.size;
+  summary.textContent = count >= 2 ? `Average of ${count} sequences` : "Average of sequences";
+}
+
 function getSelectedNoiseUploadId() {
   const selector = safeGet("noise-upload-selector");
   return selector?.value ? Number(selector.value) : null;
@@ -193,6 +237,13 @@ function updateNoiseToolbarStatus(message = null) {
 
   if (message) {
     statusEl.textContent = message;
+    statusEl.classList.toggle("hidden", !overlayOn);
+    if (waterSpeedEl) waterSpeedEl.classList.add("hidden");
+    return;
+  }
+
+  if (selectedNoiseUploadIds.size >= 2) {
+    statusEl.textContent = `Average of ${selectedNoiseUploadIds.size} sequences. Range is shown in the section tooltip.`;
     statusEl.classList.toggle("hidden", !overlayOn);
     if (waterSpeedEl) waterSpeedEl.classList.add("hidden");
     return;
@@ -371,7 +422,12 @@ function attachSectionTooltips(container, lastCleaned) {
       if (!isTail && noiseData) {
         const rms = noiseData[streamerId]?.[sectionIndex] ?? 0;
         if (rms > 0) {
-          html += `<div class="tooltip-row">RMS noise: <strong>${rms.toFixed(2)}</strong></div>`;
+          const label = noiseRange ? "Average RMS" : "RMS noise";
+          html += `<div class="tooltip-row">${label}: <strong>${rms.toFixed(2)}</strong></div>`;
+          const range = noiseRange?.[streamerId]?.[sectionIndex];
+          if (range && range.count >= 2) {
+            html += `<div class="tooltip-row">Range: ${range.min.toFixed(2)}–${range.max.toFixed(2)} (${range.count} sequences)</div>`;
+          }
         }
       }
 
@@ -1077,6 +1133,20 @@ async function renderPlanningHeatmap() {
 
 /* ------------ Noise data loading ------------ */
 
+// Uploads ticked in the sequence picker. Two or more are averaged per section.
+const selectedNoiseUploadIds = new Set();
+// Per-section min/max/count across the ticked sequences; null in single-upload view.
+let noiseRange = null;
+
+function clearNoiseSelection() {
+  selectedNoiseUploadIds.clear();
+  noiseRange = null;
+  document.querySelectorAll("#noise-compare-list input[type='checkbox']").forEach((cb) => {
+    cb.checked = false;
+  });
+  updateComparePickerSummary();
+}
+
 async function loadNoiseData(uploadId, projectNumber) {
   try {
     const result = await API.getNoiseData(uploadId, projectNumber);
@@ -1102,6 +1172,48 @@ async function loadNoiseUploads(projectNumber) {
 }
 
 /**
+ * Load every ticked sequence and show their per-section average and range.
+ * With fewer than two ticked sequences this does nothing; callers load the single upload.
+ */
+async function applyNoiseSelection() {
+  const ids = [...selectedNoiseUploadIds];
+  if (ids.length < 2) {
+    noiseRange = null;
+    return;
+  }
+  try {
+    const results = await Promise.all(ids.map((id) => API.getNoiseData(id, selectedProjectFilter)));
+    const { mean, range } = aggregateNoiseDatasets(results.map((r) => r.noiseData || {}));
+    setNoiseData(mean);
+    noiseRange = range;
+  } catch (err) {
+    console.error("Averaging RMS sequences failed:", err);
+    showErrorToast("Could not average sequences", "Showing the selected upload instead.");
+    clearNoiseSelection();
+    await loadNoiseData(getSelectedNoiseUploadId(), selectedProjectFilter);
+  }
+}
+
+/**
+ * Handle a tick or untick in the sequence picker and redraw the heatmap.
+ */
+async function onComparePickerChange() {
+  const ids = [...selectedNoiseUploadIds];
+  if (ids.length >= 2) {
+    await applyNoiseSelection();
+  } else {
+    noiseRange = null;
+    const singleId = ids.length === 1 ? ids[0] : getSelectedNoiseUploadId();
+    if (ids.length === 1) setNoiseSelectorValue(ids[0]);
+    await loadNoiseData(singleId, selectedProjectFilter);
+  }
+  updateComparePickerSummary();
+  updateNoiseToolbarStatus();
+  updatePlanningHeatmapCardTitle();
+  await renderPlanningHeatmap();
+}
+
+/**
  * Reload all noise controls for the given project.
  * Called on init and whenever the project filter changes.
  * @param {string|null} projectNumber
@@ -1113,6 +1225,8 @@ async function refreshNoiseForProject(projectNumber, preferredUploadId = null) {
   if (!projectNumber) {
     // No project selected — clear noise state and disable controls
     setNoiseData(null);
+    clearNoiseSelection();
+    populateComparePicker([]);
     setNoiseUploads([]);
     selector?.classList.add("hidden");
     syncNoiseActionButtons();
@@ -1138,15 +1252,25 @@ async function refreshNoiseForProject(projectNumber, preferredUploadId = null) {
   if (uploads.length > 0) {
     populateUploadSelector(uploads);
     selector?.classList.remove("hidden");
+    const tickedIds = populateComparePicker(uploads);
     const hasPreferredUpload = preferredUploadId != null
       && uploads.some((upload) => upload.id === preferredUploadId);
-    const nextUploadId = hasPreferredUpload ? preferredUploadId : null;
-    const activeUpload = await loadNoiseData(nextUploadId, projectNumber);
-    if (activeUpload?.uploadId) setNoiseSelectorValue(activeUpload.uploadId);
+    const nextUploadId = tickedIds.length === 1
+      ? tickedIds[0]
+      : (hasPreferredUpload ? preferredUploadId : null);
+    if (tickedIds.length >= 2) {
+      await applyNoiseSelection();
+    } else {
+      noiseRange = null;
+      const activeUpload = await loadNoiseData(nextUploadId, projectNumber);
+      if (activeUpload?.uploadId) setNoiseSelectorValue(activeUpload.uploadId);
+    }
 
     enableNoiseToggle(true);
   } else {
     setNoiseData(null);
+    clearNoiseSelection();
+    populateComparePicker([]);
     selector?.classList.add("hidden");
     enableNoiseToggle(false);
     // Turn off toggle if it was on
@@ -1229,11 +1353,23 @@ function initNoiseControls() {
     updatePlanningHeatmapCardTitle();
   });
 
+  // Sequence picker handler — tick/untick sequences to average them
+  safeGet("noise-compare-list")?.addEventListener("change", (e) => {
+    const checkbox = e.target;
+    if (!(checkbox instanceof HTMLInputElement) || checkbox.type !== "checkbox") return;
+    const id = Number(checkbox.value);
+    if (checkbox.checked) selectedNoiseUploadIds.add(id);
+    else selectedNoiseUploadIds.delete(id);
+    onComparePickerChange();
+  });
+
   // Upload selector handler — load chosen batch and re-render
   selector?.addEventListener("change", async (e) => {
     const uploadId = e.target.value;
     syncNoiseActionButtons();
     if (!uploadId) return;
+    // Choosing a single upload leaves the averaging view
+    if (selectedNoiseUploadIds.size) clearNoiseSelection();
     await loadNoiseData(uploadId, selectedProjectFilter);
     updateNoiseToolbarStatus();
     await renderPlanningHeatmap();
