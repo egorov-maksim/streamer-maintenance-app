@@ -6,7 +6,7 @@ const { defaultConfig, loadConfig } = require("../config");
 const { getActiveProjectForVessel } = require("../activeProject");
 const { requireValidId, isSafeText } = require("../utils/validation");
 const { sendError, httpError } = require("../utils/errors");
-const { ROLES, isGlobalUser } = require("../middleware/auth");
+const { isGlobalUser } = require("../middleware/auth");
 const { splitSectionRange, validateRangeForType } = require("../utils/sectionType");
 
 /**
@@ -77,9 +77,10 @@ function eventTextError(cleaningMethod, addedByUsertag) {
  * Create events router (CRUD, bulk delete).
  * @param {function} authMiddleware
  * @param {function} adminOrAbove
+ * @param {function} superUserOnly
  * @returns {express.Router}
  */
-function createEventsRouter(authMiddleware, adminOrAbove) {
+function createEventsRouter(authMiddleware, adminOrAbove, superUserOnly) {
   const router = express.Router();
 
   router.get("/api/events", authMiddleware, async (req, res) => {
@@ -537,11 +538,16 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
     }
   });
 
-  router.delete("/api/events", authMiddleware, adminOrAbove, async (req, res) => {
+  // Bulk clear: SuperUser and above, and the caller must send the typed confirmation.
+  // A SuperUser clears one project on their own vessel; only GrandSuperUser clears everything.
+  router.delete("/api/events", authMiddleware, superUserOnly, async (req, res) => {
     try {
+      if (req.query.confirm !== "DELETE") {
+        return sendError(res, 400, "Type DELETE to confirm clearing events");
+      }
+
       const project = req.query.project;
       if (project) {
-        // Per-vessel users can only clear events for their own vessel, even when a project is specified.
         const params = [project];
         let sql = "DELETE FROM cleaning_events WHERE project_number = ?";
         if (req.vesselScope) {
@@ -553,9 +559,8 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
         return res.json({ success: true, deletedCount: result.changes });
       }
 
-      // Global clear: only allowed for global superusers (including grand superuser).
-      if (!isGlobalUser(req.user) || (req.user.role !== ROLES.SUPER_USER && req.user.role !== ROLES.GRAND_SUPER_USER)) {
-        return sendError(res, 403, "Grand SuperUser access required for global clear");
+      if (!isGlobalUser(req.user)) {
+        return sendError(res, 403, "Grand SuperUser access required to clear events for all projects");
       }
 
       const result = await runAsync("DELETE FROM cleaning_events");

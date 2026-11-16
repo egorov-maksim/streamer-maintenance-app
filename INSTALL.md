@@ -89,8 +89,9 @@ PORT=3000
 DB_FILE=./backend/streamer.db
 ALLOWED_ORIGINS=http://localhost:3000
 
-# Authentication (format: USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG[:GLOBAL])
-AUTH_USERS=USERNAME:$2b$10$hash:admin:ALL:true,USERNAME:$2b$10$hash:viewer:TTN
+# Authentication (format: USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG)
+# Only grandsuperuser has access to all vessels (use ALL); every other role needs a vessel tag.
+AUTH_USERS=USERNAME:$2b$10$hash:grandsuperuser:ALL,USERNAME:$2b$10$hash:viewer:TTN
 ```
 
 ### 7. Start the Application

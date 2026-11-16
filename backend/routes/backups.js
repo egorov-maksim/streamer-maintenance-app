@@ -57,7 +57,7 @@ function createBackupsRouter(authMiddleware, superUserOnly) {
     try {
       const { filename } = req.params;
 
-      // Restoring a backup replaces the entire database; restrict to global superusers.
+      // Restoring a backup replaces the entire database; restrict to GrandSuperUser.
       if (!isGlobalUser(req.user)) {
         return sendError(res, 403, "Grand SuperUser access required to restore backups");
       }

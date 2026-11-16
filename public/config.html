@@ -156,10 +156,10 @@
               </div>
               <div class="actions mt-12">
                 <button class="btn btn-primary superuser-only" id="btn-save-config">💾 Save Configuration</button>
-                <button type="button" class="btn btn-outline btn-outline-danger superuser-only" id="btn-cleanup-streamers" title="Remove events and deployments for streamers above current count">🧹 Cleanup orphaned streamers</button>
+                <button type="button" class="btn btn-outline btn-outline-danger grandsuperuser-only" id="btn-cleanup-streamers" title="Remove events and deployments for streamers above current count">🧹 Cleanup orphaned streamers</button>
                 <span id="config-status" class="status"></span>
               </div>
-              <div class="cleanup-explanation mt-8">
+              <div class="cleanup-explanation mt-8 grandsuperuser-only">
                 <p class="info-text-sm">
                   <strong>Cleanup orphaned streamers:</strong> Removes cleaning events and deployment configs for streamers above the current count. Use after reducing the number of streamers (e.g. decommissioned streamers). This cannot be undone.
                 </p>

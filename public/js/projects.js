@@ -158,7 +158,7 @@ export async function handleStreamerCountChange(previousNumCables, newNumCables)
   if (newNumCables < previousNumCables && isSuperUser()) {
     showWarningToast(
       "Streamer count reduced",
-      `Streamers ${newNumCables + 1}-${previousNumCables} are now hidden. Events and deployment data for those streamers still exist. Use "Cleanup orphaned streamers" to remove them.`
+      `Streamers ${newNumCables + 1}-${previousNumCables} are now hidden. Events and deployment data for those streamers still exist. ${isGrandSuperUser() ? 'Use "Cleanup orphaned streamers" to remove them.' : 'A GrandSuperUser can remove them with "Cleanup orphaned streamers".'}`
     );
   }
   await renderStreamerDeploymentGrid();
@@ -167,7 +167,7 @@ export async function handleStreamerCountChange(previousNumCables, newNumCables)
 
 /** Opens the cleanup orphaned streamers modal and sets the "streamers affected" range. Call from button click. */
 export function cleanupOrphanedStreamers() {
-  if (!isSuperUser()) {
+  if (!isGrandSuperUser()) {
     showAccessDeniedToast("cleanup orphaned streamers");
     return;
   }
@@ -791,7 +791,7 @@ export async function loadBackups() {
               <div class="backup-meta"><span>📅 ${formattedDate}</span><span>📦 ${sizeKB} KB</span></div>
             </div>
             <div class="backup-item-actions">
-              <button class="btn btn-sm btn-restore" data-filename="${escapeHtml(backup.filename)}" title="Restore this backup">🔄 Restore</button>
+              ${isGrandSuperUser() ? `<button class="btn btn-sm btn-restore" data-filename="${escapeHtml(backup.filename)}" title="Restore this backup">🔄 Restore</button>` : ""}
             </div>
           </div>
         `;
@@ -826,7 +826,7 @@ export async function createBackup() {
 }
 
 export function restoreBackup(filename) {
-  if (!isSuperUser()) {
+  if (!isGrandSuperUser()) {
     showAccessDeniedToast("restore backups");
     return;
   }

@@ -13,13 +13,16 @@ const ROLES = {
  * Load user credentials from AUTH_USERS environment variable.
  *
  * Format per user (comma-separated list):
- *   USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG[:GLOBAL]
+ *   USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG
  *
  * PASSWORD_HASH is a bcrypt hash (see INSTALL.md for generation).
  *
  * - ROLE: grandsuperuser | superuser | admin | viewer
- * - VESSEL_TAG: short vessel code (e.g. TTN, RAM); use "ALL" or empty for global users
- * - GLOBAL (optional): "true" marks the user as global (all vessels)
+ * - VESSEL_TAG: short vessel code (e.g. TTN, RAM). Required for every role except
+ *   grandsuperuser, which is always global (use "ALL" as a placeholder).
+ *
+ * Only grandsuperuser is global. A fifth GLOBAL field from older .env files is ignored,
+ * and an entry for any other role without a vessel tag is skipped.
  *
  * @returns {Object.<string, { password: string, role: string, vesselTag: string|null, isGlobal: boolean }>}
  */
@@ -38,7 +41,7 @@ function loadUsersFromEnv() {
       const username = (parts[0] || "").trim();
       if (username) {
         console.warn(
-          `[auth] Skipping AUTH_USERS entry for "${username}" – expected USERNAME:PASSWORD:ROLE:VESSEL_TAG[:GLOBAL]`
+          `[auth] Skipping AUTH_USERS entry for "${username}" – expected USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG`
         );
       }
       return;
@@ -47,26 +50,27 @@ function loadUsersFromEnv() {
     const username = parts[0].trim();
     const password = parts[1].trim();
     const role = parts[2].trim();
+    const isGlobal = role === ROLES.GRAND_SUPER_USER;
 
-    // Format with vessel tag (and optional global flag)
     const rawVesselTag = (parts[3] || "").trim();
     const vesselTag = rawVesselTag === "" || rawVesselTag.toUpperCase() === "ALL"
       ? null
       : rawVesselTag;
 
-    let isGlobal = false;
-    if (parts.length >= 5) {
-      const rawGlobal = (parts[4] || "").trim().toLowerCase();
-      isGlobal = rawGlobal === "true" || rawGlobal === "1" || rawGlobal === "yes";
-    } else if (role === ROLES.GRAND_SUPER_USER) {
-      // Grand superuser is implicitly global if GLOBAL not explicitly provided.
-      isGlobal = true;
-    } else if (!vesselTag) {
-      // If no vessel tag is provided for non-grand roles, treat as global but warn.
-      isGlobal = true;
+    if (!isGlobal && !vesselTag) {
+      // Without a vessel tag the user would have no vessel restriction at all.
       console.warn(
-        `[auth] User "${username}" has no vessel tag configured. ` +
-          "They will be treated as global until a vessel tag is added."
+        `[auth] Skipping AUTH_USERS entry for "${username}" – role "${role}" needs a vessel tag; ` +
+          "only grandsuperuser has access to all vessels."
+      );
+      return;
+    }
+
+    const rawGlobal = (parts[4] || "").trim().toLowerCase();
+    if (!isGlobal && ["true", "1", "yes"].includes(rawGlobal)) {
+      console.warn(
+        `[auth] Ignoring GLOBAL flag for "${username}" – only grandsuperuser has access to all vessels. ` +
+          `The user is limited to vessel "${vesselTag}".`
       );
     }
 
@@ -91,21 +95,19 @@ function generateSessionToken() {
 
 /**
  * Determine whether a user has global (all-vessel) access.
- * @param {{ isGlobal?: boolean, role?: string }} user
+ * Only grandsuperuser is global; every other role is limited to its own vessel.
+ * @param {{ role?: string }} user
  * @returns {boolean}
  */
 function isGlobalUser(user) {
-  if (!user) return false;
-  if (user.isGlobal) return true;
-  // Grand superuser is always treated as global.
-  return user.role === ROLES.GRAND_SUPER_USER;
+  return user?.role === ROLES.GRAND_SUPER_USER;
 }
 
 /**
  * Get the effective vessel scope for a user.
  * - Global users: null (no restriction)
  * - Per-vessel users: their vesselTag
- * @param {{ vesselTag?: string|null, isGlobal?: boolean, role?: string }} user
+ * @param {{ vesselTag?: string|null, role?: string }} user
  * @returns {string|null}
  */
 function getVesselScope(user) {
@@ -167,7 +169,7 @@ function requireRole(allowedRoles) {
 }
 
 /**
- * Express middleware: allow only superuser role.
+ * Express middleware: allow superuser or grandsuperuser.
  */
 function superUserOnly(req, res, next) {
   // Grand superuser is always allowed anywhere a regular superuser is.

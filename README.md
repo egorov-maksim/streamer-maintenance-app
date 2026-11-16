@@ -22,19 +22,20 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 ### 🔐 User Authentication & Access Control
 - **Multi-User Support**: Secure login system with role-based permissions
 - **Access Levels**:
-  - 👑 **GrandSuperUser**: Full access to **all vessels** (projects, global config, deployments, backups, *global* clears, force-delete)
-  - 🔑 **SuperUser**: Full access **within their vessel** (projects, per-vessel config, deployments, backups listing/creation, per-project clears)
-  - 👨‍💼 **Admin**: Event management only **within their vessel** (add/edit/delete events, per-project clear)
+  - 👑 **GrandSuperUser**: Always global — full access to **all vessels** (projects, global config, deployments, backups incl. restore, clearing events for all projects, cleanup of orphaned streamers, force-delete)
+  - 🔑 **SuperUser**: Full access **within their vessel** (projects, per-vessel config, deployments, backups listing/creation, Clear All Events for a project)
+  - 👨‍💼 **Admin**: Event management only **within their vessel** (add/edit/delete single events, CSV import)
   - 👁️ **Viewer**: Read-only access **within their vessel** (view data, filter, export reports)
+  - Only GrandSuperUser has access to all vessels; every other role is limited to its own vessel
 - **Session Management**: Secure session tokens with localStorage persistence
 - **Configurable Users**: Define users and roles via `AUTH_USERS` in `.env`
-  - Format: `USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG[:GLOBAL]`
+  - Format: `USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG`
     - `PASSWORD_HASH`: bcrypt hash of the password (plain-text passwords are not accepted) — see [Adding a user](#adding-a-user)
     - `ROLE`: `grandsuperuser`, `superuser`, `admin`, or `viewer`
-    - `VESSEL_TAG`: short code for the vessel (e.g. `TTN`, `RAM`)
-    - `GLOBAL` (optional): `true` to give the user global (all-vessel) access
+    - `VESSEL_TAG`: short code for the vessel (e.g. `TTN`, `RAM`). Required for every role except `grandsuperuser` (use `ALL`); an entry for another role without a vessel tag is skipped at startup
+    - A fifth `GLOBAL` field from older `.env` files is ignored: only `grandsuperuser` is global
   - Examples:
-    - `GrandRoot:<bcrypt-hash>:grandsuperuser:ALL:true` (grand superuser, all vessels)
+    - `GrandRoot:<bcrypt-hash>:grandsuperuser:ALL` (grand superuser, all vessels)
     - `TTNOBS:<bcrypt-hash>:superuser:TTN` (superuser for vessel `TTN`)
     - `TTNView:<bcrypt-hash>:viewer:TTN` (viewer for vessel `TTN`)
 
@@ -85,7 +86,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
   - Vessel tag identifier
 - **Real-Time Updates**: Configuration changes immediately update the heatmap
 - **Collapse/Expand UI**: Fold configuration section for cleaner interface
-- **Cleanup Orphaned Streamers**: When streamer count is reduced, GrandSuperUser (or global SuperUser) can remove events and deployments for hidden streamers via "Cleanup orphaned streamers"
+- **Cleanup Orphaned Streamers**: When streamer count is reduced, GrandSuperUser can remove events and deployments for hidden streamers via "Cleanup orphaned streamers"
 
 ### ⚙️ Config Page (Dedicated Dashboard)
 - **Separate Configuration UI**: Full-screen dashboard at `/config` for managing projects and streamer settings without cluttering the main heatmap view
@@ -95,7 +96,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 - **Per-Streamer Deployment**: Set deployment date, coating (Coated/Uncoated/Unknown) and an optional sections override per streamer; bulk actions to set all dates, set all coating, or clear all/single streamer config
 - **Vessel Project Overview**: Table of vessels with active project and project name; SuperUsers can change the active project per vessel from dropdowns
 - **Project Management**: Create new project, set active project, clear active project; list of all projects with actions (activate, force-delete with confirmation)
-- **Backup & Restore**: Create manual backup, refresh backup list, restore from backup (restore requires GrandSuperUser or a global SuperUser; applied live, no server restart needed)
+- **Backup & Restore**: Create manual backup, refresh backup list, restore from backup (restore requires GrandSuperUser; applied live, no server restart needed)
 - **Back to Main**: Header link returns to the main app at `/`
 
 ### 🗺️ Planning Page (Dedicated Maintenance Planning View)
@@ -216,7 +217,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 - **Toast Notifications**: Real-time feedback for actions (success/error/warning)
 - **Duplicate-Clean Guard**: When logging a new event over a section already cleaned within the last 24 hours, a warning modal interrupts the save — showing which prior event overlaps, how long ago it was cleaned (e.g. "3 hrs 22 min ago"), and offering Cancel or Save Anyway
 - **Adjacent Event Merge**: When a newly logged range is immediately adjacent (end+1 = proposed start, or vice versa) to an existing event on the same streamer with the same cleaning method and logged within 1 hour, a merge modal appears showing the existing range, the new range, and the combined merged range — the user can choose Merge (extends the existing event) or Keep Separate (saves as a new event)
-- **Clear All Events**: SuperUser+ can bulk-delete all events for the active project (or globally if no active project for GrandSuperUser) via a confirmation modal that requires typing `DELETE` to proceed
+- **Clear All Events**: SuperUser+ can bulk-delete all events for the active project on their vessel via a confirmation modal that requires typing `DELETE` to proceed (the server also refuses the request without that confirmation). With no active project, only GrandSuperUser can clear, and that clears every project. Admins can delete single events only
 
 ### 📡 RMS Noise Data Upload & Overlay
 - **CSV Upload**: Upload per-section average RMS noise (in µBar) from a CSV file on the **Planning page** (Admin+); the file is validated client-side before upload
@@ -324,8 +325,8 @@ DB_FILE=./backend/streamer.db
 # CORS
 ALLOWED_ORIGINS=http://localhost:3000
 
-# Authentication (format: USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG[:GLOBAL], separated by commas)
-AUTH_USERS=GrandRoot:<bcrypt-hash>:grandsuperuser:ALL:true,TTNOBS:<bcrypt-hash>:superuser:TTN,TTNView:<bcrypt-hash>:viewer:TTN
+# Authentication (format: USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG, separated by commas)
+AUTH_USERS=GrandRoot:<bcrypt-hash>:grandsuperuser:ALL,TTNOBS:<bcrypt-hash>:superuser:TTN,TTNView:<bcrypt-hash>:viewer:TTN
 ```
 
 ### Adding a user
@@ -388,7 +389,7 @@ node -e "const b=require('bcryptjs');console.log(b.hashSync('yourpassword',10))"
 - Click "Export to CSV" to download events
 - Use for backup or analysis in spreadsheets
 
-#### 9. **Manage Backups** (SuperUser+ for listing/creating; GrandSuperUser / global SuperUser for restore)
+#### 9. **Manage Backups** (SuperUser+ for listing/creating; GrandSuperUser for restore)
 - View list of automatic backups
 - Create manual backups anytime
 - Restore from previous backups if needed (applied to the running database through SQLite's online backup API; just reload the page)
@@ -402,7 +403,7 @@ Configuration is changed on the dedicated **Config page** (SuperUser only); ther
 - After login, the dashboard shows:
   - **Active project** and project comments (editable by superuser)
   - **Project selector** and "Set as Active" to switch the active project
-  - **Streamer configuration** (number of streamers, sections, section length, eBird frequency, tail option, etc.) — Save applies to the active project; "Cleanup orphaned streamers" removes events/deployments for streamers above the current count (GrandSuperUser / global SuperUser only)
+  - **Streamer configuration** (number of streamers, sections, section length, eBird frequency, tail option, etc.) — Save applies to the active project; "Cleanup orphaned streamers" removes events/deployments for streamers above the current count (GrandSuperUser only)
   - **Per-streamer deployment** (deployment date and coating per streamer; bulk Set All Date / Set All Coating / Clear All)
   - **Vessel Project Overview** — see which project is active per vessel; superusers can change active project per vessel from the table
   - **Create New Project** (project number, name, vessel tag)
@@ -488,7 +489,7 @@ The PDF report includes:
 - `POST /api/events` - Create new event (Admin+); stores `addedByUsertag` from the authenticated user. Returns `400` for an unknown project, a streamer outside the project's cable count, or markup in text fields; `403` when a vessel-scoped user targets another vessel's project
 - `PUT /api/events/:id` - Update event (Admin+); same `400`/`403` rules apply when the project or streamer is changed
 - `DELETE /api/events/:id` - Delete single event (Admin+)
-- `DELETE /api/events` - Bulk clear events; accepts optional `?project=X` param (Admin+)
+- `DELETE /api/events?confirm=DELETE` - Bulk clear events (SuperUser+). `confirm=DELETE` is required (`400` without it). With `&project=X`, clears that project (a SuperUser only on their own vessel); without `project`, clears all projects (GrandSuperUser only, `403` otherwise)
 - `POST /api/events/bulk` - Bulk import events (used by CSV import; Admin+)
 
 CSV export is generated in the browser from the loaded events (includes Added By column; filename includes project suffix when filtered) — there is no export endpoint.
@@ -511,7 +512,7 @@ CSV export is generated in the browser from the loaded events (includes Added By
 - `PATCH /api/noise-data/uploads/:id` - Edit an upload's label and water speed (Admin+)
 - `DELETE /api/noise-data/uploads/:id` - Delete an upload batch (Admin+)
 
-### Backups (SuperUser+; restore requires GrandSuperUser / global SuperUser)
+### Backups (SuperUser+; restore requires GrandSuperUser)
 - `GET /api/backups` - List available backups
 - `POST /api/backups` - Create manual backup
 - `POST /api/backups/:filename/restore` - Restore from backup (a safety backup is taken first; the restore is applied live, no restart)
@@ -563,7 +564,8 @@ streamer_id,section_index_start,section_index_end,cleaning_method,cleaned_at,pro
 ### Issue: Login Failed
 
 **Verify Credentials**: Check AUTH_USERS in `.env`
-- Format: `USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG[:GLOBAL]`
+- Format: `USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG`
+- Every role except `grandsuperuser` needs a vessel tag; entries without one are skipped (see the server log)
 - The password must be a bcrypt hash, not plain text (see [Adding a user](#adding-a-user))
 - Multiple users: comma-separated
 - No spaces around colons
@@ -700,7 +702,7 @@ streamer-maintenance-app/
 - ✅ **Adjacent Event Merge**: when a new range is immediately adjacent to an existing same-method event within 1 hour, a merge modal offers to extend the prior event instead of creating a new one
 - ✅ **Added By tracking**: every cleaning event records the username that created it; shown in the event log and CSV export
 - ✅ **Days to First Scraping chart**: horizontal bar chart per streamer showing elapsed days from deployment to first cleaning; visible on main and `/stats` pages
-- ✅ **Clear All Events**: SuperUser+ bulk-delete with `DELETE` confirmation; scoped to active project or global
+- ✅ **Clear All Events**: SuperUser+ bulk-delete with `DELETE` confirmation; scoped to the active project (all projects for GrandSuperUser only)
 - ✅ **Project delete safeguard**: `DELETE /api/projects/:id` returns 409 when data exists; force-delete requires a separate confirmation with typed `DELETE`
 - ✅ **Standalone stats page** (`/stats`): full statistics dashboard with its own independent login form
 - ✅ **Duplicate-clean guard**: warning modal when logging a cleaning event over an area already cleaned within the last 24 hours

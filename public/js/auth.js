@@ -240,6 +240,10 @@ export function updateUIForRole() {
     el.classList.toggle("hidden", !isSuperUserRole)
   );
 
+  document.querySelectorAll(".grandsuperuser-only").forEach((el) =>
+    el.classList.toggle("hidden", !isGrandSuper)
+  );
+
   document.querySelectorAll(".admin-only").forEach((el) =>
     el.classList.toggle("hidden", !isAdminRole)
   );
@@ -249,7 +253,7 @@ export function updateUIForRole() {
   );
 
   const btnClearAll = safeGet("btn-clear-all");
-  if (btnClearAll) btnClearAll.classList.toggle("hidden", !isGrandSuper);
+  if (btnClearAll) btnClearAll.classList.toggle("hidden", !isSuperUserRole);
 
   const btnSaveConfig = safeGet("btn-save-config");
   if (btnSaveConfig) btnSaveConfig.classList.toggle("hidden", !isSuperUserRole);

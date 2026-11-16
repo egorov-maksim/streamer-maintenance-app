@@ -12,11 +12,11 @@ process.env.DB_FILE = path.join(scratchRoot, `test-w${worker}.db`);
 process.env.BACKUP_DIR = path.join(scratchRoot, `backup-w${worker}`);
 process.env.SESSION_TTL_MS = String(60 * 60 * 1000);
 
-// Low bcrypt cost keeps login fast in tests; format is USERNAME:HASH:ROLE:VESSEL_TAG[:GLOBAL].
+// Low bcrypt cost keeps login fast in tests; format is USERNAME:HASH:ROLE:VESSEL_TAG.
 const hash = bcrypt.hashSync("test-password", 4);
 process.env.TEST_PASSWORD = "test-password";
 process.env.AUTH_USERS = [
-  `grand:${hash}:grandsuperuser:ALL:true`,
+  `grand:${hash}:grandsuperuser:ALL`,
   `ttnsuper:${hash}:superuser:TTN`,
   `ttnadmin:${hash}:admin:TTN`,
   `ttnviewer:${hash}:viewer:TTN`,

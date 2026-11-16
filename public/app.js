@@ -49,6 +49,7 @@ import {
   isSuperUser,
   isAdminOrAbove,
   isAdmin,
+  isGrandSuperUser,
 } from "./js/auth.js";
 import { initModals, openModal, closeModal } from "./js/modals.js";
 import * as Projects from "./js/projects.js";
@@ -715,6 +716,10 @@ function showClearAllModal() {
   }
   
   const activeProject = projects.find(p => p.isActive === true);
+  if (!activeProject && !isGrandSuperUser()) {
+    showWarningToast('No Active Project', 'Activate a project first. Only GrandSuperUser can clear events for all projects.');
+    return;
+  }
   const modal = safeGet('clear-all-modal');
   const scopeEl = safeGet('clear-all-scope');
   const countEl = safeGet('clear-all-count');
@@ -767,15 +772,7 @@ async function confirmClearAllEvents() {
   }
   
   try {
-    let url = '/api/events';
-    if (activeProject) {
-      url += `?project=${encodeURIComponent(activeProject.projectNumber)}`;
-    }
-    
-    await API.apiCall(url, {
-      method: 'DELETE',
-      action: 'clear all events'
-    });
+    await API.clearEvents(activeProject ? activeProject.projectNumber : null);
     
     closeClearAllModal();
     

@@ -95,7 +95,7 @@ const authRouter = createAuthRouter(sessionStore, users, authMiddleware);
 const backupsRouter = createBackupsRouter(authMiddleware, superUserOnly);
 const configRouter = createConfigRouter(authMiddleware, superUserOnly);
 const projectsRouter = createProjectsRouter(authMiddleware, superUserOnly);
-const eventsRouter = createEventsRouter(authMiddleware, adminOrAbove);
+const eventsRouter = createEventsRouter(authMiddleware, adminOrAbove, superUserOnly);
 const statsRouter = createStatsRouter(authMiddleware);
 const noiseRouter = createNoiseRouter(authMiddleware, adminOrAbove);
 

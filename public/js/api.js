@@ -226,8 +226,8 @@ export async function deleteEvent(id) {
 }
 
 export async function clearEvents(project = null) {
-  let url = "api/events";
-  if (project) url += `?project=${encodeURIComponent(project)}`;
+  let url = "api/events?confirm=DELETE";
+  if (project) url += `&project=${encodeURIComponent(project)}`;
   return apiCall(url, {
     method: "DELETE",
     action: "clear events",
