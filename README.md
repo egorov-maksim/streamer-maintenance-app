@@ -633,7 +633,7 @@ streamer-maintenance-app/
 │   │   ├── noise.js       # RMS noise upload batches & per-section data
 │   │   ├── projects.js    # Projects CRUD, deployments, cleanup
 │   │   └── stats.js       # Statistics & aggregates
-│   ├── tests/             # Unit tests for the pure helpers
+│   ├── tests/             # Jest suite: route tests and pure unit tests (npm test)
 │   └── utils/
 │       ├── cleaningNoiseEfficiency.js # Before/after RMS comparison for cleaned sections (pure)
 │       ├── eb.js          # eBird module range calculator (pure)
