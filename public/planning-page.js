@@ -185,10 +185,18 @@ function populateComparePicker(uploads) {
       checkbox.type = "checkbox";
       checkbox.value = String(u.id);
       checkbox.checked = selectedNoiseUploadIds.has(u.id);
-      const text = document.createElement("span");
+      // Label first (what crews call the sequence), date second and muted.
       const date = new Date(u.measuredAt || u.uploadedAt).toLocaleDateString();
-      text.textContent = u.label ? `${date} — ${u.label}` : date;
-      label.append(checkbox, text);
+      const name = document.createElement("span");
+      name.className = "noise-compare-option-name";
+      name.textContent = u.label || date;
+      label.append(checkbox, name);
+      if (u.label) {
+        const dateEl = document.createElement("span");
+        dateEl.className = "noise-compare-option-date";
+        dateEl.textContent = date;
+        label.append(dateEl);
+      }
       list.appendChild(label);
     });
   }
@@ -199,11 +207,60 @@ function populateComparePicker(uploads) {
   return [...selectedNoiseUploadIds];
 }
 
+/**
+ * Sync everything the picker shows about the current ticks: the count badge on the
+ * button, the highlighted rows, the status line and the footer buttons.
+ */
 function updateComparePickerSummary() {
-  const summary = safeGet("noise-compare-panel")?.querySelector("summary");
-  if (!summary) return;
+  const panel = safeGet("noise-compare-panel");
+  if (!panel) return;
   const count = selectedNoiseUploadIds.size;
-  summary.textContent = count >= 2 ? `Average of ${count} sequences` : "Average of sequences";
+  const averaging = count >= 2;
+  const overlayOn = isNoiseToggleOn();
+
+  panel.classList.toggle("is-active", averaging);
+  const selector = document.getElementById("noise-upload-selector");
+  if (selector) {
+    selector.classList.toggle("is-overridden", averaging);
+    selector.title = averaging
+      ? "An average of several sequences is shown. Choose an upload here to go back to a single one."
+      : "Select a historical noise upload to display";
+  }
+
+  const countEl = document.getElementById("noise-compare-count");
+  if (countEl) {
+    countEl.textContent = String(count);
+    countEl.classList.toggle("hidden", !averaging);
+  }
+  panel.querySelector("summary")?.setAttribute(
+    "aria-label",
+    averaging ? `Average of ${count} sequences` : "Average sequences"
+  );
+
+  panel.querySelectorAll(".noise-compare-option").forEach((row) => {
+    row.classList.toggle("is-checked", row.querySelector("input")?.checked === true);
+  });
+
+  const statusEl = document.getElementById("noise-compare-status");
+  if (statusEl) {
+    if (count === 0) statusEl.textContent = "None ticked";
+    else if (count === 1) statusEl.textContent = "1 ticked. Tick one more to average.";
+    else statusEl.textContent = overlayOn ? `Averaging ${count} sequences` : `${count} ticked. Noise overlay is off.`;
+  }
+
+  const clearBtn = document.getElementById("noise-compare-clear");
+  if (clearBtn) clearBtn.disabled = count === 0;
+  // With an average ready but the overlay off, the main button turns the overlay on.
+  const doneBtn = document.getElementById("noise-compare-done");
+  if (doneBtn) doneBtn.textContent = averaging && !overlayOn ? "Show on heatmap" : "Done";
+}
+
+/** Close the sequence picker and return focus to its button. */
+function closeComparePicker({ restoreFocus = true } = {}) {
+  const panel = safeGet("noise-compare-panel");
+  if (!panel?.open) return;
+  panel.open = false;
+  if (restoreFocus) panel.querySelector("summary")?.focus();
 }
 
 function getSelectedNoiseUploadId() {
@@ -1335,6 +1392,7 @@ function initNoiseControls() {
 
   // Toggle handler
   toggle?.addEventListener("change", () => {
+    updateComparePickerSummary();
     const container = safeGet("planning-heatmap-container");
     if (!container) return;
     const ageLegend = safeGet("age-legend");
@@ -1366,6 +1424,34 @@ function initNoiseControls() {
     if (checkbox.checked) selectedNoiseUploadIds.add(id);
     else selectedNoiseUploadIds.delete(id);
     onComparePickerChange();
+  });
+
+  // Clear: untick everything and go back to the single selected upload
+  safeGet("noise-compare-clear")?.addEventListener("click", () => {
+    if (!selectedNoiseUploadIds.size) return;
+    clearNoiseSelection();
+    onComparePickerChange();
+  });
+
+  // Done / Show on heatmap: close, switching the overlay on when an average is waiting
+  safeGet("noise-compare-done")?.addEventListener("click", () => {
+    const toggleEl = safeGet("noise-toggle");
+    const turnOverlayOn =
+      selectedNoiseUploadIds.size >= 2 && toggleEl && !toggleEl.checked && !toggleEl.disabled;
+    // Close first so focus returns to the picker button before the overlay switches on.
+    closeComparePicker();
+    if (turnOverlayOn) toggleEl.click();
+  });
+
+  // The picker is a dropdown: Escape and a click outside close it
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && safeGet("noise-compare-panel")?.open) closeComparePicker();
+  });
+  document.addEventListener("click", (e) => {
+    const panel = document.getElementById("noise-compare-panel");
+    if (panel?.open && e.target instanceof Node && !panel.contains(e.target)) {
+      closeComparePicker({ restoreFocus: false });
+    }
   });
 
   // Upload selector handler — load chosen batch and re-render
