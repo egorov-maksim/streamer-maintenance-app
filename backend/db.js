@@ -28,7 +28,8 @@ if (!fs.existsSync(BACKUP_DIR)) {
 const db = new sqlite3.Database(DB_FILE);
 
 /**
- * @param {(() => void)|undefined} onReady - Called after schema is applied (e.g. start backup scheduler).
+ * @param {(() => void)|undefined} onReady - Called after the schema and all migrations are applied
+ *   (e.g. start backup scheduler).
  */
 function initDb(onReady) {
   db.serialize(() => {
@@ -41,82 +42,49 @@ function initDb(onReady) {
         console.error("Error applying schema:", err);
       } else {
         console.log("Database schema applied.");
-        applyMigrations();
-        if (typeof onReady === "function") {
-          onReady();
-        }
+        applyMigrations().then(() => {
+          if (typeof onReady === "function") {
+            onReady();
+          }
+        });
       }
     });
   });
 }
 
 /**
- * Apply incremental schema migrations for databases created before a new column was added.
- * Each migration checks for the column's absence before altering the table, so it is safe
- * to run on every startup without risking duplicate-column errors.
+ * Columns added after a table was first released. Each is added only when missing, so this
+ * is safe to run on every startup.
  */
-function applyMigrations() {
-  db.all("PRAGMA table_info(projects)", [], (err, columns) => {
-    if (err) { console.error("Migration check failed:", err); return; }
-    const hasThreshold = columns.some((col) => col.name === "suggested_cleaning_threshold_days");
-    if (!hasThreshold) {
-      db.run(
-        "ALTER TABLE projects ADD COLUMN suggested_cleaning_threshold_days INTEGER DEFAULT 10",
-        (migrErr) => {
-          if (migrErr) console.error("Migration failed (add suggested_cleaning_threshold_days):", migrErr);
-          else console.log("Migration applied: added suggested_cleaning_threshold_days to projects");
-        }
-      );
-    }
-  });
-
+const COLUMN_MIGRATIONS = [
+  { table: "projects", column: "suggested_cleaning_threshold_days", definition: "INTEGER DEFAULT 10" },
   // Per-streamer section count override (longer cables in a project)
-  db.all("PRAGMA table_info(streamer_deployments)", [], (err, columns) => {
-    if (err) { console.error("Migration check failed (streamer_deployments):", err); return; }
-    if (!columns.some((col) => col.name === "sections_per_cable")) {
-      db.run(
-        "ALTER TABLE streamer_deployments ADD COLUMN sections_per_cable INTEGER",
-        (migrErr) => {
-          if (migrErr) console.error("Migration failed (add sections_per_cable to streamer_deployments):", migrErr);
-          else console.log("Migration applied: added sections_per_cable to streamer_deployments");
-        }
-      );
-    }
-  });
-
+  { table: "streamer_deployments", column: "sections_per_cable", definition: "INTEGER" },
   // Water speed fields recorded at the time of RMS noise line acquisition
-  db.all("PRAGMA table_info(noise_uploads)", [], (err, columns) => {
-    if (err) { console.error("Migration check failed (noise_uploads):", err); return; }
-    const names = columns.map((col) => col.name);
-    if (!names.includes("water_speed_start")) {
-      db.run(
-        "ALTER TABLE noise_uploads ADD COLUMN water_speed_start REAL",
-        (migrErr) => {
-          if (migrErr) console.error("Migration failed (add water_speed_start):", migrErr);
-          else console.log("Migration applied: added water_speed_start to noise_uploads");
-        }
-      );
+  { table: "noise_uploads", column: "water_speed_start", definition: "REAL" },
+  { table: "noise_uploads", column: "water_speed_end", definition: "REAL" },
+  // Time the noise sequence was recorded; upload time is used when it is missing.
+  { table: "noise_uploads", column: "recorded_at", definition: "TEXT" },
+];
+
+/**
+ * Apply incremental schema migrations for databases created before a new column was added.
+ * Resolves once every migration has finished, so callers can wait before touching the
+ * database (the startup backup must not run while a table is being altered).
+ * A failed migration is logged and the rest still run.
+ * @returns {Promise<void>}
+ */
+async function applyMigrations() {
+  for (const { table, column, definition } of COLUMN_MIGRATIONS) {
+    try {
+      const columns = await allAsync(`PRAGMA table_info(${table})`);
+      if (columns.some((col) => col.name === column)) continue;
+      await runAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+      console.log(`Migration applied: added ${column} to ${table}`);
+    } catch (err) {
+      console.error(`Migration failed (add ${column} to ${table}):`, err);
     }
-    if (!names.includes("water_speed_end")) {
-      db.run(
-        "ALTER TABLE noise_uploads ADD COLUMN water_speed_end REAL",
-        (migrErr) => {
-          if (migrErr) console.error("Migration failed (add water_speed_end):", migrErr);
-          else console.log("Migration applied: added water_speed_end to noise_uploads");
-        }
-      );
-    }
-    // Time the noise sequence was recorded; upload time is used when it is missing.
-    if (!names.includes("recorded_at")) {
-      db.run(
-        "ALTER TABLE noise_uploads ADD COLUMN recorded_at TEXT",
-        (migrErr) => {
-          if (migrErr) console.error("Migration failed (add recorded_at):", migrErr);
-          else console.log("Migration applied: added recorded_at to noise_uploads");
-        }
-      );
-    }
-  });
+  }
 }
 
 /**
@@ -173,9 +141,7 @@ function applySchemaAndMigrations() {
   return new Promise((resolve, reject) => {
     db.exec(fs.readFileSync(SCHEMA_FILE, "utf8"), (err) => {
       if (err) return reject(err);
-      applyMigrations();
-      // Migrations are queued on the same connection; this runs after them.
-      db.get("SELECT 1", [], (waitErr) => (waitErr ? reject(waitErr) : resolve()));
+      applyMigrations().then(resolve, reject);
     });
   });
 }

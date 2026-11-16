@@ -25,9 +25,15 @@ const { ensureUsersSeeded } = require("./userStore");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-initDb(() => {
+initDb(async () => {
   // First start with an empty users table: copy the accounts from AUTH_USERS.
-  ensureUsersSeeded().catch((err) => console.error("[auth] Could not prepare user accounts:", err));
+  try {
+    await ensureUsersSeeded();
+  } catch (err) {
+    console.error("[auth] Could not prepare user accounts:", err);
+  }
+  // Only now take the startup backup: it checkpoints the database, which is refused
+  // while migrations or the user import are still writing.
   if (process.env.NODE_ENV !== "test") {
     startBackupScheduler(createBackup);
   }
