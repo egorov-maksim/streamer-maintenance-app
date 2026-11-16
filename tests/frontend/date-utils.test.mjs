@@ -1,4 +1,4 @@
-import { toDateInputValue, toTimeInputValue } from "../js/date-utils.js";
+import { toDateInputValue, toTimeInputValue } from "../../public/js/date-utils.js";
 
 describe("date input helpers use the local calendar, not UTC", () => {
   // Built with the local-time constructor, so the expected strings hold in any TZ.

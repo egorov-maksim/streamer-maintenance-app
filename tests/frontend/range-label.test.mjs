@@ -1,4 +1,4 @@
-import { formatRangeLabel } from "../js/streamer-utils.js";
+import { formatRangeLabel } from "../../public/js/streamer-utils.js";
 
 describe("formatRangeLabel", () => {
   it("prints the start section before the end section", () => {

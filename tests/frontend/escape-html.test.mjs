@@ -1,4 +1,4 @@
-import { escapeHtml } from "../js/ui.js";
+import { escapeHtml } from "../../public/js/ui.js";
 
 describe("escapeHtml", () => {
   it("neutralises markup so stored text cannot inject elements", () => {

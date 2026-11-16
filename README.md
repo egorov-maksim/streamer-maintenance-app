@@ -297,7 +297,7 @@ The application will:
 npm test
 ```
 
-Runs the Jest suite in `backend/tests/` (route tests against a scratch SQLite database via supertest, plus pure unit tests) and `public/tests/` (browser helper modules). Tests never touch `backend/streamer.db` or the `backup/` directory: `jest.setup.js` points `DB_FILE` and `BACKUP_DIR` at `backend/tests/.scratch/`.
+Runs the Jest suite in `backend/tests/` (route tests against a scratch SQLite database via supertest, plus pure unit tests) and `tests/frontend/` (browser helper modules imported from `public/js/`). Tests never touch `backend/streamer.db` or the `backup/` directory: `jest.setup.js` points `DB_FILE` and `BACKUP_DIR` at `backend/tests/.scratch/`.
 
 ### Environment Configuration
 

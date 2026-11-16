@@ -1,4 +1,4 @@
-import { parseCsvEventRows } from "../js/csv-import.js";
+import { parseCsvEventRows } from "../../public/js/csv-import.js";
 
 const cfg = { numCables: 12 };
 const legacyRow = (streamer) => [String(streamer), "1", "4", "rope", "2024-03-10T10:00:00.000Z", "P-1", "TTN"];
