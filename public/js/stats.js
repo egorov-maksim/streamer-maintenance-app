@@ -15,7 +15,7 @@
 
 import { config, events, projects, selectedProjectFilter, getFilteredEvents } from "./state.js";
 import * as API from "./api.js";
-import { safeGet, showErrorToast, formatDateTime, escapeHtml } from "./ui.js";
+import { safeGet, showErrorToast, formatDateTime, escapeHtml, methodLabel } from "./ui.js";
 import {
   fmtKm, formatRangeLabel, formatSectionLabel, eventDistance, getEBRangeForSectionRange, getEffectiveSectionsPerCable,
   countUniqueSectionsInPeriod,
@@ -141,8 +141,8 @@ export async function refreshStatsFiltered(
       safeGet("kpi-breakdown").textContent =
         `Active: ${activeCoverage}% (${coverage.spreadActive}/${totalActiveSections}) · Tail: ${tailCoverage}% (${coverage.spreadTail}/${totalTailSections})`;
     } else {
-      safeGet("kpi-breakdown").textContent =
-        `Active: ${activeCoverage}% (${coverage.spreadActive}/${totalActiveSections})`;
+      // Without tail sections the active figure is the overall figure shown above.
+      safeGet("kpi-breakdown").textContent = "";
     }
 
     safeGet("kpi-distance").textContent = fmtKm(data.totalDistance);
@@ -258,7 +258,7 @@ export async function refreshStatsFiltered(
         const bar = document.createElement("div");
         bar.innerHTML = `
           <div class="bar-label">
-            <span>${escapeHtml(method)}</span>
+            <span>${escapeHtml(methodLabel(method))}</span>
             <span>${distance} m</span>
           </div>
           <div class="bar">
@@ -344,7 +344,7 @@ async function renderMostCleanedSections(startDate, endDate) {
     const sectionsNote = row.sectionCount > 1 ? ` (${row.sectionCount} sections)` : "";
     const methods = Object.entries(row.byMethod)
       .sort((a, b) => b[1] - a[1])
-      .map(([method, count]) => `${escapeHtml(method)} ×${count}`)
+      .map(([method, count]) => `${escapeHtml(methodLabel(method))} ×${count}`)
       .join(", ");
     const lastCleaned = row.lastCleanedAt ? new Date(row.lastCleanedAt).toLocaleDateString() : "—";
     const barWidth = data.maxCount > 0 ? Math.round((row.count / data.maxCount) * 100) : 0;
@@ -461,7 +461,7 @@ function renderRecentCleaningEventsModal() {
       <td>${rangeLabel}</td>
       <td>${ebRange}</td>
       <td>${eventDistance(evt)}</td>
-      <td>${escapeHtml(evt.cleaningMethod)}</td>
+      <td>${escapeHtml(methodLabel(evt.cleaningMethod))}</td>
     `;
     tbody.appendChild(tr);
   }

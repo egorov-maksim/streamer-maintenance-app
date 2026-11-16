@@ -17,7 +17,7 @@
         <p class="login-subtitle">Sign in to open the help guide</p>
       </div>
 
-      <form id="login-form" class="login-form" method="post" action="#" onsubmit="return false;">
+      <form id="login-form" class="login-form" method="post" action="#">
         <div class="form-group">
           <label for="login-username">Username</label>
           <div class="input-wrapper">
@@ -45,25 +45,20 @@
               autocomplete="current-password"
               required
             >
-            <button type="button" class="password-toggle" id="password-toggle">👁️</button>
+            <button type="button" class="password-toggle" id="password-toggle" aria-label="Show password" aria-pressed="false">👁️</button>
           </div>
         </div>
 
-        <div id="login-error" class="login-error"></div>
+        <div id="login-error" class="login-error" role="alert"></div>
 
-        <button type="button" class="login-btn" id="login-submit">
+        <button type="submit" class="login-btn" id="login-submit">
           <span class="btn-text">Sign In</span>
           <span class="btn-loader hidden">⏳</span>
         </button>
       </form>
 
       <div class="login-footer">
-        <p>Access Levels:</p>
-        <div class="access-info">
-          <span class="access-badge superuser">⚡ Super User</span>
-          <span class="access-badge admin">🔑 Administrator</span>
-          <span class="access-badge viewer">👁️ Viewer</span>
-        </div>
+        <p>Your access level (Viewer, Administrator, Super User or Grand Super User) is set by your account.</p>
       </div>
     </div>
   </div>

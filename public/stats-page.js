@@ -1,4 +1,4 @@
-import { safeGet, showErrorToast, escapeHtml } from "./js/ui.js";
+import { safeGet, showErrorToast, escapeHtml, methodLabel } from "./js/ui.js";
 import {
   setOnShowAppCallback,
   loadSession,
@@ -304,7 +304,7 @@ function renderNoiseEfficiencyBreakdown(ranges) {
       <td>${row.streamerId}</td>
       <td>${rangeLabel}</td>
       <td>${date}${outsideTag}</td>
-      <td>${escapeHtml(row.cleaningMethod || "—")}</td>
+      <td>${escapeHtml(methodLabel(row.cleaningMethod) || "—")}</td>
       <td class="${pctClass}">${pctText}</td>
       <td>${rmsText}</td>
       <td>${row.cellsPaired} / ${row.cellsInEvent}</td>
@@ -501,8 +501,6 @@ async function init() {
   const loginForm = safeGet("login-form");
   if (loginForm) loginForm.addEventListener("submit", handleLogin);
 
-  const loginBtn = safeGet("login-submit");
-  if (loginBtn) loginBtn.addEventListener("click", handleLogin);
 
   const logoutBtn = safeGet("logout-btn");
   if (logoutBtn) logoutBtn.addEventListener("click", handleLogout);

@@ -195,7 +195,9 @@ export function showLogin() {
 
 export function showApp() {
   window.scrollTo(0, 0);
-  document.body.style.overflow = "auto";
+  // Clear the login lock rather than setting "auto": a body that is its own scroll
+  // container stops position: sticky (top bar, heatmap headers) from following the page.
+  document.body.style.overflow = "";
   const loginPage = safeGet("login-page");
   const appContainer = safeGet("app-container");
   if (loginPage) {
@@ -331,13 +333,11 @@ export function setupPasswordToggle() {
   const passwordInput = safeGet("login-password");
   if (toggle && passwordInput) {
     toggle.addEventListener("click", () => {
-      if (passwordInput.type === "password") {
-        passwordInput.type = "text";
-        toggle.textContent = "🙈";
-      } else {
-        passwordInput.type = "password";
-        toggle.textContent = "👁️";
-      }
+      const reveal = passwordInput.type === "password";
+      passwordInput.type = reveal ? "text" : "password";
+      toggle.textContent = reveal ? "🙈" : "👁️";
+      toggle.setAttribute("aria-label", reveal ? "Hide password" : "Show password");
+      toggle.setAttribute("aria-pressed", String(reveal));
     });
   }
 }

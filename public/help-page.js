@@ -23,8 +23,6 @@ async function init() {
   const loginForm = safeGet("login-form");
   if (loginForm) loginForm.addEventListener("submit", handleLogin);
 
-  const loginBtn = safeGet("login-submit");
-  if (loginBtn) loginBtn.addEventListener("click", handleLogin);
 
   const logoutBtn = safeGet("logout-btn");
   if (logoutBtn) logoutBtn.addEventListener("click", handleLogout);

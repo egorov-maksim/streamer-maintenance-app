@@ -133,6 +133,7 @@ function setupConfigEventListeners() {
   );
   safeGet("project-selector")?.addEventListener("change", (e) => {
     Projects.setProjectFilter(e.target.value);
+    Projects.syncActivateProjectButton();
   });
 
   // Backup management
@@ -312,8 +313,6 @@ async function init() {
   const loginForm = safeGet("login-form");
   if (loginForm) loginForm.addEventListener("submit", handleLogin);
 
-  const loginBtn = safeGet("login-submit");
-  if (loginBtn) loginBtn.addEventListener("click", handleLogin);
 
   const logoutBtn = safeGet("logout-btn");
   if (logoutBtn) logoutBtn.addEventListener("click", handleLogout);
