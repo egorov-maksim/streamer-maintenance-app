@@ -263,13 +263,13 @@ Use the web interface:
 4. **Generate Report**: Test PDF generation
 5. **Set Up Backups**: Configure automated backups
 
-**Documentation:** [README.md](README.md) (overview), [TESTING.md](TESTING.md) (test setup), [API.md](API.md) (API reference).
+**Documentation:** [README.md](README.md) (overview), [Running the Tests](README.md#running-the-tests) (test setup), [API.md](API.md) (API reference).
 
 ---
 
 ## 📞 Support
 
-- **Documentation**: [README.md](README.md), [TESTING.md](TESTING.md), [API.md](API.md)
+- **Documentation**: [README.md](README.md), [API.md](API.md)
 - **Issues**: Check troubleshooting section above
 - **Contact**: maksim.egorov@tgs.com
 

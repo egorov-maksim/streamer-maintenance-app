@@ -28,7 +28,6 @@ scripts/add-extra-vessel-users.js
 
 # Test suite and artifacts (app-only repo: testing/ not committed)
 testing/
-playwright-report/
 test-results/
 test.db
 test.db-shm
