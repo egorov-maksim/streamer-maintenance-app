@@ -363,9 +363,8 @@ async function generatePDFReport({
         const noisePayload = await noiseRes.json();
         const noiseData = noisePayload?.noiseData || null;
 
-        const uploadedAt = noisePayload?.uploadedAt
-          ? new Date(noisePayload.uploadedAt).toLocaleDateString()
-          : null;
+        const measuredAt = noisePayload?.measuredAt || noisePayload?.uploadedAt;
+        const uploadedAt = measuredAt ? new Date(measuredAt).toLocaleDateString() : null;
         const label = noisePayload?.label || (noiseUploadId ? `Upload ${noiseUploadId}` : "Latest");
         const titleSuffix = uploadedAt ? `${label} (${uploadedAt})` : label;
 
@@ -936,7 +935,8 @@ async function populateNoiseUploadsModal(projectNumber) {
     selectEl.disabled = !includeEl.checked;
 
     for (const u of uploads) {
-      const uploadedAt = u.uploadedAt ? new Date(u.uploadedAt).toLocaleDateString() : null;
+      const measuredAt = u.measuredAt || u.uploadedAt;
+      const uploadedAt = measuredAt ? new Date(measuredAt).toLocaleDateString() : null;
       const label = u.label ? String(u.label) : `Upload ${u.id}`;
       const optionLabel = uploadedAt ? `${label} (${uploadedAt})` : label;
       const opt = document.createElement("option");

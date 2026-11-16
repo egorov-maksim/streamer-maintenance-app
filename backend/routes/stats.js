@@ -7,6 +7,7 @@ const { toInt } = require("../utils/validation");
 const { sendError, httpError, handleRouteError } = require("../utils/errors");
 const { buildEventsWhereClause } = require("../utils/queryHelpers");
 const { calculateEBRange } = require("../utils/eb");
+const { MEASURED_AT_SQL, withMeasuredAt, assessCleaningPeriod } = require("../utils/noiseUploadTime");
 const {
   expandEventsToSectionKeys,
   buildNoiseMap,
@@ -356,6 +357,11 @@ function createStatsRouter(authMiddleware) {
    *   uploadAfterId  - optional int; defaults to latest upload for the project
    *   start          - optional ISO date (YYYY-MM-DD); lower bound for cleaned_at
    *   end            - optional ISO date (YYYY-MM-DD); upper bound for cleaned_at
+   *
+   * An upload's time is its sequence time (recorded_at) when entered, otherwise its upload time.
+   * The response carries `warnings` when the uploads are in the wrong order or cleaning events
+   * fall outside the time between them; the comparison is still computed. Each entry in `ranges`
+   * has `period` ("inside" | "before" | "after") and `outsidePeriod`.
    */
   router.get("/api/stats/cleaning-noise-efficiency", authMiddleware, async (req, res) => {
     try {
@@ -395,11 +401,11 @@ function createStatsRouter(authMiddleware) {
         // Both supplied explicitly
         [uploadBefore, uploadAfter] = await Promise.all([
           getOneCamelized(
-            `SELECT id, uploaded_at, label FROM noise_uploads${uploadScopeWhere} AND id = ?`,
+            `SELECT id, uploaded_at, recorded_at, label FROM noise_uploads${uploadScopeWhere} AND id = ?`,
             [...uploadScopeParams, uploadBeforeId]
           ),
           getOneCamelized(
-            `SELECT id, uploaded_at, label FROM noise_uploads${uploadScopeWhere} AND id = ?`,
+            `SELECT id, uploaded_at, recorded_at, label FROM noise_uploads${uploadScopeWhere} AND id = ?`,
             [...uploadScopeParams, uploadAfterId]
           ),
         ]);
@@ -408,7 +414,7 @@ function createStatsRouter(authMiddleware) {
       } else {
         // Default: latest two uploads
         const latestTwo = await getAllCamelized(
-          `SELECT id, uploaded_at, label FROM noise_uploads${uploadScopeWhere} ORDER BY uploaded_at DESC LIMIT 2`,
+          `SELECT id, uploaded_at, recorded_at, label FROM noise_uploads${uploadScopeWhere} ORDER BY ${MEASURED_AT_SQL} DESC, id DESC LIMIT 2`,
           uploadScopeParams
         );
         if (latestTwo.length < 2) {
@@ -424,14 +430,17 @@ function createStatsRouter(authMiddleware) {
             improvedSharePct: null,
             meanRmsBefore: null,
             meanRmsAfter: null,
-            uploadBefore: latestTwo[1] ?? null,
-            uploadAfter: latestTwo[0] ?? null,
+            warnings: [],
+            uploadBefore: withMeasuredAt(latestTwo[1] ?? null),
+            uploadAfter: withMeasuredAt(latestTwo[0] ?? null),
           });
         }
         // latestTwo[0] = newest (after), latestTwo[1] = older (before)
         uploadAfter = latestTwo[0];
         uploadBefore = latestTwo[1];
       }
+      uploadBefore = withMeasuredAt(uploadBefore);
+      uploadAfter = withMeasuredAt(uploadAfter);
 
       // Fetch active cleaning events in the date window
       const { sql: baseWhereSql, params: baseParams } = buildEventsWhereClause({
@@ -460,6 +469,10 @@ function createStatsRouter(authMiddleware) {
 
       const sectionKeys = expandEventsToSectionKeys(cleaningEvents);
 
+      // Warn (never block) when the uploads are in the wrong order or the cleaning
+      // did not happen between them.
+      const { warnings, periodByEventId } = assessCleaningPeriod(uploadBefore, uploadAfter, cleaningEvents);
+
       if (sectionKeys.size === 0) {
         return res.json({
           status: "no_events",
@@ -473,8 +486,9 @@ function createStatsRouter(authMiddleware) {
           improvedSharePct: null,
           meanRmsBefore: null,
           meanRmsAfter: null,
-          uploadBefore: { id: uploadBefore.id, uploadedAt: uploadBefore.uploadedAt, label: uploadBefore.label },
-          uploadAfter: { id: uploadAfter.id, uploadedAt: uploadAfter.uploadedAt, label: uploadAfter.label },
+          warnings,
+          uploadBefore,
+          uploadAfter,
         });
       }
 
@@ -491,14 +505,19 @@ function createStatsRouter(authMiddleware) {
       const noiseMapAfter = buildNoiseMap(rowsAfter);
 
       const kpi = computeNoiseEfficiency(sectionKeys, noiseMapBefore, noiseMapAfter);
-      const ranges = computeNoiseEfficiencyByRange(cleaningEvents, noiseMapBefore, noiseMapAfter);
+      // period: "inside" | "before" | "after" the time between the two uploads
+      const ranges = computeNoiseEfficiencyByRange(cleaningEvents, noiseMapBefore, noiseMapAfter).map((range) => {
+        const period = periodByEventId.get(range.id) || "unknown";
+        return { ...range, period, outsidePeriod: period === "before" || period === "after" };
+      });
 
       res.json({
         status: "ok",
         ...kpi,
         ranges,
-        uploadBefore: { id: uploadBefore.id, uploadedAt: uploadBefore.uploadedAt, label: uploadBefore.label },
-        uploadAfter: { id: uploadAfter.id, uploadedAt: uploadAfter.uploadedAt, label: uploadAfter.label },
+        warnings,
+        uploadBefore,
+        uploadAfter,
       });
     } catch (err) {
       console.error("GET /api/stats/cleaning-noise-efficiency failed", err);
@@ -551,10 +570,12 @@ function createStatsRouter(authMiddleware) {
       }
       const uploadWhere = uploadConditions.join(" AND ");
 
-      const uploads = await getAllCamelized(
-        `SELECT id, uploaded_at, label, water_speed_start, water_speed_end FROM noise_uploads WHERE ${uploadWhere} ORDER BY uploaded_at ASC`,
-        uploadParams
-      );
+      const uploads = (
+        await getAllCamelized(
+          `SELECT id, uploaded_at, recorded_at, label, water_speed_start, water_speed_end FROM noise_uploads WHERE ${uploadWhere} ORDER BY ${MEASURED_AT_SQL} ASC, id ASC`,
+          uploadParams
+        )
+      ).map(withMeasuredAt);
 
       if (uploads.length === 0) {
         return res.json({ uploads: [], streamers: [], waterSpeedAvg: [] });

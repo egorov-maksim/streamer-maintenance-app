@@ -3,6 +3,7 @@ const express = require("express");
 const { runAsync, getAllCamelized, getOneCamelized, execAtomic, sqlLiteral } = require("../db");
 const { sendError } = require("../utils/errors");
 const { requireValidId } = require("../utils/validation");
+const { MEASURED_AT_SQL, parseRecordedAt, withMeasuredAt } = require("../utils/noiseUploadTime");
 
 /**
  * Restrict RMS upload mutations to vessel-scoped accounts so global users
@@ -82,7 +83,7 @@ const NOISE_INSERT_CHUNK = 500;
 function createNoiseRouter(authMiddleware, adminOrAbove) {
   const router = express.Router();
 
-  // List all upload batches for a project, newest first
+  // List all upload batches for a project, newest measurement first
   router.get("/api/noise-data/uploads", authMiddleware, async (req, res) => {
     try {
       const { project } = req.query;
@@ -98,9 +99,9 @@ function createNoiseRouter(authMiddleware, adminOrAbove) {
         params.push(req.vesselScope);
       }
 
-      const sql = `SELECT * FROM noise_uploads WHERE ${conditions.join(" AND ")} ORDER BY uploaded_at DESC`;
+      const sql = `SELECT * FROM noise_uploads WHERE ${conditions.join(" AND ")} ORDER BY ${MEASURED_AT_SQL} DESC, id DESC`;
       const rows = await getAllCamelized(sql, params);
-      res.json(rows);
+      res.json(rows.map(withMeasuredAt));
     } catch (err) {
       console.error("GET /api/noise-data/uploads failed", err);
       sendError(res, 500, "Failed to fetch noise uploads");
@@ -141,7 +142,7 @@ function createNoiseRouter(authMiddleware, adminOrAbove) {
           params.push(req.vesselScope);
         }
         uploadRow = await getOneCamelized(
-          `SELECT * FROM noise_uploads WHERE ${conditions.join(" AND ")} ORDER BY uploaded_at DESC LIMIT 1`,
+          `SELECT * FROM noise_uploads WHERE ${conditions.join(" AND ")} ORDER BY ${MEASURED_AT_SQL} DESC, id DESC LIMIT 1`,
           params
         );
       }
@@ -163,9 +164,12 @@ function createNoiseRouter(authMiddleware, adminOrAbove) {
         noiseData[cableKey][row.sectionNumber - 1] = row.rmsValue;
       }
 
+      const timed = withMeasuredAt(uploadRow);
       res.json({
         uploadId: uploadRow.id,
         uploadedAt: uploadRow.uploadedAt,
+        recordedAt: timed.recordedAt,
+        measuredAt: timed.measuredAt,
         label: uploadRow.label,
         noiseData,
       });
@@ -178,7 +182,7 @@ function createNoiseRouter(authMiddleware, adminOrAbove) {
   // Upload a new RMS noise batch (admin and above), scoped to a project
   router.post("/api/noise-data", authMiddleware, adminOrAbove, async (req, res) => {
     try {
-      const { projectNumber, label, noiseData, waterSpeedStart, waterSpeedEnd } = req.body;
+      const { projectNumber, label, noiseData, waterSpeedStart, waterSpeedEnd, recordedAt } = req.body;
 
       if (!projectNumber) {
         return sendError(res, 400, "projectNumber is required");
@@ -202,6 +206,12 @@ function createNoiseRouter(authMiddleware, adminOrAbove) {
         return sendError(res, 400, "waterSpeedEnd must be a number");
       }
 
+      // Optional sequence time; when missing the upload time stands in for it.
+      const recorded = parseRecordedAt(recordedAt);
+      if (recorded.error) {
+        return sendError(res, 400, recorded.error);
+      }
+
       // Look up the project to get vessel_tag for the denormalized field + scope check
       const project = await getOneCamelized(
         "SELECT vessel_tag FROM projects WHERE project_number = ?",
@@ -218,8 +228,8 @@ function createNoiseRouter(authMiddleware, adminOrAbove) {
 
       // Insert the batch header (payload is already fully validated above).
       const headerResult = await runAsync(
-        "INSERT INTO noise_uploads (project_number, vessel_tag, label, water_speed_start, water_speed_end) VALUES (?, ?, ?, ?, ?)",
-        [projectNumber, project.vesselTag, label || null, speedStart, speedEnd]
+        "INSERT INTO noise_uploads (project_number, vessel_tag, label, water_speed_start, water_speed_end, recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
+        [projectNumber, project.vesselTag, label || null, speedStart, speedEnd, recorded.value]
       );
       const uploadId = headerResult.lastID;
 
@@ -249,7 +259,13 @@ function createNoiseRouter(authMiddleware, adminOrAbove) {
         [uploadId]
       );
 
-      res.status(201).json({ uploadId: upload.id, uploadedAt: upload.uploadedAt });
+      const timed = withMeasuredAt(upload);
+      res.status(201).json({
+        uploadId: upload.id,
+        uploadedAt: upload.uploadedAt,
+        recordedAt: timed.recordedAt,
+        measuredAt: timed.measuredAt,
+      });
     } catch (err) {
       console.error("POST /api/noise-data failed", err);
       sendError(res, 500, "Failed to upload noise data");
@@ -265,7 +281,7 @@ function createNoiseRouter(authMiddleware, adminOrAbove) {
     }
 
     try {
-      const { label, waterSpeedStart, waterSpeedEnd } = req.body || {};
+      const { label, waterSpeedStart, waterSpeedEnd, recordedAt } = req.body || {};
 
       const setClauses = [];
       const params = [];
@@ -291,8 +307,16 @@ function createNoiseRouter(authMiddleware, adminOrAbove) {
         params.push(val);
       }
 
+      // null or "" clears the sequence time, so the upload time is used again.
+      if (recordedAt !== undefined) {
+        const recorded = parseRecordedAt(recordedAt);
+        if (recorded.error) return sendError(res, 400, recorded.error);
+        setClauses.push("recorded_at = ?");
+        params.push(recorded.value);
+      }
+
       if (setClauses.length === 0) {
-        return sendError(res, 400, "At least one field (label, waterSpeedStart, waterSpeedEnd) is required");
+        return sendError(res, 400, "At least one field (label, waterSpeedStart, waterSpeedEnd, recordedAt) is required");
       }
 
       const upload = await getScopedUpload(uploadId, req.vesselScope);
@@ -304,7 +328,7 @@ function createNoiseRouter(authMiddleware, adminOrAbove) {
       await runAsync(`UPDATE noise_uploads SET ${setClauses.join(", ")} WHERE id = ?`, params);
 
       const updatedUpload = await getScopedUpload(uploadId, req.vesselScope);
-      res.json(updatedUpload);
+      res.json(withMeasuredAt(updatedUpload));
     } catch (err) {
       console.error("PATCH /api/noise-data/uploads/:id failed", err);
       sendError(res, 500, "Failed to update noise upload");

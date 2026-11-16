@@ -306,7 +306,7 @@
         <button class="modal-close" id="noise-rename-modal-close" aria-label="Close edit dialog">×</button>
       </div>
       <div class="modal-body">
-        <p class="muted mb-12">Update the display name and optional water speed readings for this RMS upload.</p>
+        <p class="muted mb-12">Update the display name, sequence time and optional water speed readings for this RMS upload.</p>
         <label for="noise-rename-input">Upload label</label>
         <input
           type="text"
@@ -316,6 +316,13 @@
           placeholder="Enter upload label"
         >
         <div class="noise-water-speed-fields">
+          <label for="noise-rename-recorded-at">Sequence time (when the noise was recorded, optional)</label>
+          <input
+            type="datetime-local"
+            id="noise-rename-recorded-at"
+            class="noise-water-speed-input"
+          >
+          <p class="muted noise-recorded-at-hint">Local time. If left blank, the upload time is used.</p>
           <label for="noise-rename-speed-start">Water speed at start of line (kts, optional)</label>
           <input
             type="number"
@@ -358,8 +365,15 @@
       </div>
       <div class="modal-body">
         <p id="noise-water-speed-modal-filename" class="noise-water-speed-filename muted mb-12"></p>
-        <p class="muted mb-12">Optionally record the water speed at the start and end of the acquisition line. These fields can be left blank and filled in later.</p>
+        <p class="muted mb-12">Enter when this noise sequence was recorded, and optionally the water speed at the start and end of the acquisition line. These fields can be left blank and filled in later.</p>
         <div class="noise-water-speed-fields">
+          <label for="noise-upload-recorded-at">Sequence time (when the noise was recorded, optional)</label>
+          <input
+            type="datetime-local"
+            id="noise-upload-recorded-at"
+            class="noise-water-speed-input"
+          >
+          <p class="muted noise-recorded-at-hint">Local time. If left blank, the upload time is used.</p>
           <label for="noise-upload-speed-start">Water speed at start of line (kts, optional)</label>
           <input
             type="number"

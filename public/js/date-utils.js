@@ -21,6 +21,25 @@ export function toDateInputValue(date) {
 
 /**
  * @param {Date} date
+ * @returns {string} YYYY-MM-DDTHH:MM in local time, for <input type="datetime-local">
+ */
+export function toDateTimeLocalInputValue(date) {
+  return `${toDateInputValue(date)}T${toTimeInputValue(date)}`;
+}
+
+/**
+ * Read an <input type="datetime-local"> value (local time) as an ISO UTC string.
+ * @param {string|null|undefined} value
+ * @returns {string|null} null when the field is empty or not a valid date-time
+ */
+export function dateTimeLocalInputToIso(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+/**
+ * @param {Date} date
  * @returns {string} HH:MM in local time
  */
 export function toTimeInputValue(date) {

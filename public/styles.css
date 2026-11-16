@@ -3096,6 +3096,11 @@ table.has-noise-data .noise-col {
   width: 100%;
 }
 
+.noise-recorded-at-hint {
+  font-size: 0.8rem;
+  margin: 0 0 6px;
+}
+
 .noise-water-speed-filename {
   font-size: 0.85rem;
   word-break: break-all;
@@ -3696,6 +3701,34 @@ table.has-noise-data .noise-col {
 .ne-breakdown-worsened {
   color: var(--danger);
   font-weight: 600;
+}
+
+.ne-breakdown-outside td {
+  background: #fffbeb;
+}
+
+.ne-outside-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ne-warnings {
+  align-items: flex-start;
+  margin-top: 16px;
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+
+.ne-warnings ul {
+  margin: 0;
+  padding-left: 18px;
 }
 
 .ne-breakdown-title {

@@ -133,7 +133,8 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
   - Shows mean and median improvement (%), share of sections with lower noise, and average RMS before / after
   - Includes a per-cleaning-event breakdown so each logged range can be judged on its own
   - Only sections with a value above zero in both uploads are compared; tail sections are excluded (they have no channels and are not in noise files)
-  - The app does not check that the cleaning window falls between the two uploads — pick the uploads and window so the cleaning happened between them
+  - Each upload is placed in time by its **sequence time** (when the noise was recorded), or by its upload time when no sequence time was entered
+  - A warning is shown, without blocking the result, when the **Before** upload is not older than the **After** upload, or when cleaning events in the window do not fall between the two uploads. Those events stay in the figures and are marked "before uploads" / "after uploads" in the breakdown
 - **Historical RMS Noise per Streamer** (`/stats` page): one line per streamer showing average RMS across its active sections for each noise upload, oldest to newest; when water speed was recorded on upload, a dashed line shows average speed per upload so noise can be read against vessel speed
 - **Available as standalone page**: The stats dashboard is also accessible at `/stats` with its own independent login form
 
@@ -224,8 +225,9 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
   - Expected format: first column = 1-based active section number; remaining columns = `Active, Cable 01, Cable 02, …` with values per streamer
   - Zero or blank means no data for that section; tail sections are not part of noise files
   - The number of streamer columns and section rows must match the project's streamer count and active sections (including per-streamer sections overrides)
+  - Optional **sequence time** (when the noise sequence was recorded, entered in local time) can be given with each upload; the time the file was uploaded is not a reliable stand-in, but it is used when the sequence time is left blank
   - Optional water speed at start and end of line (kts) can be recorded with each upload
-- **Multi-Batch History**: multiple upload batches are stored per project; a dropdown selector lets you switch between historical uploads; Admin+ can edit an upload's label and water speed, or delete it
+- **Multi-Batch History**: multiple upload batches are stored per project; a dropdown selector lets you switch between historical uploads; uploads are ordered by sequence time (upload time when missing); Admin+ can edit an upload's label, sequence time and water speed, or delete it
 - **Noise Overlay Toggle**: a toggle switch on the Planning page heatmap replaces age-bucket coloring with a two-stop RMS gradient (dark blue → white at 5 µBar → deep red at 20+ µBar by default; both thresholds are adjustable in the legend and saved in the browser) and renders numeric RMS values inside each cell
 - **Statistics integration**: the `/stats` page uses noise uploads for Cleaning Noise Efficiency and the Historical RMS Noise chart (see Statistics Dashboard above)
 - **PDF report**: optionally include a noise heatmap for a selected upload
@@ -256,7 +258,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
   - `streamer_deployments` — deployment date & coating per streamer, project_id FK CASCADE
   - `app_config` — key/value configuration store (scoped by vessel_tag)
   - `vessel_context` — per-vessel active-project mapping
-  - `noise_uploads` — RMS noise upload batch metadata (project, label, created_at)
+  - `noise_uploads` — RMS noise upload batch metadata (project, label, upload time, optional sequence time, water speed)
   - `noise_data` — per-section RMS measurements linked to an upload batch
 
 ### 🔐 Data Security & Persistence
@@ -499,17 +501,17 @@ CSV export is generated in the browser from the loaded events (includes Added By
 - `GET /api/stats/filter` - Get filtered statistics (supports `?start=`, `?end=`, `?project=X`)
 - `GET /api/last-cleaned` - Get last cleaned data for heatmap (supports `?project=X`)
 - `GET /api/last-cleaned-filtered` - Get filtered heatmap data (supports `?start=`, `?end=`, `?project=X`)
-- `GET /api/stats/cleaning-noise-efficiency` - Compare RMS noise between two uploads for sections cleaned in a date window (`?project=X` required; optional `uploadBeforeId`, `uploadAfterId`, `start`, `end`; defaults to the two latest uploads)
+- `GET /api/stats/cleaning-noise-efficiency` - Compare RMS noise between two uploads for sections cleaned in a date window (`?project=X` required; optional `uploadBeforeId`, `uploadAfterId`, `start`, `end`; defaults to the two latest uploads). The response includes `warnings` (codes `uploads_reversed`, `events_outside_period`, `all_events_outside_period`, `upload_time_used`) and each entry in `ranges` has `period` (`inside` / `before` / `after`) and `outsidePeriod`
 - `GET /api/stats/noise-rms-history` - Average RMS per streamer for each noise upload, oldest to newest, with average water speed (`?project=X` required)
 
 ### Utilities
 - `GET /api/eb-range` - Calculate EB range for active sections (supports `?sectionType=tail`, returns `"—"` for tails)
 
 ### RMS Noise Data
-- `GET /api/noise-data/uploads` - List upload batches for a project (`?project=X`)
+- `GET /api/noise-data/uploads` - List upload batches for a project (`?project=X`), newest measurement first. Each has `recordedAt` (sequence time or `null`), `measuredAt` (sequence time, else upload time) and `timeSource` (`recorded` / `uploaded`)
 - `GET /api/noise-data` - Fetch RMS measurements for a batch or latest for project (`?project=X[&uploadId=Y]`)
-- `POST /api/noise-data` - Upload new RMS noise CSV batch (Admin+)
-- `PATCH /api/noise-data/uploads/:id` - Edit an upload's label and water speed (Admin+)
+- `POST /api/noise-data` - Upload new RMS noise CSV batch (Admin+); optional `recordedAt` (ISO date-time) is the sequence time
+- `PATCH /api/noise-data/uploads/:id` - Edit an upload's label, water speed and `recordedAt` (`null` clears it) (Admin+)
 - `DELETE /api/noise-data/uploads/:id` - Delete an upload batch (Admin+)
 
 ### Backups (SuperUser+; restore requires GrandSuperUser)
@@ -641,6 +643,7 @@ streamer-maintenance-app/
 │       ├── eb.js          # eBird module range calculator (pure)
 │       ├── errors.js      # sendError() response helper
 │       ├── noiseRmsHistory.js # Average RMS per streamer per upload (pure)
+│       ├── noiseUploadTime.js # Sequence time vs. upload time; cleaning-period warnings (pure)
 │       ├── queryHelpers.js # Dynamic SQL WHERE clause builder
 │       ├── sectionType.js  # Active/tail section split & validation (pure)
 │       └── validation.js  # toInt(), requireValidId() guards

@@ -85,6 +85,8 @@ CREATE TABLE IF NOT EXISTS noise_uploads (
   vessel_tag TEXT NOT NULL,
   label TEXT,
   uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
+  -- When the noise sequence was recorded (entered by the user); NULL = unknown, use uploaded_at
+  recorded_at TEXT,
   water_speed_start REAL,
   water_speed_end REAL,
   FOREIGN KEY(project_number) REFERENCES projects(project_number) ON DELETE CASCADE

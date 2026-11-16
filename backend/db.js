@@ -106,6 +106,16 @@ function applyMigrations() {
         }
       );
     }
+    // Time the noise sequence was recorded; upload time is used when it is missing.
+    if (!names.includes("recorded_at")) {
+      db.run(
+        "ALTER TABLE noise_uploads ADD COLUMN recorded_at TEXT",
+        (migrErr) => {
+          if (migrErr) console.error("Migration failed (add recorded_at):", migrErr);
+          else console.log("Migration applied: added recorded_at to noise_uploads");
+        }
+      );
+    }
   });
 }
 

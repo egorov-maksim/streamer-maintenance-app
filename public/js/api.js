@@ -306,9 +306,9 @@ export async function uploadNoiseData(payload) {
 }
 
 /**
- * Update one or more fields on a noise upload batch (label, water speeds).
+ * Update one or more fields on a noise upload batch (label, water speeds, sequence time).
  * @param {number} uploadId
- * @param {{ label?: string, waterSpeedStart?: number|null, waterSpeedEnd?: number|null }} fields
+ * @param {{ label?: string, waterSpeedStart?: number|null, waterSpeedEnd?: number|null, recordedAt?: string|null }} fields
  */
 export async function updateNoiseUpload(uploadId, fields) {
   return apiCall(`api/noise-data/uploads/${uploadId}`, {

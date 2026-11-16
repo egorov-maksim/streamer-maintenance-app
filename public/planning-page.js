@@ -37,6 +37,7 @@ import {
   getEffectiveSectionsPerCable,
 } from "./js/streamer-utils.js";
 import { validateNoiseCsv } from "./js/noise-validation.js";
+import { toDateTimeLocalInputValue, dateTimeLocalInputToIso } from "./js/date-utils.js";
 import {
   shouldInsertModuleAfterSection,
   countHeatmapColumnRows,
@@ -138,7 +139,8 @@ function removeNoiseOverlay(container) {
 
 /**
  * Populate the upload-history selector with past uploads.
- * @param {Array<{ id: number, label: string|null, uploadedAt: string }>} uploads
+ * Dates shown are the sequence time when entered, otherwise the upload time.
+ * @param {Array<{ id: number, label: string|null, uploadedAt: string, measuredAt?: string }>} uploads
  */
 function populateUploadSelector(uploads) {
   const selector = safeGet("noise-upload-selector");
@@ -148,7 +150,7 @@ function populateUploadSelector(uploads) {
   uploads.forEach(u => {
     const opt = document.createElement("option");
     opt.value = u.id;
-    const date = new Date(u.uploadedAt).toLocaleDateString();
+    const date = new Date(u.measuredAt || u.uploadedAt).toLocaleDateString();
     opt.textContent = u.label ? `${date} — ${u.label}` : date;
     selector.appendChild(opt);
   });
@@ -212,9 +214,11 @@ function updateNoiseToolbarStatus(message = null) {
     return;
   }
 
-  const date = new Date(selectedUpload.uploadedAt).toLocaleDateString();
+  const date = new Date(selectedUpload.measuredAt || selectedUpload.uploadedAt).toLocaleDateString();
   const label = selectedUpload.label ? ` - ${selectedUpload.label}` : "";
-  statusEl.textContent = `Showing RMS upload from ${date}${label}.`;
+  // Without a sequence time the date is only when the file was uploaded.
+  const dateNote = selectedUpload.recordedAt ? "" : " (upload date; no sequence time entered)";
+  statusEl.textContent = `Showing RMS upload from ${date}${dateNote}${label}.`;
   statusEl.classList.toggle("hidden", !overlayOn);
 
   // Show water speed summary near the toggle when the overlay is active
@@ -253,6 +257,8 @@ function closeNoiseWaterSpeedModal() {
   const endInput = safeGet("noise-upload-speed-end");
   if (startInput) startInput.value = "";
   if (endInput) endInput.value = "";
+  const recordedAtInput = safeGet("noise-upload-recorded-at");
+  if (recordedAtInput) recordedAtInput.value = "";
   closeModal("noise-water-speed-modal");
 }
 
@@ -1247,6 +1253,12 @@ function initNoiseControls() {
     const speedEndInput = safeGet("noise-rename-speed-end");
     if (speedStartInput) speedStartInput.value = selectedUpload?.waterSpeedStart ?? "";
     if (speedEndInput) speedEndInput.value = selectedUpload?.waterSpeedEnd ?? "";
+    const recordedAtInput = safeGet("noise-rename-recorded-at");
+    if (recordedAtInput) {
+      recordedAtInput.value = selectedUpload?.recordedAt
+        ? toDateTimeLocalInputValue(new Date(selectedUpload.recordedAt))
+        : "";
+    }
 
     openModal("noise-rename-modal");
     requestAnimationFrame(() => {
@@ -1273,7 +1285,9 @@ function initNoiseControls() {
 
     renameModalSaveBtn.disabled = true;
     try {
-      await API.updateNoiseUpload(uploadId, { label: trimmedLabel, waterSpeedStart, waterSpeedEnd });
+      // An empty sequence time clears it, so the upload time is used again.
+      const recordedAt = dateTimeLocalInputToIso(safeGet("noise-rename-recorded-at")?.value);
+      await API.updateNoiseUpload(uploadId, { label: trimmedLabel, waterSpeedStart, waterSpeedEnd, recordedAt });
       closeNoiseRenameModal();
       await refreshNoiseForProject(selectedProjectFilter, uploadId);
       showSuccessToast("Noise upload updated", `Saved as "${trimmedLabel}"`);
@@ -1389,6 +1403,7 @@ function initNoiseControls() {
         noiseData: parsedNoise,
         waterSpeedStart,
         waterSpeedEnd,
+        recordedAt: dateTimeLocalInputToIso(safeGet("noise-upload-recorded-at")?.value),
       });
       closeNoiseWaterSpeedModal();
       showSuccessToast("Noise data uploaded", `Saved ${Object.keys(parsedNoise).length} cables from "${label}"`);

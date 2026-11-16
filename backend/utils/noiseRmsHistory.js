@@ -74,7 +74,13 @@ function buildNoiseRmsHistory(uploads, noiseRows, sectionsPerCableMap, numCables
   const waterSpeedAvg = uploads.map(avgWaterSpeedForUpload);
 
   // Strip speed columns from the public upload objects — callers use waterSpeedAvg instead.
-  const publicUploads = uploads.map(({ id, uploadedAt, label }) => ({ id, uploadedAt, label }));
+  const publicUploads = uploads.map(({ id, uploadedAt, recordedAt, measuredAt, label }) => ({
+    id,
+    uploadedAt,
+    recordedAt: recordedAt ?? null,
+    measuredAt: measuredAt ?? uploadedAt,
+    label,
+  }));
 
   return { uploads: publicUploads, streamers, waterSpeedAvg };
 }
