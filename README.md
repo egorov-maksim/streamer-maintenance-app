@@ -28,14 +28,15 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
   - 👁️ **Viewer**: Read-only access **within their vessel** (view data, filter, export reports)
 - **Session Management**: Secure session tokens with localStorage persistence
 - **Configurable Users**: Define users and roles via `AUTH_USERS` in `.env`
-  - Format (recommended): `USERNAME:PASSWORD:ROLE:VESSEL_TAG[:GLOBAL]`
+  - Format: `USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG[:GLOBAL]`
+    - `PASSWORD_HASH`: bcrypt hash of the password (plain-text passwords are not accepted) — see [Adding a user](#adding-a-user)
     - `ROLE`: `grandsuperuser`, `superuser`, `admin`, or `viewer`
     - `VESSEL_TAG`: short code for the vessel (e.g. `TTN`, `RAM`)
     - `GLOBAL` (optional): `true` to give the user global (all-vessel) access
   - Examples:
-    - `GrandRoot:Password:grandsuperuser:ALL:true` (grand superuser, all vessels)
-    - `TTNOBS:Password:superuser:TTN` (superuser for vessel `TTN`)
-    - `TTNView:Password:viewer:TTN` (viewer for vessel `TTN`)
+    - `GrandRoot:<bcrypt-hash>:grandsuperuser:ALL:true` (grand superuser, all vessels)
+    - `TTNOBS:<bcrypt-hash>:superuser:TTN` (superuser for vessel `TTN`)
+    - `TTNView:<bcrypt-hash>:viewer:TTN` (viewer for vessel `TTN`)
 
 ### 📋 Project Management
 - **Multi-Project Tracking**: Create and manage multiple seismic survey projects
@@ -105,7 +106,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
   - Columns: Days Since (color-coded badge), Streamer, Section Range, EB Range, Channel Range, Avg RMS Noise (hidden when no noise data is loaded)
   - Badge colors: 4–6d yellow → 7–9d orange → 10–13d red → 14+d dark red → never gray
   - Active and tail sections are kept as separate groups (never merged across the boundary)
-- **RMS Noise overlay**: same upload/toggle controls as the main page (see RMS Noise section below); when enabled, replaces age-bucket coloring with a RMS gradient and shows numeric values in cells
+- **RMS Noise overlay**: noise CSV upload, upload selector and overlay toggle live on this page (see RMS Noise section below); when enabled, the overlay replaces age-bucket coloring with a RMS gradient and shows numeric values in cells
 - **Section tooltips**: show last cleaned date, days since, and RMS noise value on hover
 - **Independent login**: the page has its own login form; no separate tab or account needed
 - **Scoped automatically** to the vessel's active project on load; no project switching UI
@@ -127,6 +128,12 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
   - Visualization of method distribution
 - **Streamer Overview Cards**: Quick stats for each individual cable (distance, coverage %)
 - **Days to First Scraping per Streamer**: Horizontal bar chart showing how many days elapsed from each streamer's deployment date to its first recorded cleaning event; only shown when the active project has deployment dates configured and at least some cleaning events recorded
+- **Cleaning Noise Efficiency** (`/stats` page, single project selected): compares two RMS noise uploads — an earlier one as **Before** and a later one as **After** — on the sections cleaned within a chosen cleaning window (last 1, 2, 3, 7 or 30 days, or the stats filter dates)
+  - Shows mean and median improvement (%), share of sections with lower noise, and average RMS before / after
+  - Includes a per-cleaning-event breakdown so each logged range can be judged on its own
+  - Only sections with a value above zero in both uploads are compared; tail sections are excluded (they have no channels and are not in noise files)
+  - The app does not check that the cleaning window falls between the two uploads — pick the uploads and window so the cleaning happened between them
+- **Historical RMS Noise per Streamer** (`/stats` page): one line per streamer showing average RMS across its active sections for each noise upload, oldest to newest; when water speed was recorded on upload, a dashed line shows average speed per upload so noise can be read against vessel speed
 - **Available as standalone page**: The stats dashboard is also accessible at `/stats` with its own independent login form
 
 ### 📝 Cleaning History Log
@@ -212,11 +219,15 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 - **Clear All Events**: SuperUser+ can bulk-delete all events for the active project (or globally if no active project for GrandSuperUser) via a confirmation modal that requires typing `DELETE` to proceed
 
 ### 📡 RMS Noise Data Upload & Overlay
-- **CSV Upload**: Upload per-section RMS noise measurements from a CSV file (Admin+); the file is validated client-side before upload
-  - Expected format: first column = 1-based section number; remaining columns = `Active, Cable 01, Cable 02, …` with values per streamer
-  - The number of data columns must match the project's `numCables` and `sectionsPerCable` settings
-- **Multi-Batch History**: multiple upload batches are stored per project; a dropdown selector lets you switch between historical uploads
-- **Noise Overlay Toggle**: a toggle switch on the heatmap replaces age-bucket coloring with a two-stop RMS gradient (dark blue → white at 5 µV → deep red at 20+ µV) and renders numeric RMS values inside each cell
+- **CSV Upload**: Upload per-section average RMS noise (in µBar) from a CSV file on the **Planning page** (Admin+); the file is validated client-side before upload
+  - Expected format: first column = 1-based active section number; remaining columns = `Active, Cable 01, Cable 02, …` with values per streamer
+  - Zero or blank means no data for that section; tail sections are not part of noise files
+  - The number of streamer columns and section rows must match the project's streamer count and active sections (including per-streamer sections overrides)
+  - Optional water speed at start and end of line (kts) can be recorded with each upload
+- **Multi-Batch History**: multiple upload batches are stored per project; a dropdown selector lets you switch between historical uploads; Admin+ can edit an upload's label and water speed, or delete it
+- **Noise Overlay Toggle**: a toggle switch on the Planning page heatmap replaces age-bucket coloring with a two-stop RMS gradient (dark blue → white at 5 µBar → deep red at 20+ µBar by default; both thresholds are adjustable in the legend and saved in the browser) and renders numeric RMS values inside each cell
+- **Statistics integration**: the `/stats` page uses noise uploads for Cleaning Noise Efficiency and the Historical RMS Noise chart (see Statistics Dashboard above)
+- **PDF report**: optionally include a noise heatmap for a selected upload
 - **Cleaning Suggestions integration**: when noise data is loaded, the Planning Page suggestions table gains an **Avg RMS Noise** column
 - **Section tooltips**: planning page hover tooltips include the RMS value for each section when data is active
 
@@ -305,9 +316,21 @@ DB_FILE=./backend/streamer.db
 # CORS
 ALLOWED_ORIGINS=http://localhost:3000
 
-# Authentication (format: USERNAME:PASSWORD:ROLE:VESSEL_TAG[:GLOBAL], separated by commas)
-AUTH_USERS=TTNOBS:Password:admin:TTN:true,TTNView:Password:viewer:TTN,TTNNav:Password:viewer:TTN
+# Authentication (format: USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG[:GLOBAL], separated by commas)
+AUTH_USERS=GrandRoot:<bcrypt-hash>:grandsuperuser:ALL:true,TTNOBS:<bcrypt-hash>:superuser:TTN,TTNView:<bcrypt-hash>:viewer:TTN
 ```
+
+### Adding a user
+
+Passwords are stored as bcrypt hashes. There is no user management screen yet, so users are added by hand:
+
+```bash
+# 1. Generate a bcrypt hash for the new password
+node -e "const b=require('bcryptjs');console.log(b.hashSync('yourpassword',10))"
+```
+
+2. Add `USERNAME:<hash>:ROLE:VESSEL_TAG` to `AUTH_USERS` in `.env` on the server (comma-separated, no spaces).
+3. Restart the server so the new user list is loaded.
 
 ---
 
@@ -458,14 +481,17 @@ The PDF report includes:
 - `PUT /api/events/:id` - Update event (Admin+)
 - `DELETE /api/events/:id` - Delete single event (Admin+)
 - `DELETE /api/events` - Bulk clear events; accepts optional `?project=X` param (Admin+)
-- `GET /api/events/export` - Export events as CSV (includes Added By column; filename includes project suffix when filtered)
-- `POST /api/events/import` - Bulk import events from CSV (Admin+)
+- `POST /api/events/bulk` - Bulk import events (used by CSV import; Admin+)
+
+CSV export is generated in the browser from the loaded events (includes Added By column; filename includes project suffix when filtered) — there is no export endpoint.
 
 ### Statistics
 - `GET /api/stats` - Get overall statistics (supports `?project=X`)
 - `GET /api/stats/filter` - Get filtered statistics (supports `?start=`, `?end=`, `?project=X`)
 - `GET /api/last-cleaned` - Get last cleaned data for heatmap (supports `?project=X`)
 - `GET /api/last-cleaned-filtered` - Get filtered heatmap data (supports `?start=`, `?end=`, `?project=X`)
+- `GET /api/stats/cleaning-noise-efficiency` - Compare RMS noise between two uploads for sections cleaned in a date window (`?project=X` required; optional `uploadBeforeId`, `uploadAfterId`, `start`, `end`; defaults to the two latest uploads)
+- `GET /api/stats/noise-rms-history` - Average RMS per streamer for each noise upload, oldest to newest, with average water speed (`?project=X` required)
 
 ### Utilities
 - `GET /api/eb-range` - Calculate EB range for active sections (supports `?sectionType=tail`, returns `"—"` for tails)
@@ -474,6 +500,8 @@ The PDF report includes:
 - `GET /api/noise-data/uploads` - List upload batches for a project (`?project=X`)
 - `GET /api/noise-data` - Fetch RMS measurements for a batch or latest for project (`?project=X[&uploadId=Y]`)
 - `POST /api/noise-data` - Upload new RMS noise CSV batch (Admin+)
+- `PATCH /api/noise-data/uploads/:id` - Edit an upload's label and water speed (Admin+)
+- `DELETE /api/noise-data/uploads/:id` - Delete an upload batch (Admin+)
 
 ### Backups (SuperUser+; restore requires GrandSuperUser / global SuperUser)
 - `GET /api/backups` - List available backups
@@ -519,7 +547,7 @@ streamer_id,section_index_start,section_index_end,cleaning_method,cleaned_at,pro
 ### Issue: PDF Generation Fails
 
 **Check Console**: Look for jsPDF loading errors
-- Ensure internet connection (CDN loading jsPDF)
+- jsPDF is served locally, not from a CDN — check that `public/libs/jspdf.umd.min.js` exists (see [INSTALL.md](INSTALL.md))
 - Browser console may show CSP policy violations
 - Try disabling browser extensions
 - Verify ALLOWED_ORIGINS includes your domain
@@ -527,9 +555,11 @@ streamer_id,section_index_start,section_index_end,cleaning_method,cleaned_at,pro
 ### Issue: Login Failed
 
 **Verify Credentials**: Check AUTH_USERS in `.env`
-- Format: `USERNAME:PASSWORD:ROLE`
+- Format: `USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG[:GLOBAL]`
+- The password must be a bcrypt hash, not plain text (see [Adding a user](#adding-a-user))
 - Multiple users: comma-separated
 - No spaces around colons
+- Restart the server after editing `.env`
 
 ### Issue: Cannot See Other Users' Events
 
@@ -595,9 +625,12 @@ streamer-maintenance-app/
 │   │   ├── noise.js       # RMS noise upload batches & per-section data
 │   │   ├── projects.js    # Projects CRUD, deployments, cleanup
 │   │   └── stats.js       # Statistics & aggregates
+│   ├── tests/             # Unit tests for the pure helpers
 │   └── utils/
+│       ├── cleaningNoiseEfficiency.js # Before/after RMS comparison for cleaned sections (pure)
 │       ├── eb.js          # eBird module range calculator (pure)
 │       ├── errors.js      # sendError() response helper
+│       ├── noiseRmsHistory.js # Average RMS per streamer per upload (pure)
 │       ├── queryHelpers.js # Dynamic SQL WHERE clause builder
 │       ├── sectionType.js  # Active/tail section split & validation (pure)
 │       └── validation.js  # toInt(), requireValidId() guards
@@ -610,6 +643,8 @@ streamer-maintenance-app/
 │   ├── stats-page.js      # Stats page entry (independent login)
 │   ├── planning.html      # Standalone planning page at /planning
 │   ├── planning-page.js   # Planning page entry (independent login; per-vessel only)
+│   ├── help.html          # In-app help page at /help
+│   ├── help-page.js       # Help page logic
 │   ├── styles.css         # Single global stylesheet
 │   ├── pdf-generator.js   # PDF report generation (A3 landscape via jsPDF)
 │   ├── libs/
@@ -682,4 +717,4 @@ This project is provided as-is for TGS marine survey operations.
 **Author**: Maksim Egorov  
 **Vessel**: Ramform Titan, Brazil  
 
-**Documentation:** [INSTALL.md](INSTALL.md) (installation), [TESTING.md](TESTING.md) (testing), [API.md](API.md) (API reference).
+**Documentation:** [INSTALL.md](INSTALL.md) (installation), [API.md](API.md) (API reference), in-app help at `/help`.
