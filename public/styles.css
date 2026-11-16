@@ -3062,10 +3062,15 @@ table.has-noise-data .noise-col {
 /* Sequence picker for averaging several RMS uploads */
 .noise-compare-panel {
   position: relative;
+  flex: 0 0 auto;
   font-size: 13px;
 }
 
 .noise-compare-summary {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  white-space: nowrap;
   cursor: pointer;
   padding: 8px 12px;
   border: 1px solid var(--border);
@@ -3074,6 +3079,16 @@ table.has-noise-data .noise-col {
   color: var(--text);
   list-style: none;
   user-select: none;
+}
+
+.noise-compare-summary::after {
+  content: "▾";
+  margin-left: 8px;
+  color: var(--text-muted, #64748b);
+}
+
+.noise-compare-panel[open] .noise-compare-summary::after {
+  content: "▴";
 }
 
 .noise-compare-summary::-webkit-details-marker {
@@ -3085,32 +3100,54 @@ table.has-noise-data .noise-col {
 }
 
 .noise-compare-hint {
-  margin: 8px 0 4px;
+  margin: 8px 0 0;
+  max-width: 300px;
   color: var(--text-muted, #64748b);
   font-size: 12px;
+  line-height: 1.4;
 }
 
+/* In normal flow, so the open list pushes content down instead of being clipped */
 .noise-compare-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
+  width: 300px;
   max-height: 240px;
   overflow-y: auto;
-  min-width: 280px;
-  max-width: 360px;
+  margin-top: 8px;
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--card-bg, #fff);
-  position: absolute;
-  z-index: 20;
 }
 
 .noise-compare-option {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
+  padding: 4px 4px;
+  border-radius: 6px;
   cursor: pointer;
+  white-space: nowrap;
+}
+
+.noise-compare-option:hover {
+  background: var(--row-hover, #f1f5f9);
+}
+
+.noise-compare-option input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent, #2563eb);
+}
+
+.noise-compare-option span {
+  flex: 1 1 auto;
+  text-align: left;
 }
 
 /* Upload button — styled as a file label */
