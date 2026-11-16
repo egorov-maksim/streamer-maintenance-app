@@ -161,6 +161,26 @@ function createBackup() {
  * @returns {Promise<void>}
  */
 function restoreFromFile(sourcePath) {
+  return copyBackupIntoLiveDb(sourcePath).then(applySchemaAndMigrations);
+}
+
+/**
+ * Bring a just-restored database up to the current schema. A backup taken by an older
+ * version can lack tables or columns the running code needs (e.g. the users table).
+ * @returns {Promise<void>}
+ */
+function applySchemaAndMigrations() {
+  return new Promise((resolve, reject) => {
+    db.exec(fs.readFileSync(SCHEMA_FILE, "utf8"), (err) => {
+      if (err) return reject(err);
+      applyMigrations();
+      // Migrations are queued on the same connection; this runs after them.
+      db.get("SELECT 1", [], (waitErr) => (waitErr ? reject(waitErr) : resolve()));
+    });
+  });
+}
+
+function copyBackupIntoLiveDb(sourcePath) {
   return new Promise((resolve, reject) => {
     // filenameIsDest=false: copy sourcePath's "main" schema INTO this connection's "main".
     const backup = db.backup(sourcePath, "main", "main", false, (initErr) => {

@@ -66,7 +66,9 @@ curl -fsSL -o public/libs/chroma.min.js https://cdn.jsdelivr.net/npm/chroma-js@2
 
 **Windows users**: Download the same files from the URLs above into `public\libs\`.
 
-### 5. Generate password hashes (AUTH_USERS)
+### 5. Generate password hashes for the first users (AUTH_USERS)
+
+`AUTH_USERS` creates the first accounts: it is copied into the database once, when the database has no users. Include at least one `grandsuperuser`. After that, add and change users in the app under **Config → User Management**; later edits to `AUTH_USERS` have no effect.
 
 Passwords in `.env` must be **bcrypt hashes**, not plaintext:
 
@@ -77,7 +79,7 @@ node -e "const b=require('bcryptjs'); console.log(b.hashSync('yourpassword', 10)
 Use the output in `AUTH_USERS` as the password field:
 
 ```env
-AUTH_USERS=admin:$2b$10$YourHashHere:admin:TTN
+AUTH_USERS=root:$2b$10$YourHashHere:grandsuperuser:ALL
 ```
 
 ### 6. Configure (Optional)
@@ -111,7 +113,7 @@ Starting automated database backup scheduler...
 
 Navigate to: **http://localhost:3000**
 
-**Default Login Credentials:** See `.env` (AUTH_USERS). Configure users in `.env` or copy from `.env.example`; see [README.md](README.md) for format.
+**Default Login Credentials:** The first users come from `AUTH_USERS` in `.env` (copy from `.env.example`; see [README.md](README.md) for the format). Further users are managed in the app under Config → User Management.
 
 ---
 
@@ -166,7 +168,9 @@ npm start
 
 ### Login Issues
 
-Check `.env` file `AUTH_USERS` format (password field must be a bcrypt hash):
+A forgotten password is reset by a SuperUser or GrandSuperUser under **Config → User Management**.
+
+If nobody can log in on a new install, check the `.env` file `AUTH_USERS` format (password field must be a bcrypt hash). It is only read while the database has no users:
 
 ```env
 AUTH_USERS=USERNAME:$2b$10$hash:ROLE:VESSEL_TAG

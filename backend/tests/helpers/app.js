@@ -2,6 +2,7 @@
 const request = require("supertest");
 const { app } = require("../../server");
 const { initDb, runAsync } = require("../../db");
+const { ensureUsersSeeded, reseedUsers } = require("../../userStore");
 
 let readyPromise = null;
 
@@ -19,6 +20,11 @@ async function resetDb() {
   for (const table of ["noise_data", "noise_uploads", "cleaning_events", "streamer_deployments", "vessel_context", "projects", "app_config"]) {
     await runAsync(`DELETE FROM ${table}`);
   }
+  // Back to the known AUTH_USERS set from jest.setup.js. Wait for the server's own
+  // startup seed first, or it could keep inserting after the delete below.
+  await ensureUsersSeeded();
+  await runAsync("DELETE FROM users");
+  await reseedUsers();
 }
 
 /** Logs in a user from the test AUTH_USERS set and returns a Bearer header value. */

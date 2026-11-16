@@ -9,7 +9,6 @@ const { initDb, createBackup } = require("./db");
 const { startBackupScheduler } = require("./backupScheduler");
 const { createSessionStore } = require("./sessionStore");
 const {
-  loadUsersFromEnv,
   createAuthMiddleware,
   superUserOnly,
   adminOrAbove,
@@ -21,16 +20,19 @@ const { createProjectsRouter } = require("./routes/projects");
 const { createEventsRouter } = require("./routes/events");
 const { createStatsRouter } = require("./routes/stats");
 const { createNoiseRouter } = require("./routes/noise");
+const { createUsersRouter } = require("./routes/users");
+const { ensureUsersSeeded } = require("./userStore");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 initDb(() => {
+  // First start with an empty users table: copy the accounts from AUTH_USERS.
+  ensureUsersSeeded().catch((err) => console.error("[auth] Could not prepare user accounts:", err));
   if (process.env.NODE_ENV !== "test") {
     startBackupScheduler(createBackup);
   }
 });
 
-const users = loadUsersFromEnv();
 const sessionStore = createSessionStore();
 const authMiddleware = createAuthMiddleware(sessionStore);
 
@@ -91,13 +93,14 @@ app.get("/help", (_req, res) => {
 });
 
 // Mount route modules
-const authRouter = createAuthRouter(sessionStore, users, authMiddleware);
-const backupsRouter = createBackupsRouter(authMiddleware, superUserOnly);
+const authRouter = createAuthRouter(sessionStore, authMiddleware);
+const backupsRouter = createBackupsRouter(authMiddleware, superUserOnly, sessionStore);
 const configRouter = createConfigRouter(authMiddleware, superUserOnly);
 const projectsRouter = createProjectsRouter(authMiddleware, superUserOnly);
 const eventsRouter = createEventsRouter(authMiddleware, adminOrAbove, superUserOnly);
 const statsRouter = createStatsRouter(authMiddleware);
 const noiseRouter = createNoiseRouter(authMiddleware, adminOrAbove);
+const usersRouter = createUsersRouter(authMiddleware, superUserOnly, sessionStore);
 
 app.use("/", authRouter);
 app.use("/", backupsRouter);
@@ -106,6 +109,7 @@ app.use("/", projectsRouter);
 app.use("/", eventsRouter);
 app.use("/", statsRouter);
 app.use("/", noiseRouter);
+app.use("/", usersRouter);
 
 // fallback
 app.get("*", (_req, res) => {

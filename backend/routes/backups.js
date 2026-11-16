@@ -6,6 +6,7 @@ const humps = require("humps");
 const { createBackup, restoreFromFile, BACKUP_DIR } = require("../db");
 const { sendError } = require("../utils/errors");
 const { isGlobalUser } = require("../middleware/auth");
+const { reseedUsers } = require("../userStore");
 
 /**
  * Create backups router (list, create, restore).
@@ -13,7 +14,7 @@ const { isGlobalUser } = require("../middleware/auth");
  * @param {function} superUserOnly
  * @returns {express.Router}
  */
-function createBackupsRouter(authMiddleware, superUserOnly) {
+function createBackupsRouter(authMiddleware, superUserOnly, sessionStore) {
   const router = express.Router();
 
   router.get("/api/backups", authMiddleware, superUserOnly, async (_req, res) => {
@@ -74,6 +75,11 @@ function createBackupsRouter(authMiddleware, superUserOnly) {
       // Safety net first, then restore through the live connection (no file copy, no restart).
       await createBackup();
       await restoreFromFile(backupPath);
+
+      // The backup brings its own user accounts (or none, if it predates them: then they are
+      // copied from AUTH_USERS again). Everyone but the person restoring must log in again.
+      await reseedUsers();
+      sessionStore?.deleteAllSessions(req.headers.authorization.slice(7));
 
       res.json({
         success: true,

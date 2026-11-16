@@ -13,6 +13,7 @@ import {
 import * as Projects from "./js/projects.js";
 import { projects } from "./js/state.js";
 import { initModals } from "./js/modals.js";
+import { initUserManagement, loadUsers } from "./js/users.js";
 
 function renderVesselProjectOverview() {
   const tableBody = safeGet("vessel-project-overview-body");
@@ -297,8 +298,10 @@ async function initConfigApp() {
 
   initModals();
   setupConfigEventListeners();
+  initUserManagement();
   renderVesselProjectOverview();
   updateUIForRole();
+  await loadUsers();
 }
 
 async function init() {

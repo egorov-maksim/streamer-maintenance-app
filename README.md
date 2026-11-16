@@ -28,7 +28,13 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
   - 👁️ **Viewer**: Read-only access **within their vessel** (view data, filter, export reports)
   - Only GrandSuperUser has access to all vessels; every other role is limited to its own vessel
 - **Session Management**: Secure session tokens with localStorage persistence
-- **Configurable Users**: Define users and roles via `AUTH_USERS` in `.env`
+- **User Management** (Config page, SuperUser+): add users, set or reset passwords, change role or vessel, and delete users from the browser — no `.env` editing or server restart
+  - GrandSuperUser manages every account on every vessel; a SuperUser manages the SuperUser, Admin and Viewer accounts on their own vessel
+  - Passwords are at least 8 characters and are set by whoever manages the account; users cannot change their own password, and passwords are never shown (they are stored as bcrypt hashes)
+  - A user whose password, role or vessel is changed, or who is deleted, is logged out immediately
+  - Nobody can delete their own account or change their own role or vessel, and the last GrandSuperUser cannot be deleted or demoted
+  - Usernames are fixed once created (events record them as "Added By") and are not case-sensitive at login
+- **First users from `.env`**: user accounts live in the database. When the database has no users (fresh install, first start after upgrading, or a restored backup from before this feature) they are copied once from `AUTH_USERS` in `.env`, keeping their existing passwords. After that `AUTH_USERS` is ignored
   - Format: `USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG`
     - `PASSWORD_HASH`: bcrypt hash of the password (plain-text passwords are not accepted) — see [Adding a user](#adding-a-user)
     - `ROLE`: `grandsuperuser`, `superuser`, `admin`, or `viewer`
@@ -263,6 +269,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
   - `vessel_context` — per-vessel active-project mapping
   - `noise_uploads` — RMS noise upload batch metadata (project, label, upload time, optional sequence time, water speed)
   - `noise_data` — per-section RMS measurements linked to an upload batch
+  - `users` — user accounts (username, bcrypt password hash, role, vessel tag); included in backups and restores
 
 ### 🔐 Data Security & Persistence
 - **SQLite Database**: Local database with WAL mode for reliability
@@ -336,15 +343,15 @@ AUTH_USERS=GrandRoot:<bcrypt-hash>:grandsuperuser:ALL,TTNOBS:<bcrypt-hash>:super
 
 ### Adding a user
 
-Passwords are stored as bcrypt hashes. There is no user management screen yet, so users are added by hand:
+Log in as a SuperUser or GrandSuperUser, open **Config → User Management** and click **Add User**. Enter a username, a password of at least 8 characters, a role and (for GrandSuperUser) a vessel tag. The user can log in straight away. Use **Edit** to set a new password or change the role, and **Delete** to remove the account.
+
+`AUTH_USERS` in `.env` is only needed to create the first accounts on an empty database (at least one `grandsuperuser`). Passwords there are bcrypt hashes:
 
 ```bash
-# 1. Generate a bcrypt hash for the new password
 node -e "const b=require('bcryptjs');console.log(b.hashSync('yourpassword',10))"
 ```
 
-2. Add `USERNAME:<hash>:ROLE:VESSEL_TAG` to `AUTH_USERS` in `.env` on the server (comma-separated, no spaces).
-3. Restart the server so the new user list is loaded.
+Add `USERNAME:<hash>:ROLE:VESSEL_TAG` to `AUTH_USERS` (comma-separated, no spaces) before the first start. Once the database has users, changes to `AUTH_USERS` have no effect.
 
 ---
 
@@ -398,6 +405,7 @@ node -e "const b=require('bcryptjs');console.log(b.hashSync('yourpassword',10))"
 - View list of automatic backups
 - Create manual backups anytime
 - Restore from previous backups if needed (applied to the running database through SQLite's online backup API; just reload the page)
+- A restore also brings back the user accounts and passwords stored in that backup, and logs out everyone except the person restoring
 
 ### Configuration
 
@@ -469,6 +477,13 @@ The PDF report includes:
 - `POST /api/login` - Login with credentials
 - `POST /api/logout` - Logout current session
 - `GET /api/session` - Verify current session
+
+### Users (SuperUser+)
+- `GET /api/users` - List accounts the caller can see (all for GrandSuperUser, own vessel for SuperUser), never with password hashes; also returns `assignableRoles`, `canChooseVessel` and `minPasswordLength`
+- `POST /api/users` - Create an account (`username`, `password`, `role`, `vesselTag`); `409` when the username is taken
+- `PUT /api/users/:id` - Change `password`, `role` and/or `vesselTag`; the user's sessions are ended
+- `DELETE /api/users/:id` - Delete an account and end its sessions
+- `403` for accounts outside the caller's reach; `400` for changing your own role or vessel, deleting yourself, or removing the last GrandSuperUser
 
 ### Configuration
 - `GET /api/config` - Get current configuration
@@ -569,12 +584,12 @@ streamer_id,section_index_start,section_index_end,cleaning_method,cleaned_at,pro
 
 ### Issue: Login Failed
 
-**Verify Credentials**: Check AUTH_USERS in `.env`
-- Format: `USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG`
-- Every role except `grandsuperuser` needs a vessel tag; entries without one are skipped (see the server log)
+**Forgotten password**: ask a SuperUser of the vessel (or a GrandSuperUser) to set a new one in **Config → User Management**.
+
+**Nobody can log in on a new install**: accounts are copied from `AUTH_USERS` in `.env` only while the database has no users. Check the server log for `[auth]` lines and the format:
+- `USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG`, comma-separated, no spaces around colons
+- Every role except `grandsuperuser` needs a vessel tag; entries without one are skipped
 - The password must be a bcrypt hash, not plain text (see [Adding a user](#adding-a-user))
-- Multiple users: comma-separated
-- No spaces around colons
 - Restart the server after editing `.env`
 
 ### Issue: Cannot See Other Users' Events
@@ -631,6 +646,7 @@ streamer-maintenance-app/
 │   ├── config.js          # App config (port, CORS, etc.)
 │   ├── schema.sql         # Database schema
 │   ├── activeProject.js   # Per-vessel active-project lookup
+│   ├── userStore.js       # User accounts in the database; one-time import from AUTH_USERS
 │   ├── middleware/
 │   │   └── auth.js        # Session auth & role middleware
 │   ├── routes/
@@ -638,6 +654,7 @@ streamer-maintenance-app/
 │   │   ├── backups.js     # Backup list / create / restore
 │   │   ├── config.js      # App & streamer config API
 │   │   ├── events.js      # Cleaning events CRUD & bulk clear
+│   │   ├── users.js       # User management (list / create / update / delete)
 │   │   ├── noise.js       # RMS noise upload batches & per-section data
 │   │   ├── projects.js    # Projects CRUD, deployments, cleanup
 │   │   └── stats.js       # Statistics & aggregates
@@ -674,6 +691,7 @@ streamer-maintenance-app/
 │       ├── noise-validation.js # Pure CSV validation for noise uploads
 │       ├── projects.js         # Project UI logic
 │       ├── state.js            # Single source of truth for frontend state
+│       ├── users.js            # User management UI (Config page)
 │       ├── stats.js            # Shared stats rendering (app.js & stats-page.js)
 │       ├── streamer-tooltip.js # Heatmap column header tooltip
 │       ├── streamer-utils.js   # Section label helpers

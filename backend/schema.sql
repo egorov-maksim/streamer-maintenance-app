@@ -80,6 +80,19 @@ CREATE TABLE IF NOT EXISTS streamer_deployments (
 -- Index for streamer_deployments
 CREATE INDEX IF NOT EXISTS idx_streamer_deployments_project ON streamer_deployments(project_id);
 
+-- User accounts, managed from the Config page. Seeded once from AUTH_USERS when empty.
+-- vessel_tag is NULL only for grandsuperuser (always global).
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('grandsuperuser', 'superuser', 'admin', 'viewer')),
+  vessel_tag TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  created_by TEXT
+);
+
 -- Noise data: one row per CSV upload (batch header), scoped to a project
 CREATE TABLE IF NOT EXISTS noise_uploads (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

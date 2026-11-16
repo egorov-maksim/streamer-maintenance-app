@@ -101,6 +101,36 @@ export async function updateConfig(body) {
   });
 }
 
+// --- Users (SuperUser and above) ---
+export async function fetchUsers() {
+  return apiCall("api/users");
+}
+
+/** @param {{ username: string, password: string, role: string, vesselTag?: string }} body */
+export async function createUser(body) {
+  return apiCall("api/users", {
+    method: "POST",
+    body: JSON.stringify(body),
+    action: "create users",
+  });
+}
+
+/** @param {number} id @param {{ password?: string, role?: string, vesselTag?: string }} changes */
+export async function updateUser(id, changes) {
+  return apiCall(`api/users/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(changes),
+    action: "change this user",
+  });
+}
+
+export async function deleteUser(id) {
+  return apiCall(`api/users/${id}`, {
+    method: "DELETE",
+    action: "delete this user",
+  });
+}
+
 // --- Projects ---
 export async function fetchProjects() {
   return apiCall("api/projects");
