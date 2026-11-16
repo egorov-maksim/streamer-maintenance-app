@@ -28,4 +28,21 @@ function requireValidId(req, res) {
   return id;
 }
 
-module.exports = { toInt, requireValidId };
+/**
+ * Accepts short free-text identifiers (cleaning method, user tag) and rejects
+ * anything that could be rendered as markup by the SPA or is clearly not a label:
+ * angle brackets, control characters, or excessive length.
+ *
+ * @param {*} value
+ * @param {{ maxLength?: number, allowEmpty?: boolean }} [opts]
+ * @returns {boolean}
+ */
+function isSafeText(value, { maxLength = 100, allowEmpty = false } = {}) {
+  if (typeof value !== "string") return false;
+  if (!allowEmpty && value.trim() === "") return false;
+  if (value.length > maxLength) return false;
+  // eslint-disable-next-line no-control-regex
+  return !/[<>\u0000-\u001f\u007f]/.test(value);
+}
+
+module.exports = { toInt, requireValidId, isSafeText };

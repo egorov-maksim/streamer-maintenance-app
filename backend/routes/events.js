@@ -4,8 +4,8 @@ const humps = require("humps");
 const { runAsync, getAllCamelized, getOneCamelized } = require("../db");
 const { defaultConfig, loadConfig } = require("../config");
 const { getActiveProjectForVessel } = require("../activeProject");
-const { requireValidId } = require("../utils/validation");
-const { sendError } = require("../utils/errors");
+const { requireValidId, isSafeText } = require("../utils/validation");
+const { sendError, httpError } = require("../utils/errors");
 const { ROLES, isGlobalUser } = require("../middleware/auth");
 const { splitSectionRange, validateRangeForType } = require("../utils/sectionType");
 
@@ -24,6 +24,53 @@ async function getStreamerSectionsPerCable(projectId, streamerId, defaultSection
     [projectId, streamerId]
   );
   return row?.sectionsPerCable ?? defaultSections;
+}
+
+/**
+ * Refuses writes against a project the caller may not use: unknown project numbers
+ * (previously surfaced as a FK 500) and, for vessel-scoped users, projects of other vessels.
+ * @param {Object} req - Express request (uses req.vesselScope)
+ * @param {Object|null} projectRow - camelCase project row or null
+ * @param {string} projectNumber - project number that was looked up (for the message)
+ * @returns {Error|null} httpError to send, or null when access is fine
+ */
+function projectAccessError(req, projectRow, projectNumber) {
+  if (!projectRow) return httpError(400, `Project ${projectNumber} not found`);
+  if (req.vesselScope && projectRow.vesselTag !== req.vesselScope) {
+    return httpError(403, "Project does not belong to your vessel");
+  }
+  return null;
+}
+
+/**
+ * Keeps streamer ids inside the cable count of the event's project (or the global
+ * default when the project has none), so imports cannot create events for cables
+ * that no heatmap will ever show.
+ * @param {number} streamerId
+ * @param {Object|null} projectRow
+ * @param {Object} config - loaded app config
+ * @returns {Error|null}
+ */
+function streamerBoundError(streamerId, projectRow, config) {
+  const maxCables = projectRow?.numCables ?? config.numCables;
+  if (!Number.isInteger(streamerId) || streamerId < 1 || (Number.isFinite(maxCables) && streamerId > maxCables)) {
+    return httpError(400, `Streamer must be between 1 and ${maxCables}`);
+  }
+  return null;
+}
+
+/**
+ * Rejects markup or control characters in the free-text fields the SPA renders.
+ * @param {string} cleaningMethod
+ * @param {*} addedByUsertag - optional
+ * @returns {Error|null}
+ */
+function eventTextError(cleaningMethod, addedByUsertag) {
+  if (!isSafeText(cleaningMethod)) return httpError(400, "Invalid cleaning method");
+  if (addedByUsertag != null && !isSafeText(String(addedByUsertag), { allowEmpty: true })) {
+    return httpError(400, "Invalid added_by_usertag");
+  }
+  return null;
 }
 
 /**
@@ -90,6 +137,8 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
       ) {
         return sendError(res, 400, "Invalid payload");
       }
+      const textErr = eventTextError(cleaning_method, bodyData.added_by_usertag);
+      if (textErr) return sendError(res, textErr.status, textErr.message);
 
       const config = await loadConfig();
       const projectNumberMissing = project_number === undefined || project_number === null || project_number === "";
@@ -115,6 +164,10 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
         finalVesselTag = req.vesselScope;
       }
       const projectRow = activeProject || await getOneCamelized("SELECT * FROM projects WHERE project_number = ?", [finalProjectNumber]);
+      const accessErr = projectAccessError(req, projectRow, finalProjectNumber);
+      if (accessErr) return sendError(res, accessErr.status, accessErr.message);
+      const boundErr = streamerBoundError(streamer_id, projectRow, config);
+      if (boundErr) return sendError(res, boundErr.status, boundErr.message);
       const defaultSections = projectRow?.sectionsPerCable ?? config.sectionsPerCable;
       const effectiveSections = await getStreamerSectionsPerCable(projectRow?.id ?? null, streamer_id, defaultSections);
       const eventConfig = {
@@ -217,6 +270,8 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
       ) {
         return sendError(res, 400, "Invalid payload");
       }
+      const textErr = eventTextError(cleaning_method, bodyData.added_by_usertag);
+      if (textErr) return sendError(res, textErr.status, textErr.message);
 
       const existing = await getOneCamelized("SELECT * FROM cleaning_events WHERE id = ?", [id]);
       if (!existing) {
@@ -235,12 +290,18 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
           ? project_number
           : null;
       const effectiveProjectNumber = projectNumberFromBody || existing.projectNumber || null;
+      const projectChanged = Boolean(projectNumberFromBody) && projectNumberFromBody !== existing.projectNumber;
       let eventConfig = config;
+      let projectRow = null;
       if (effectiveProjectNumber) {
-        const projectRow = await getOneCamelized(
+        projectRow = await getOneCamelized(
           "SELECT * FROM projects WHERE project_number = ?",
           [effectiveProjectNumber]
         );
+        if (projectChanged) {
+          const accessErr = projectAccessError(req, projectRow, effectiveProjectNumber);
+          if (accessErr) return sendError(res, accessErr.status, accessErr.message);
+        }
         if (projectRow) {
           const defaultSections = projectRow.sectionsPerCable ?? config.sectionsPerCable;
           const effectiveSections = await getStreamerSectionsPerCable(projectRow.id, streamer_id, defaultSections);
@@ -255,6 +316,12 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
                 : config.useRopeForTail,
           };
         }
+      }
+      // Legacy rows for since-removed cables stay editable; the bound applies once the
+      // streamer or project is actually being changed.
+      if (projectChanged || streamer_id !== existing.streamerId) {
+        const boundErr = streamerBoundError(streamer_id, projectRow, config);
+        if (boundErr) return sendError(res, boundErr.status, boundErr.message);
       }
       const validation = validateRangeForType(
         section_index_start,
@@ -367,6 +434,11 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
             errors.push({ row, reason: "Invalid payload" });
             continue;
           }
+          const textErr = eventTextError(cleaning_method, added_by_usertag);
+          if (textErr) {
+            errors.push({ row, reason: textErr.message });
+            continue;
+          }
 
           let finalProjectNumber = project_number ?? null;
           let finalVesselTag = vessel_tag || "TTN";
@@ -389,6 +461,16 @@ function createEventsRouter(authMiddleware, adminOrAbove) {
 
           const projectRow = activeProject ||
             await getOneCamelized("SELECT * FROM projects WHERE project_number = ?", [finalProjectNumber]);
+          const accessErr = projectAccessError(req, projectRow, finalProjectNumber);
+          if (accessErr) {
+            errors.push({ row, reason: accessErr.message });
+            continue;
+          }
+          const boundErr = streamerBoundError(streamer_id, projectRow, config);
+          if (boundErr) {
+            errors.push({ row, reason: boundErr.message });
+            continue;
+          }
 
           const defaultSections = projectRow?.sectionsPerCable ?? config.sectionsPerCable;
           const effectiveSections = await getStreamerSectionsPerCable(projectRow?.id ?? null, streamer_id, defaultSections);

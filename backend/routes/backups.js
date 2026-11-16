@@ -3,7 +3,7 @@ const express = require("express");
 const path = require("path");
 const fs = require("fs");
 const humps = require("humps");
-const { createBackup, BACKUP_DIR, DB_FILE } = require("../db");
+const { createBackup, restoreFromFile, BACKUP_DIR } = require("../db");
 const { sendError } = require("../utils/errors");
 const { isGlobalUser } = require("../middleware/auth");
 
@@ -71,14 +71,13 @@ function createBackupsRouter(authMiddleware, superUserOnly) {
         return sendError(res, 404, "Backup file not found");
       }
 
-      if (process.env.NODE_ENV !== "test") {
-        await createBackup();
-        fs.copyFileSync(backupPath, DB_FILE);
-      }
+      // Safety net first, then restore through the live connection (no file copy, no restart).
+      await createBackup();
+      await restoreFromFile(backupPath);
 
       res.json({
         success: true,
-        message: "Database restored successfully. Please restart the server for changes to take effect.",
+        message: "Database restored successfully. Reload the page to see the restored data.",
         restoredFrom: filename,
       });
     } catch (err) {

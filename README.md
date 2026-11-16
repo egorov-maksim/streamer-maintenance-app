@@ -93,7 +93,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 - **Per-Streamer Deployment**: Set deployment date and coating (Coated/Uncoated/Unknown) per streamer; bulk actions to set all dates, set all coating, or clear all/single streamer config
 - **Vessel Project Overview**: Table of vessels with active project and project name; SuperUsers can change the active project per vessel from dropdowns
 - **Project Management**: Create new project, set active project, clear active project; list of all projects with actions (activate, force-delete with confirmation)
-- **Backup & Restore**: Create manual backup, refresh backup list, restore from backup (restore requires GrandSuperUser or a global SuperUser; requires server restart after restore)
+- **Backup & Restore**: Create manual backup, refresh backup list, restore from backup (restore requires GrandSuperUser or a global SuperUser; applied live, no server restart needed)
 - **Back to Main**: Header link returns to the main app at `/`
 
 ### 🗺️ Planning Page (Dedicated Maintenance Planning View)
@@ -291,6 +291,14 @@ The application will:
 - Start listening on configured port (default 3000)
 - Begin automatic backup scheduler (every 12 hours)
 
+### Running the Tests
+
+```bash
+npm test
+```
+
+Runs the Jest suite in `backend/tests/` (route tests against a scratch SQLite database via supertest, plus pure unit tests) and `tests/frontend/` (browser helper modules imported from `public/js/`). Tests never touch `backend/streamer.db` or the `backup/` directory: `jest.setup.js` points `DB_FILE` and `BACKUP_DIR` at `backend/tests/.scratch/`.
+
 ### Environment Configuration
 
 Create a `.env` file in the root directory (copy from `.env.example` for a template with safe defaults):
@@ -358,7 +366,7 @@ AUTH_USERS=TTNOBS:Password:admin:TTN:true,TTNView:Password:viewer:TTN,TTNNav:Pas
 #### 9. **Manage Backups** (SuperUser+ for listing/creating; GrandSuperUser / global SuperUser for restore)
 - View list of automatic backups
 - Create manual backups anytime
-- Restore from previous backups if needed (server restart required after restore)
+- Restore from previous backups if needed (applied to the running database through SQLite's online backup API; just reload the page)
 
 ### Configuration
 
@@ -451,8 +459,8 @@ The PDF report includes:
 
 ### Cleaning Events
 - `GET /api/events` - Get all events (supports `?project=X`, `?start=`, `?end=` query params)
-- `POST /api/events` - Create new event (Admin+); stores `addedByUsertag` from the authenticated user
-- `PUT /api/events/:id` - Update event (Admin+)
+- `POST /api/events` - Create new event (Admin+); stores `addedByUsertag` from the authenticated user. Returns `400` for an unknown project, a streamer outside the project's cable count, or markup in text fields; `403` when a vessel-scoped user targets another vessel's project
+- `PUT /api/events/:id` - Update event (Admin+); same `400`/`403` rules apply when the project or streamer is changed
 - `DELETE /api/events/:id` - Delete single event (Admin+)
 - `DELETE /api/events` - Bulk clear events; accepts optional `?project=X` param (Admin+)
 - `GET /api/events/export` - Export events as CSV (includes Added By column; filename includes project suffix when filtered)
@@ -475,7 +483,7 @@ The PDF report includes:
 ### Backups (SuperUser+; restore requires GrandSuperUser / global SuperUser)
 - `GET /api/backups` - List available backups
 - `POST /api/backups` - Create manual backup
-- `POST /api/backups/:filename/restore` - Restore from backup (server restart required after)
+- `POST /api/backups/:filename/restore` - Restore from backup (a safety backup is taken first; the restore is applied live, no restart)
 
 ---
 
@@ -648,6 +656,7 @@ streamer-maintenance-app/
 
 ## 📝 Latest Updates (March 2026)
 
+- ✅ **Hardening release**: live backup restore (no restart), atomic RMS uploads, vessel-scope checks on event writes and `?project=` reads, streamer bound on imports, HTML-escaped event text, local-time date/time inputs, Jest test suite (`npm test`)
 - ✅ **Planning page** (`/planning`): dedicated read-only heatmap with cleaning suggestions table, channel reference column, and urgency-ranked section ranges — scoped to per-vessel users only
 - ✅ **RMS Noise overlay**: upload per-section RMS noise CSVs, toggle noise coloring on the heatmap, view Avg RMS Noise in the cleaning suggestions table, multi-batch upload history
 - ✅ **Adjacent Event Merge**: when a new range is immediately adjacent to an existing same-method event within 1 hour, a merge modal offers to extend the prior event instead of creating a new one
