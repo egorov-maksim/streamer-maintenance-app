@@ -9,10 +9,10 @@
  * @param {number} startSection - Start section index (0-based)
  * @param {number} endSection - End section index (0-based)
  * @param {Object} config - Config with moduleFrequency, sectionsPerCable
- * @returns {string} Formatted EB range (e.g. "EB05 - EB02") or "-"
+ * @returns {string} Formatted EB range (e.g. "EB05 - EB02"), or a single EB when both ends map to the same module
  */
 function calculateEBRange(startSection, endSection, config) {
-  const start = Math.min(startSection, endSection);
+  const start = Math.max(0, Math.min(startSection, endSection));
   const end = Math.max(startSection, endSection);
   const moduleFreq = config.moduleFrequency || 4;
   const sectionsPerCable = config.sectionsPerCable;
@@ -32,28 +32,21 @@ function calculateEBRange(startSection, endSection, config) {
     allModules.push({ num: lastBuilt.num + 1, section: sectionsPerCable - 1 });
   }
 
+  // EB01 sits at section 0, so a module always exists at or before the start.
+  // A span that runs past the last active section ends at the closing module.
   const before = allModules
     .filter((module) => module.section <= start)
     .sort((a, b) => b.section - a.section)[0];
 
-  const after = allModules
-    .filter((module) => module.section >= end)
-    .sort((a, b) => a.section - b.section)[0];
-
-  const effectiveAfter = after || allModules[allModules.length - 1];
+  const after =
+    allModules
+      .filter((module) => module.section >= end)
+      .sort((a, b) => a.section - b.section)[0] || allModules[allModules.length - 1];
 
   const formatEB = (num) => `EB${String(num).padStart(2, "0")}`;
 
-  if (before && effectiveAfter) {
-    if (before.num === effectiveAfter.num) return formatEB(before.num);
-    return `${formatEB(Math.max(before.num, effectiveAfter.num))} - ${formatEB(Math.min(before.num, effectiveAfter.num))}`;
-  } else if (before) {
-    return `Tail Adaptor - ${formatEB(before.num)}`;
-  } else if (effectiveAfter) {
-    return formatEB(effectiveAfter.num);
-  }
-
-  return "-";
+  if (before.num === after.num) return formatEB(before.num);
+  return `${formatEB(Math.max(before.num, after.num))} - ${formatEB(Math.min(before.num, after.num))}`;
 }
 
 module.exports = { calculateEBRange };

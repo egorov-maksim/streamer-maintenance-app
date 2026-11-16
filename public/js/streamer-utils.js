@@ -91,23 +91,17 @@ export function getEBRangeForSectionRange(startSection, endSection, cfg) {
     allModules.push({ num: lastBuilt.num + 1, section: sectionsPerCable - 1 });
   }
 
+  // EB01 sits at section 0 and a closing module sits at the last active section,
+  // so a module always exists on both sides of a range within the active sections.
   const before = allModules
     .filter((m) => m.section <= startSection)
     .sort((a, b) => b.section - a.section)[0];
   const after = allModules
     .filter((m) => m.section >= endSection)
     .sort((a, b) => a.section - b.section)[0];
-  const effectiveAfter = after || allModules[allModules.length - 1];
 
-  if (before && effectiveAfter) {
-    if (before.num === effectiveAfter.num) return formatEB(before.num);
-    return `${formatEB(Math.max(before.num, effectiveAfter.num))} – ${formatEB(Math.min(before.num, effectiveAfter.num))}`;
-  } else if (before) {
-    return `Tail Adaptor – ${formatEB(before.num)}`;
-  } else if (effectiveAfter) {
-    return formatEB(effectiveAfter.num);
-  }
-  return "—";
+  if (before.num === after.num) return formatEB(before.num);
+  return `${formatEB(Math.max(before.num, after.num))} – ${formatEB(Math.min(before.num, after.num))}`;
 }
 
 /**
