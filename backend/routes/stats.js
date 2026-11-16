@@ -4,7 +4,7 @@ const { getAsync, getAllCamelized, getOneCamelized } = require("../db");
 const { loadConfig, defaultConfig } = require("../config");
 const { getActiveProjectForVessel } = require("../activeProject");
 const { toInt } = require("../utils/validation");
-const { sendError } = require("../utils/errors");
+const { sendError, httpError, handleRouteError } = require("../utils/errors");
 const { buildEventsWhereClause } = require("../utils/queryHelpers");
 const { calculateEBRange } = require("../utils/eb");
 const {
@@ -52,6 +52,10 @@ async function getEffectiveConfig(req) {
   let projectRow = null;
   if (project) {
     projectRow = await getOneCamelized("SELECT * FROM projects WHERE project_number = ?", [project]);
+    // A vessel-scoped user may not read another vessel's cable geometry via ?project=.
+    if (projectRow && req.vesselScope && projectRow.vesselTag !== req.vesselScope) {
+      throw httpError(403, "Project does not belong to your vessel");
+    }
   } else {
     projectRow = await getActiveProjectForVessel(vesselTag);
   }
@@ -95,8 +99,7 @@ function createStatsRouter(authMiddleware) {
       const ebRange = calculateEBRange(startSection, endSection, config);
       res.json({ ebRange });
     } catch (err) {
-      console.error(err);
-      sendError(res, 500, "Failed to calculate EB range");
+      handleRouteError(res, err, "Failed to calculate EB range");
     }
   });
 
@@ -168,8 +171,7 @@ function createStatsRouter(authMiddleware) {
         totalAvailableTail,
       });
     } catch (err) {
-      console.error(err);
-      sendError(res, 500, "Failed to get stats");
+      handleRouteError(res, err, "Failed to get stats");
     }
   });
 
@@ -216,8 +218,7 @@ function createStatsRouter(authMiddleware) {
       }
       res.json({ lastCleaned: map });
     } catch (err) {
-      console.error(err);
-      sendError(res, 500, "Failed to compute last-cleaned");
+      handleRouteError(res, err, "Failed to compute last-cleaned");
     }
   });
 
@@ -269,8 +270,7 @@ function createStatsRouter(authMiddleware) {
       }
       res.json({ lastCleaned: map });
     } catch (err) {
-      console.error(err);
-      sendError(res, 500, "Failed to compute filtered last-cleaned");
+      handleRouteError(res, err, "Failed to compute filtered last-cleaned");
     }
   });
 
@@ -339,8 +339,7 @@ function createStatsRouter(authMiddleware) {
         tailCleanedSections: uniqueTailSections.size,
       });
     } catch (err) {
-      console.error(err);
-      sendError(res, 500, "Failed to get filtered stats");
+      handleRouteError(res, err, "Failed to get filtered stats");
     }
   });
 

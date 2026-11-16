@@ -205,6 +205,15 @@ streamer-maintenance-app/
 
 ### Run with PM2 (Production)
 
+On the server, install only the runtime dependencies. The Jest/Playwright tooling in `devDependencies` is not needed to run the app:
+
+```bash
+git pull
+npm ci --omit=dev
+```
+
+(`npm ci` installs exactly what `package-lock.json` pins; `--omit=dev` skips Jest, Playwright, supertest and nodemon.)
+
 ```bash
 npm install -g pm2
 pm2 start backend/server.js --name streamer-app

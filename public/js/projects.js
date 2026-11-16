@@ -5,7 +5,7 @@
 
 import { config, projects, setConfig, setProjects, setSelectedProjectFilter, currentUser, getActiveProject } from "./state.js";
 import * as API from "./api.js";
-import { safeGet, setStatus, showErrorToast, showWarningToast, showSuccessToast, showAccessDeniedToast } from "./ui.js";
+import { safeGet, setStatus, showErrorToast, showWarningToast, showSuccessToast, showAccessDeniedToast, escapeHtml } from "./ui.js";
 import { isSuperUser, isGrandSuperUser } from "./auth.js";
 import { openModal, closeModal } from "./modals.js";
 
@@ -413,9 +413,9 @@ export function renderProjectList() {
       return `
         <div class="project-item ${isActive ? "active" : ""}">
           <div class="project-item-info">
-            <span class="project-number">${p.projectNumber}</span>
-            ${p.projectName ? `<span class="project-name">${p.projectName}</span>` : ""}
-            <span class="project-vessel">${p.vesselTag || "TTN"}</span>
+            <span class="project-number">${escapeHtml(p.projectNumber)}</span>
+            ${p.projectName ? `<span class="project-name">${escapeHtml(p.projectName)}</span>` : ""}
+            <span class="project-vessel">${escapeHtml(p.vesselTag || "TTN")}</span>
             <span class="project-event-count" title="Events in this project">${eventCount} events</span>
             ${isActive ? '<span class="badge badge-active">Active</span>' : ""}
           </div>
@@ -787,11 +787,11 @@ export async function loadBackups() {
         return `
           <div class="backup-item">
             <div class="backup-item-info">
-              <span class="backup-filename">${backup.filename}</span>
+              <span class="backup-filename">${escapeHtml(backup.filename)}</span>
               <div class="backup-meta"><span>📅 ${formattedDate}</span><span>📦 ${sizeKB} KB</span></div>
             </div>
             <div class="backup-item-actions">
-              <button class="btn btn-sm btn-restore" data-filename="${backup.filename}" title="Restore this backup">🔄 Restore</button>
+              <button class="btn btn-sm btn-restore" data-filename="${escapeHtml(backup.filename)}" title="Restore this backup">🔄 Restore</button>
             </div>
           </div>
         `;

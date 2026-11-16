@@ -1,0 +1,5 @@
+{
+  "type": "module",
+  "private": true,
+  "description": "Marks the browser modules as ESM so Node/Jest can import them for unit tests. Not used by the server."
+}

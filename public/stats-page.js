@@ -1,4 +1,4 @@
-import { safeGet, showErrorToast } from "./js/ui.js";
+import { safeGet, showErrorToast, escapeHtml } from "./js/ui.js";
 import {
   setOnShowAppCallback,
   loadSession,
@@ -264,7 +264,7 @@ function renderNoiseEfficiencyBreakdown(ranges) {
       <td>${row.streamerId}</td>
       <td>${rangeLabel}</td>
       <td>${date}</td>
-      <td>${row.cleaningMethod || "—"}</td>
+      <td>${escapeHtml(row.cleaningMethod || "—")}</td>
       <td class="${pctClass}">${pctText}</td>
       <td>${rmsText}</td>
       <td>${row.cellsPaired} / ${row.cellsInEvent}</td>
