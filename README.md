@@ -75,7 +75,8 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 - **Per-Project Settings**: Each project has independent configuration
 - **Configurable Parameters**:
   - Number of cables/streamers (typically 12)
-  - Sections per cable (typically 107)
+  - Sections per cable (typically 107) — the default active section count for every streamer
+  - Per-streamer sections override — for spreads where some streamers are shorter or longer than the rest (set under Per-Streamer Deployment Configuration)
   - Section length in meters (for distance calculations)
   - eBird module frequency (placement intervals)
   - Tail section options (5 tail sections or rope-only)
@@ -90,7 +91,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 - **Access**: SuperUser and GrandSuperUser only; link "⚙️ Config" appears in the main app header when permitted
 - **Independent login**: the page has its own login form, same as the `/stats` and `/planning` pages
 - **Project & Streamer Configuration**: Active project banner, project comments (superuser-editable), project selector, and streamer parameters (count, sections, length, eBird frequency, tail option, etc.) with Save and "Cleanup orphaned streamers"
-- **Per-Streamer Deployment**: Set deployment date and coating (Coated/Uncoated/Unknown) per streamer; bulk actions to set all dates, set all coating, or clear all/single streamer config
+- **Per-Streamer Deployment**: Set deployment date, coating (Coated/Uncoated/Unknown) and an optional sections override per streamer; bulk actions to set all dates, set all coating, or clear all/single streamer config
 - **Vessel Project Overview**: Table of vessels with active project and project name; SuperUsers can change the active project per vessel from dropdowns
 - **Project Management**: Create new project, set active project, clear active project; list of all projects with actions (activate, force-delete with confirmation)
 - **Backup & Restore**: Create manual backup, refresh backup list, restore from backup (restore requires GrandSuperUser or a global SuperUser; requires server restart after restore)
@@ -229,7 +230,8 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 ### 🔧 Per-Streamer Deployment Configuration
 - **Deployment Date**: Set deployment date per streamer for the active project
 - **Coating Status**: Three-state toggle (Coated / Uncoated / Unknown) per streamer
-- **Modern Card UI**: One card per streamer with date input and coating buttons
+- **Sections Override**: Optional active section count for a single streamer, for when streamers in the spread differ in length. Leave blank to use the project's "Sections per Cable" value. The heatmap, planning view, statistics, noise upload validation and PDF report all use each streamer's effective section count; shorter streamers show inactive (grey) cells beyond their length.
+- **Modern Card UI**: One card per streamer with date input, coating buttons and sections override
 - **Heatmap Tooltip**: Hover on streamer column header to see deployment date, days from deployment to first scraping, coating, and cleaning stats
 - **Clear Config**: SuperUser can clear individual or all streamer configurations
 
@@ -382,7 +384,8 @@ Configuration is changed on the dedicated **Config page** (SuperUser only); ther
 | Setting | Default | Purpose |
 |---------|---------|---------|
 | Number of Cables | 12 | Total streamers in array |
-| Sections per Cable | 107 | Active sensor sections |
+| Sections per Cable | 107 | Active sensor sections (default for all streamers) |
+| Sections Override (per streamer) | blank | Active section count for one streamer when it differs from the default |
 | Section Length (m) | 75 | Length of each section for distance calculation |
 | eBird Frequency | 4 | EB module spacing (every N sections) |
 | Use Rope for Tail | true | Use rope (true) or add 5 tail sections (false) |
