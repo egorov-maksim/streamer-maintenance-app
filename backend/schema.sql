@@ -37,6 +37,24 @@ CREATE INDEX IF NOT EXISTS idx_cleaning_events_date ON cleaning_events(cleaned_a
 CREATE INDEX IF NOT EXISTS idx_cleaning_events_project ON cleaning_events(project_number);
 CREATE INDEX IF NOT EXISTS idx_cleaning_events_section_type ON cleaning_events(section_type);
 
+-- eBird (EB module) cleaning entries. eBirds are cleaned by hand, often at a wing change
+-- between scraping runs, so their dates are kept apart from section cleaning events and
+-- never enter distance, coverage or clean-count statistics.
+-- eb_number is 1-based along the streamer (EB01 sits at the first section).
+CREATE TABLE IF NOT EXISTS eb_cleaning_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  streamer_id INTEGER NOT NULL,
+  eb_number INTEGER NOT NULL,
+  cleaned_at TEXT NOT NULL,
+  project_number TEXT,
+  vessel_tag TEXT DEFAULT 'TTN',
+  added_by_usertag TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_number) REFERENCES projects(project_number) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_eb_cleaning_events_project ON eb_cleaning_events(project_number);
+
 -- Projects table - tracks all defined projects with their streamer configuration
 -- Active project per vessel is stored in vessel_context, not here.
 CREATE TABLE IF NOT EXISTS projects (

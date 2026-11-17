@@ -49,4 +49,21 @@ function calculateEBRange(startSection, endSection, config) {
   return `${formatEB(Math.max(before.num, after.num))} - ${formatEB(Math.min(before.num, after.num))}`;
 }
 
-module.exports = { calculateEBRange };
+/**
+ * Counts the EB modules on one streamer, using the same placement rule as the heatmap and
+ * calculateEBRange: one at the first section, one every moduleFrequency sections, and a
+ * closing one at the last active section when that section does not already carry one.
+ *
+ * @param {number} sectionsPerCable - active sections on this streamer
+ * @param {number} moduleFrequency - sections between regular EB placements
+ * @returns {number} highest valid EB number (0 when the streamer has no sections)
+ */
+function countEBModules(sectionsPerCable, moduleFrequency) {
+  const sections = Number(sectionsPerCable);
+  if (!Number.isFinite(sections) || sections < 1) return 0;
+  const freq = moduleFrequency > 0 ? moduleFrequency : 4;
+  const regular = 1 + Math.floor((sections - 1) / freq);
+  return (sections - 1) % freq === 0 ? regular : regular + 1;
+}
+
+module.exports = { calculateEBRange, countEBModules };

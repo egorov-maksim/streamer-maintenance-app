@@ -64,6 +64,8 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
   - 🔴 **14+ days**: Dark Red - Critical - needs immediate cleaning
   - ⚪ **Never**: Gray - Never cleaned
 - **Module Integration**: eBird module positions displayed directly on heatmap
+- **Method Toggles**: switch cleaning methods off above the heatmap (for example SCUE) to see when each section was last cleaned by the remaining methods; colours, days and tooltips behave as if events of the switched-off methods did not exist. Remembered per browser. Alerts, statistics and the log always count every method
+- **eBird Cleaning Dates**: click an EB cell to enter the date an eBird was cleaned by hand (for example at a wing change). The cell then takes the same age colours as sections; an eBird without a date stays amber. Scraping runs past an eBird do not count as cleaning it
 - **Real-Time Updates**: Heatmap refreshes immediately after logging events
 - **Hover Tooltips**: Section hover shows last cleaned method & date, days since last clean, total times cleaned, and the last 5 cleanings with dates and methods; **streamer column header hover** shows deployment date, days from deployment to first scraping, coating status, total cleanings, and last cleaned date
 

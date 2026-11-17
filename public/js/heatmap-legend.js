@@ -310,6 +310,23 @@ export function renderNoiseTicks(ticksEl, prefs) {
 // ---------- Heatmap repaint ----------
 
 /**
+ * Colour eBird (EB module) cells that have a cleaning date with the same age gradient as
+ * sections. Cells without data-eb-days keep the stylesheet's plain EB look; the border is
+ * left to the stylesheet too, so an eBird still reads as an eBird.
+ * @param {Element} container - the heatmap grid container element
+ * @param {{ ageBreaks: number[] }} prefs
+ */
+export function paintEbAgeCells(container, prefs) {
+  container.querySelectorAll(".hm-vcell.hm-module[data-eb-days]").forEach((cell) => {
+    const days = Number(cell.dataset.ebDays);
+    if (!Number.isFinite(days)) return;
+    const style = scrapingAgeStyle(days, prefs);
+    cell.style.backgroundColor = style.backgroundColor;
+    cell.style.color = style.color;
+  });
+}
+
+/**
  * Apply continuous scraping-age inline styles to all active and tail section cells.
  * Reads days from dataset.scrapingDays (set by app.js) or falls back to
  * dataset.daysText (set by planning-page.js). Both store numeric strings or "—" for never.

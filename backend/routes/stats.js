@@ -3,7 +3,7 @@ const express = require("express");
 const { getAsync, getAllCamelized, getOneCamelized } = require("../db");
 const { loadConfig, defaultConfig } = require("../config");
 const { getActiveProjectForVessel } = require("../activeProject");
-const { toInt } = require("../utils/validation");
+const { toInt, isSafeText } = require("../utils/validation");
 const { sendError, httpError, handleRouteError } = require("../utils/errors");
 const { buildEventsWhereClause } = require("../utils/queryHelpers");
 const { calculateEBRange } = require("../utils/eb");
@@ -77,6 +77,22 @@ async function getEffectiveConfig(req) {
     sectionLength: projectRow?.sectionLength ?? config.sectionLength,
     sectionsPerCableMap,
   };
+}
+
+/**
+ * Parses the optional ?excludeMethods=scue,knife filter of /api/last-cleaned. Lets the
+ * heatmap ask "when was this last cleaned by hand?" by leaving out methods such as SCUE.
+ * Methods are excluded rather than listed so events with an unusual method keep counting.
+ * @param {*} raw - query value
+ * @returns {string[]|null} methods to leave out, or null when no filter was given
+ */
+function parseExcludeMethods(raw) {
+  if (raw === undefined || raw === null || raw === "") return null;
+  const methods = String(raw).split(",").map((m) => m.trim()).filter(Boolean);
+  if (methods.length === 0 || methods.length > 20 || !methods.every((m) => isSafeText(m))) {
+    throw httpError(400, "Invalid excludeMethods filter");
+  }
+  return methods;
 }
 
 /**
@@ -185,6 +201,7 @@ function createStatsRouter(authMiddleware) {
   router.get("/api/last-cleaned", authMiddleware, async (req, res) => {
     try {
       const { project } = req.query;
+      const excludeMethods = parseExcludeMethods(req.query.excludeMethods);
       const config = await getEffectiveConfig(req);
       const cableCount = config.numCables;
       const tailSections = config.useRopeForTail ? 0 : 5;
@@ -193,6 +210,10 @@ function createStatsRouter(authMiddleware) {
       let sql = `SELECT streamer_id, section_index_start, section_index_end, section_type, cleaned_at FROM cleaning_events`;
       const params = [];
       const conditions = [];
+      if (excludeMethods) {
+        conditions.push(`cleaning_method NOT IN (${excludeMethods.map(() => "?").join(", ")})`);
+        params.push(...excludeMethods);
+      }
       if (project) {
         conditions.push("project_number = ?");
         params.push(project);

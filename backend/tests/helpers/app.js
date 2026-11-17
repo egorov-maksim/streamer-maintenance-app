@@ -17,7 +17,7 @@ function ready() {
 /** Empties every table so each test starts from a known state. */
 async function resetDb() {
   await ready();
-  for (const table of ["noise_data", "noise_uploads", "cleaning_events", "streamer_deployments", "vessel_context", "projects", "app_config"]) {
+  for (const table of ["noise_data", "noise_uploads", "cleaning_events", "eb_cleaning_events", "streamer_deployments", "vessel_context", "projects", "app_config"]) {
     await runAsync(`DELETE FROM ${table}`);
   }
   // Back to the known AUTH_USERS set from jest.setup.js. Wait for the server's own
