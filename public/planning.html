@@ -195,10 +195,23 @@
                 <p id="noise-toolbar-status" class="noise-toolbar-status hidden"></p>
                 <select id="noise-upload-selector" class="noise-upload-selector hidden" title="Select a historical noise upload to display">
                 </select>
-                <details id="noise-compare-panel" class="noise-compare-panel hidden" title="Tick two or more sequences to average their RMS per section">
-                  <summary class="noise-compare-summary">Average of sequences</summary>
-                  <p class="noise-compare-hint">Tick two or more sequences to see the average per section and the range in the tooltip.</p>
-                  <div id="noise-compare-list" class="noise-compare-list"></div>
+                <details id="noise-compare-panel" class="noise-compare-panel hidden">
+                  <summary class="noise-compare-summary" title="Average the RMS of several sequences per section">
+                    <span id="noise-compare-summary-text">Average sequences</span>
+                    <span id="noise-compare-count" class="noise-compare-count hidden" aria-hidden="true"></span>
+                  </summary>
+                  <div class="noise-compare-popover" role="group" aria-labelledby="noise-compare-title">
+                    <div class="noise-compare-header">
+                      <p id="noise-compare-title" class="noise-compare-title">Average several sequences</p>
+                      <p class="noise-compare-hint">Tick two or more. The heatmap shows the average RMS per section; the section tooltip shows the range.</p>
+                    </div>
+                    <div id="noise-compare-list" class="noise-compare-list"></div>
+                    <div class="noise-compare-footer">
+                      <span id="noise-compare-status" class="noise-compare-status" aria-live="polite"></span>
+                      <button type="button" id="noise-compare-clear" class="btn btn-outline btn-sm">Clear</button>
+                      <button type="button" id="noise-compare-done" class="btn btn-primary btn-sm">Done</button>
+                    </div>
+                  </div>
                 </details>
                 <div class="noise-dataset-actions">
                   <button

@@ -2876,7 +2876,7 @@ table.has-noise-data .noise-col {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--card-bg);
-  overflow: hidden;
+  /* No overflow clipping: the sequence picker dropdown hangs below this card */
   flex-wrap: wrap;
 }
 
@@ -3020,7 +3020,7 @@ table.has-noise-data .noise-col {
   box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
-/* Sequence picker for averaging several RMS uploads */
+/* Sequence picker: a dropdown for averaging several RMS uploads */
 .noise-compare-panel {
   position: relative;
   flex: 0 0 auto;
@@ -3030,85 +3030,244 @@ table.has-noise-data .noise-col {
 .noise-compare-summary {
   display: inline-flex;
   align-items: center;
-  width: auto;
+  gap: 8px;
   white-space: nowrap;
   cursor: pointer;
   padding: 8px 12px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--card-bg, #fff);
+  background: var(--card-bg);
   color: var(--text);
   list-style: none;
   user-select: none;
-}
-
-.noise-compare-summary::after {
-  content: "▾";
-  margin-left: 8px;
-  color: var(--text-muted, #64748b);
-}
-
-.noise-compare-panel[open] .noise-compare-summary::after {
-  content: "▴";
+  transition: border-color 0.2s, background 0.2s;
 }
 
 .noise-compare-summary::-webkit-details-marker {
   display: none;
 }
 
+.noise-compare-summary::after {
+  content: "▾";
+  color: var(--muted);
+  transition: transform 0.2s;
+}
+
+.noise-compare-panel[open] .noise-compare-summary::after {
+  transform: rotate(180deg);
+}
+
+.noise-compare-summary:hover,
 .noise-compare-panel[open] .noise-compare-summary {
-  border-color: var(--accent, #2563eb);
+  border-color: var(--primary);
+}
+
+.noise-compare-summary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* An average is in effect: the button reads as "on" */
+.noise-compare-panel.is-active .noise-compare-summary {
+  background: var(--primary-100);
+  border-color: var(--primary);
+  color: #1e40af;
+  font-weight: 600;
+}
+
+.noise-compare-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Floats over the page so opening it does not reshuffle the toolbar */
+.noise-compare-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 80;
+  width: 320px;
+  max-width: calc(100vw - 48px);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-bg);
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.06);
+  text-align: left;
+}
+
+.noise-compare-header {
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.noise-compare-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
 }
 
 .noise-compare-hint {
-  margin: 8px 0 0;
-  max-width: 300px;
-  color: var(--text-muted, #64748b);
+  margin: 4px 0 0;
+  color: var(--muted);
   font-size: 12px;
   line-height: 1.4;
 }
 
-/* In normal flow, so the open list pushes content down instead of being clipped */
 .noise-compare-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  width: 300px;
-  max-height: 240px;
+  gap: 2px;
+  max-height: 264px;
   overflow-y: auto;
-  margin-top: 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--card-bg, #fff);
+  padding: 6px;
 }
 
 .noise-compare-option {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-  padding: 4px 4px;
-  border-radius: 6px;
+  gap: 10px;
+  min-height: 40px;
+  padding: 6px 8px;
+  border-radius: 8px;
   cursor: pointer;
-  white-space: nowrap;
 }
 
 .noise-compare-option:hover {
-  background: var(--row-hover, #f1f5f9);
+  background: #f1f5f9;
+}
+
+.noise-compare-option.is-checked {
+  background: var(--primary-100);
 }
 
 .noise-compare-option input[type="checkbox"] {
   flex: 0 0 auto;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
   margin: 0;
-  accent-color: var(--accent, #2563eb);
+  accent-color: var(--primary);
 }
 
-.noise-compare-option span {
+.noise-compare-option-name {
   flex: 1 1 auto;
-  text-align: left;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.noise-compare-option-date {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.noise-compare-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: #f9fafb;
+  border-radius: 0 0 12px 12px;
+}
+
+.noise-compare-status {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.noise-compare-footer .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* Below 900px the toolbar controls are left-aligned, so the dropdown opens from the left edge */
+@media (max-width: 900px) {
+  .noise-compare-popover {
+    left: 0;
+    right: auto;
+  }
+}
+
+/* Phones: the toolbar is stacked, so the picker is full width and opens in the flow */
+@media (max-width: 700px) {
+  .noise-compare-panel {
+    flex: 1 1 100%;
+  }
+
+  .noise-compare-summary {
+    display: flex;
+    min-height: var(--touch-target);
+  }
+
+  .noise-compare-summary::after {
+    margin-left: auto;
+  }
+
+  .noise-compare-popover {
+    position: static;
+    width: auto;
+    max-width: none;
+    margin-top: 6px;
+    box-shadow: none;
+  }
+
+  .noise-compare-option {
+    min-height: var(--touch-target);
+  }
+
+  /* Status gets its own line above the buttons */
+  .noise-compare-footer {
+    flex-wrap: wrap;
+  }
+
+  .noise-compare-status {
+    flex: 1 1 100%;
+  }
+
+  .noise-compare-footer .btn {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+
+  /* Keep the stacked controls inside the dataset card */
+  .noise-dataset-controls {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .noise-dataset-controls .noise-toolbar-status {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .noise-upload-selector {
+    min-width: 0;
+  }
+}
+
+/* While an average is shown, the single-upload selector is not what the heatmap displays */
+.noise-upload-selector.is-overridden {
+  color: var(--muted);
+  background: #f9fafb;
 }
 
 /* Upload button — styled as a file label */
