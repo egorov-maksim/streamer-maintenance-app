@@ -1,0 +1,59 @@
+/**
+ * eBird (EB module) cleaning status on heatmap cells, shared by the Main and Planning
+ * heatmaps so an EB cell reads the same on both pages. An eBird only counts as cleaned
+ * through an entry made for it; scraping runs that pass it do not change it.
+ */
+
+/** Whole days between an ISO timestamp and now; a date in the future counts as today. */
+export function daysSince(iso, now = Date.now()) {
+  return Math.max(0, Math.floor((now - new Date(iso)) / (1000 * 60 * 60 * 24)));
+}
+
+/** Two-digit EB label, e.g. 5 -> "EB05". */
+export function ebLabel(ebNumber) {
+  return `EB${String(ebNumber).padStart(2, "0")}`;
+}
+
+/** "cleaned today" / "cleaned N days ago", shared by cell labels and tooltips. */
+export function cleanedAgoText(days) {
+  return days === 0 ? "cleaned today" : `cleaned ${days} day${days === 1 ? "" : "s"} ago`;
+}
+
+/**
+ * Newest cleaning date per eBird.
+ * @param {Array<{streamerId:number, ebNumber:number, cleanedAt:string}>} entries - newest first
+ * @returns {Map<string, string>} "streamer:eb" -> newest cleanedAt
+ */
+export function latestEbCleaningMap(entries) {
+  const latest = new Map();
+  for (const entry of entries || []) {
+    const key = `${entry.streamerId}:${entry.ebNumber}`;
+    if (!latest.has(key)) latest.set(key, entry.cleanedAt);
+  }
+  return latest;
+}
+
+/**
+ * Marks an EB cell with its cleaning status. With an entry the cell carries data-eb-days
+ * (painted by paintEbAgeCells); without one it keeps the plain EB look.
+ * @param {HTMLElement} cell
+ * @param {number} streamerId
+ * @param {number} ebNumber - 1-based along the streamer
+ * @param {Map<string, string>} latestEbCleaning - from latestEbCleaningMap
+ */
+export function applyEbCleaningStatus(cell, streamerId, ebNumber, latestEbCleaning, now = Date.now()) {
+  cell.dataset.ebStreamer = streamerId;
+  cell.dataset.ebNum = ebNumber;
+  const last = latestEbCleaning.get(`${streamerId}:${ebNumber}`);
+  let stateText = "no cleaning date entered";
+  if (last) {
+    const days = daysSince(last, now);
+    cell.dataset.ebDays = String(days);
+    stateText = cleanedAgoText(days);
+  } else {
+    delete cell.dataset.ebDays;
+  }
+  const label = `Streamer ${streamerId}, ${ebLabel(ebNumber)}: ${stateText}`;
+  cell.title = label;
+  cell.setAttribute("aria-label", label);
+}

@@ -39,6 +39,7 @@ import {
 } from "./js/streamer-utils.js";
 import { validateNoiseCsv } from "./js/noise-validation.js";
 import { buildSectionTooltipHtml } from "./js/section-tooltip.js";
+import { latestEbCleaningMap, applyEbCleaningStatus } from "./js/eb-status.js";
 import { aggregateNoiseDatasets } from "./js/noise-aggregate.js";
 import { toDateTimeLocalInputValue, dateTimeLocalInputToIso } from "./js/date-utils.js";
 import {
@@ -53,6 +54,7 @@ import {
   rmsToColor,
   rmsTextColor,
   paintScrapingAgeCells,
+  paintEbAgeCells,
   scrapingAgeLegendGradient,
   noiseLegendGradient,
   renderAgeTicks,
@@ -889,15 +891,21 @@ async function renderPlanningHeatmap() {
 
   try {
     const projectQuery = selectedProjectFilter ? `?project=${encodeURIComponent(selectedProjectFilter)}` : "";
-    const [data, loadedEvents] = await Promise.all([
+    const [data, loadedEvents, loadedEbCleanings] = await Promise.all([
       API.apiCall(`api/last-cleaned${projectQuery}`),
       // Cleaning history for the section tooltips; the heatmap still renders without it.
       API.apiCall(`api/events${projectQuery}`).catch(err => {
         console.debug("Cleaning events fetch failed:", err?.message ?? err);
         return [];
       }),
+      // eBird cleaning dates, same scope as the main page; EB cells stay plain without them.
+      API.fetchEbCleanings(selectedProjectFilter ? { project: selectedProjectFilter } : {}).catch(err => {
+        console.debug("eBird cleaning dates fetch failed:", err?.message ?? err);
+        return [];
+      }),
     ]);
     planningEvents = Array.isArray(loadedEvents) ? loadedEvents : [];
+    const latestEbCleaning = latestEbCleaningMap(Array.isArray(loadedEbCleanings) ? loadedEbCleanings : []);
     const lastCleaned = data.lastCleaned;
     currentLastCleaned = lastCleaned;
 
@@ -1031,10 +1039,9 @@ async function renderPlanningHeatmap() {
             cell.dataset.daysText = daysText;
             cell.textContent = daysText;
           } else if (type === 'module') {
-            const ebLabel = String(modNum).padStart(2, '0');
             cell.className = 'hm-vcell hm-module';
-            cell.textContent = `EB${ebLabel}`;
-            cell.title = `Equipment Box ${ebLabel}`;
+            cell.textContent = formatEB(modNum);
+            applyEbCleaningStatus(cell, streamerId, modNum, latestEbCleaning);
           } else {
             const tailSectionIdx = effectiveSections + tailIdx;
             const lastDate = sections[tailSectionIdx] || null;
@@ -1150,7 +1157,7 @@ async function renderPlanningHeatmap() {
             const moduleCell = document.createElement("div");
             moduleCell.className = "hm-vcell hm-module";
             moduleCell.textContent = formatEB(moduleNum);
-            moduleCell.title = `Equipment Box ${String(moduleNum).padStart(2, "0")}`;
+            applyEbCleaningStatus(moduleCell, streamerId, moduleNum, latestEbCleaning);
             col.appendChild(moduleCell);
             moduleNum++;
           }
@@ -1191,6 +1198,8 @@ async function renderPlanningHeatmap() {
       // Apply continuous age gradient whenever noise overlay is not active
       paintScrapingAgeCells(container, loadHeatmapLegendPrefs());
     }
+    // eBirds have no noise reading, so they always show cleaning age, as on the main page.
+    paintEbAgeCells(container, loadHeatmapLegendPrefs());
 
     updatePlanningHeatmapCardTitle();
   } catch (err) {
@@ -1687,6 +1696,8 @@ function initLegendControls() {
   function repaintPlanningHeatmap(prefs) {
     const container = safeGet("planning-heatmap-container");
     if (!container) return;
+
+    paintEbAgeCells(container, prefs);
 
     if (isNoiseToggleOn() && noiseData) {
       applyNoiseOverlay(container, noiseData);

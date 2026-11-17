@@ -59,6 +59,7 @@ import * as Projects from "./js/projects.js";
 import * as StreamerUtils from "./js/streamer-utils.js";
 import { computeStreamerTooltipData } from "./js/streamer-tooltip.js";
 import { buildSectionTooltipHtml } from "./js/section-tooltip.js";
+import { daysSince, ebLabel, latestEbCleaningMap, applyEbCleaningStatus } from "./js/eb-status.js";
 import { initPDFGeneration } from "./pdf-generator.js";
 import {
   refreshStatsFiltered,
@@ -121,11 +122,6 @@ let tooltip = null;
  */
 let disabledHeatmapMethods = loadDisabledMethods();
 
-/** Whole days between an ISO timestamp and now; a date in the future counts as today. */
-function daysSince(iso) {
-  return Math.max(0, Math.floor((Date.now() - new Date(iso)) / (1000 * 60 * 60 * 24)));
-}
-
 function createTooltip() {
   if (tooltip) return tooltip;
   tooltip = document.createElement('div');
@@ -181,19 +177,9 @@ function hideSectionTooltip() {
 
 /* ------------ eBird (EB module) cleaning dates ------------ */
 
-/** Two-digit EB label, e.g. 5 -> "EB05". */
-function ebLabel(ebNumber) {
-  return `EB${String(ebNumber).padStart(2, '0')}`;
-}
-
 /** Cleaning entries for one eBird, newest first (state order). */
 function ebEntriesFor(streamerId, ebNumber) {
   return ebCleanings.filter(entry => entry.streamerId === streamerId && entry.ebNumber === ebNumber);
-}
-
-/** "cleaned today" / "cleaned N days ago", shared by cell labels and tooltips. */
-function cleanedAgoText(days) {
-  return days === 0 ? 'cleaned today' : `cleaned ${days} day${days === 1 ? '' : 's'} ago`;
 }
 
 /**
@@ -209,19 +195,7 @@ function buildEbCell(streamerId, ebNumber, latestEbCleaning) {
   const cell = document.createElement('div');
   cell.className = 'hm-vcell hm-module';
   cell.textContent = ebLabel(ebNumber);
-  cell.dataset.ebStreamer = streamerId;
-  cell.dataset.ebNum = ebNumber;
-
-  const last = latestEbCleaning.get(`${streamerId}:${ebNumber}`);
-  let stateText = 'no cleaning date entered';
-  if (last) {
-    const days = daysSince(last);
-    cell.dataset.ebDays = String(days);
-    stateText = cleanedAgoText(days);
-  }
-  const label = `Streamer ${streamerId}, ${ebLabel(ebNumber)}: ${stateText}`;
-  cell.title = label;
-  cell.setAttribute('aria-label', label);
+  applyEbCleaningStatus(cell, streamerId, ebNumber, latestEbCleaning);
   return cell;
 }
 
@@ -1342,11 +1316,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
     const lastCleaned = data.lastCleaned;
 
     // Newest cleaning date per eBird; ebCleanings is sorted newest first.
-    const latestEbCleaning = new Map();
-    for (const entry of ebCleanings) {
-      const key = `${entry.streamerId}:${entry.ebNumber}`;
-      if (!latestEbCleaning.has(key)) latestEbCleaning.set(key, entry.cleanedAt);
-    }
+    const latestEbCleaning = latestEbCleaningMap(ebCleanings);
 
     let deployments = {};
     const activeProject = projects.find(p => p.isActive);

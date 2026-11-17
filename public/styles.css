@@ -449,6 +449,12 @@
     pointer-events: auto;
   }
 
+  /* Planning heatmap: EB cells are read-only but take hover so their cleaning status
+     (title) shows, as on the main page. */
+  #planning-heatmap-container .hm-vcell.hm-module {
+    pointer-events: auto;
+  }
+
   #heatmap-container .hm-vcell.hm-module:not(.hm-vcell-inactive):hover {
     transform: scale(1.08);
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
