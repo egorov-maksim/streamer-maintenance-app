@@ -4,6 +4,8 @@
  * through an entry made for it; scraping runs that pass it do not change it.
  */
 
+import { formatDateTime } from "./ui.js";
+
 /** Whole days between an ISO timestamp and now; a date in the future counts as today. */
 export function daysSince(iso, now = Date.now()) {
   return Math.max(0, Math.floor((now - new Date(iso)) / (1000 * 60 * 60 * 24)));
@@ -56,4 +58,57 @@ export function applyEbCleaningStatus(cell, streamerId, ebNumber, latestEbCleani
   const label = `Streamer ${streamerId}, ${ebLabel(ebNumber)}: ${stateText}`;
   cell.title = label;
   cell.setAttribute("aria-label", label);
+}
+
+/**
+ * Hover tooltip content for one eBird, shared by the Main and Planning heatmaps.
+ * @param {Object} opts
+ * @param {number} opts.streamerId
+ * @param {number} opts.ebNumber
+ * @param {Array<{cleanedAt:string}>} opts.entries - this eBird's entries, newest first
+ * @param {string} [opts.hint] - closing line, e.g. what a click does; omitted when empty
+ * @param {number} [opts.now]
+ * @returns {string} HTML
+ */
+export function buildEbTooltipHtml({ streamerId, ebNumber, entries, hint = "", now = Date.now() }) {
+  let html = `<div class="tooltip-header">Streamer ${streamerId}, ${ebLabel(ebNumber)}</div>`;
+
+  if (entries.length > 0) {
+    const days = daysSince(entries[0].cleanedAt, now);
+    html += `
+      <div class="tooltip-row">
+        <span class="tooltip-label">eBird Last Cleaned</span>
+      </div>
+      <div class="tooltip-row">
+        <span class="tooltip-value">${formatDateTime(entries[0].cleanedAt)}</span>
+      </div>
+      <div class="tooltip-row">
+        <span class="tooltip-age ${days > 7 ? "old" : ""}">${days} days ago</span>
+      </div>
+    `;
+    if (entries.length > 1) {
+      html += `<div class="tooltip-section"><div class="tooltip-row"><span class="tooltip-label">Earlier dates</span></div>`;
+      entries.slice(1, 5).forEach((entry) => {
+        html += `<div class="tooltip-row"><span class="tooltip-value">${formatDateTime(entry.cleanedAt)}</span></div>`;
+      });
+      html += `</div>`;
+    }
+  } else {
+    html += `
+      <div class="tooltip-row">
+        <span class="tooltip-label">eBird Last Cleaned</span>
+        <span class="tooltip-value" style="color: #9ca3af">No date entered</span>
+      </div>
+    `;
+  }
+  if (hint) {
+    html += `
+    <div class="tooltip-section">
+      <div class="tooltip-row">
+        <span class="tooltip-label">${hint}</span>
+      </div>
+    </div>
+  `;
+  }
+  return html;
 }

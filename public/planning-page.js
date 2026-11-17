@@ -39,7 +39,7 @@ import {
 } from "./js/streamer-utils.js";
 import { validateNoiseCsv } from "./js/noise-validation.js";
 import { buildSectionTooltipHtml } from "./js/section-tooltip.js";
-import { latestEbCleaningMap, applyEbCleaningStatus } from "./js/eb-status.js";
+import { latestEbCleaningMap, applyEbCleaningStatus, buildEbTooltipHtml } from "./js/eb-status.js";
 import { aggregateNoiseDatasets } from "./js/noise-aggregate.js";
 import { toDateTimeLocalInputValue, dateTimeLocalInputToIso } from "./js/date-utils.js";
 import {
@@ -422,6 +422,8 @@ function updatePlanningHeatmapCardTitle() {
 let tooltipEl = null;
 /** Cleaning events for the selected project, loaded with the heatmap. */
 let planningEvents = [];
+/** eBird cleaning entries for the EB tooltips, newest first. */
+let planningEbCleanings = [];
 
 function getTooltip() {
   if (!tooltipEl) {
@@ -504,6 +506,34 @@ function attachSectionTooltips(container) {
       }
     });
 
+    cell.addEventListener("mouseleave", hideTooltip);
+  });
+}
+
+/**
+ * Hover tooltip on every EB cell, matching the main page. EB cells are read-only here;
+ * cleaning dates are entered from the main page.
+ */
+function attachEbTooltips(container) {
+  container.querySelectorAll(".hm-vcell.hm-module[data-eb-num]").forEach(cell => {
+    const streamerId = parseInt(cell.dataset.ebStreamer, 10);
+    const ebNumber = parseInt(cell.dataset.ebNum, 10);
+    if (!streamerId || !ebNumber) return;
+
+    cell.addEventListener("mouseenter", (e) => {
+      const tip = getTooltip();
+      tip.innerHTML = buildEbTooltipHtml({
+        streamerId,
+        ebNumber,
+        entries: planningEbCleanings.filter(entry => entry.streamerId === streamerId && entry.ebNumber === ebNumber),
+        hint: "Cleaning dates are entered on the main page",
+      });
+      tip.classList.add("show");
+      positionTooltip(tip, e);
+    });
+    cell.addEventListener("mousemove", (e) => {
+      if (tooltipEl && tooltipEl.classList.contains("show")) positionTooltip(tooltipEl, e);
+    });
     cell.addEventListener("mouseleave", hideTooltip);
   });
 }
@@ -905,7 +935,8 @@ async function renderPlanningHeatmap() {
       }),
     ]);
     planningEvents = Array.isArray(loadedEvents) ? loadedEvents : [];
-    const latestEbCleaning = latestEbCleaningMap(Array.isArray(loadedEbCleanings) ? loadedEbCleanings : []);
+    planningEbCleanings = Array.isArray(loadedEbCleanings) ? loadedEbCleanings : [];
+    const latestEbCleaning = latestEbCleaningMap(planningEbCleanings);
     const lastCleaned = data.lastCleaned;
     currentLastCleaned = lastCleaned;
 
@@ -1191,6 +1222,7 @@ async function renderPlanningHeatmap() {
 
     container.appendChild(wrapper);
     attachSectionTooltips(container);
+    attachEbTooltips(container);
 
     if (isNoiseToggleOn() && noiseData) {
       applyNoiseOverlay(container, noiseData);

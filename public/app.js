@@ -59,7 +59,7 @@ import * as Projects from "./js/projects.js";
 import * as StreamerUtils from "./js/streamer-utils.js";
 import { computeStreamerTooltipData } from "./js/streamer-tooltip.js";
 import { buildSectionTooltipHtml } from "./js/section-tooltip.js";
-import { daysSince, ebLabel, latestEbCleaningMap, applyEbCleaningStatus } from "./js/eb-status.js";
+import { daysSince, ebLabel, latestEbCleaningMap, applyEbCleaningStatus, buildEbTooltipHtml } from "./js/eb-status.js";
 import { initPDFGeneration } from "./pdf-generator.js";
 import {
   refreshStatsFiltered,
@@ -201,44 +201,12 @@ function buildEbCell(streamerId, ebNumber, latestEbCleaning) {
 
 function showEBTooltip(e, streamerId, ebNumber) {
   const tip = createTooltip();
-  const entries = ebEntriesFor(streamerId, ebNumber);
-  let html = `<div class="tooltip-header">Streamer ${streamerId}, ${ebLabel(ebNumber)}</div>`;
-
-  if (entries.length > 0) {
-    const days = daysSince(entries[0].cleanedAt);
-    html += `
-      <div class="tooltip-row">
-        <span class="tooltip-label">eBird Last Cleaned</span>
-      </div>
-      <div class="tooltip-row">
-        <span class="tooltip-value">${formatDateTime(entries[0].cleanedAt)}</span>
-      </div>
-      <div class="tooltip-row">
-        <span class="tooltip-age ${days > 7 ? 'old' : ''}">${days} days ago</span>
-      </div>
-    `;
-    if (entries.length > 1) {
-      html += `<div class="tooltip-section"><div class="tooltip-row"><span class="tooltip-label">Earlier dates</span></div>`;
-      entries.slice(1, 5).forEach(entry => {
-        html += `<div class="tooltip-row"><span class="tooltip-value">${formatDateTime(entry.cleanedAt)}</span></div>`;
-      });
-      html += `</div>`;
-    }
-  } else {
-    html += `
-      <div class="tooltip-row">
-        <span class="tooltip-label">eBird Last Cleaned</span>
-        <span class="tooltip-value" style="color: #9ca3af">No date entered</span>
-      </div>
-    `;
-  }
-  html += `
-    <div class="tooltip-section">
-      <div class="tooltip-row">
-        <span class="tooltip-label">${isAdminOrAbove() ? 'Click to enter a cleaning date' : 'Click to see cleaning dates'}</span>
-      </div>
-    </div>
-  `;
+  const html = buildEbTooltipHtml({
+    streamerId,
+    ebNumber,
+    entries: ebEntriesFor(streamerId, ebNumber),
+    hint: isAdminOrAbove() ? 'Click to enter a cleaning date' : 'Click to see cleaning dates',
+  });
 
   tip.innerHTML = html;
   tip.classList.add('show');
