@@ -55,9 +55,9 @@ export function applyEbCleaningStatus(cell, streamerId, ebNumber, latestEbCleani
   } else {
     delete cell.dataset.ebDays;
   }
-  const label = `Streamer ${streamerId}, ${ebLabel(ebNumber)}: ${stateText}`;
-  cell.title = label;
-  cell.setAttribute("aria-label", label);
+  // aria-label only, no title: the hover tooltip shows the status, and a title would
+  // pop the browser's own label up next to it.
+  cell.setAttribute("aria-label", `Streamer ${streamerId}, ${ebLabel(ebNumber)}: ${stateText}`);
 }
 
 /**

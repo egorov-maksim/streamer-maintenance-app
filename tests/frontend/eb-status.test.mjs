@@ -32,22 +32,22 @@ describe("applyEbCleaningStatus", () => {
     const cell = fakeCell();
     applyEbCleaningStatus(cell, 3, 2, new Map([["3:2", ago(4)]]), NOW);
     expect(cell.dataset.ebDays).toBe("4");
-    expect(cell.title).toBe("Streamer 3, EB02: cleaned 4 days ago");
-    expect(cell.attrs["aria-label"]).toBe(cell.title);
+    expect(cell.attrs["aria-label"]).toBe("Streamer 3, EB02: cleaned 4 days ago");
+    expect(cell.title).toBe("");
   });
 
   it("leaves an eBird without a date unpainted", () => {
     const cell = fakeCell();
     applyEbCleaningStatus(cell, 3, 2, new Map(), NOW);
     expect(cell.dataset.ebDays).toBeUndefined();
-    expect(cell.title).toBe("Streamer 3, EB02: no cleaning date entered");
+    expect(cell.attrs["aria-label"]).toBe("Streamer 3, EB02: no cleaning date entered");
   });
 
   it("says today for a date cleaned today or in the future", () => {
     const cell = fakeCell();
     applyEbCleaningStatus(cell, 1, 1, new Map([["1:1", ago(-1)]]), NOW);
     expect(cell.dataset.ebDays).toBe("0");
-    expect(cell.title).toBe("Streamer 1, EB01: cleaned today");
+    expect(cell.attrs["aria-label"]).toBe("Streamer 1, EB01: cleaned today");
   });
 });
 
