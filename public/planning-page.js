@@ -38,6 +38,7 @@ import {
   getEffectiveSectionsPerCable,
 } from "./js/streamer-utils.js";
 import { validateNoiseCsv } from "./js/noise-validation.js";
+import { buildSectionTooltipHtml } from "./js/section-tooltip.js";
 import { aggregateNoiseDatasets } from "./js/noise-aggregate.js";
 import { toDateTimeLocalInputValue, dateTimeLocalInputToIso } from "./js/date-utils.js";
 import {
@@ -417,6 +418,8 @@ function updatePlanningHeatmapCardTitle() {
 /* ------------ Tooltip ------------ */
 
 let tooltipEl = null;
+/** Cleaning events for the selected project, loaded with the heatmap. */
+let planningEvents = [];
 
 function getTooltip() {
   if (!tooltipEl) {
@@ -437,16 +440,17 @@ function positionTooltip(el, event) {
   const rect = el.getBoundingClientRect();
   const x = baseX + rect.width > window.innerWidth ? baseX - rect.width - 30 : baseX;
   const y = baseY + rect.height > window.innerHeight ? baseY - rect.height - 30 : baseY;
+  // Keep a tall tooltip on screen instead of letting it run off the top or left edge.
 
-  el.style.left = `${x}px`;
-  el.style.top = `${y}px`;
+  el.style.left = `${Math.max(8, x)}px`;
+  el.style.top = `${Math.max(8, y)}px`;
 }
 
 function hideTooltip() {
   if (tooltipEl) tooltipEl.classList.remove("show");
 }
 
-function attachSectionTooltips(container, lastCleaned) {
+function attachSectionTooltips(container) {
   const cells = container.querySelectorAll(".hm-vcell.hm-planning-cell");
 
   cells.forEach(cell => {
@@ -459,35 +463,32 @@ function attachSectionTooltips(container, lastCleaned) {
       const relIndex = isTail ? sectionIndex - effectiveSectionsForStreamer : sectionIndex;
       const sectionLabel = formatSectionLabel(relIndex, isTail ? "tail" : "active");
 
-      const sections = lastCleaned[streamerId] || [];
-      const lastDate = sections[sectionIndex] || null;
-
-      let daysSince = null;
-      if (lastDate) {
-        daysSince = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
-      }
-
-      const tip = getTooltip();
-      let html = `<div class="tooltip-header">Streamer ${streamerId}, Section ${sectionLabel}</div>`;
-      if (lastDate) {
-        html += `<div class="tooltip-row">Last cleaned: ${new Date(lastDate).toLocaleDateString()}</div>`;
-        html += `<div class="tooltip-row">Days since: ${daysSince}</div>`;
-      } else {
-        html += `<div class="tooltip-row">Never cleaned</div>`;
-      }
-
-      // Append RMS noise value if data is available for this active section
+      // RMS noise for active sections, shown alongside the cleaning history
+      let rmsHtml = "";
       if (!isTail && noiseData) {
         const rms = noiseData[streamerId]?.[sectionIndex] ?? 0;
         if (rms > 0) {
           const label = noiseRange ? "Average RMS" : "RMS noise";
-          html += `<div class="tooltip-row">${label}: <strong>${rms.toFixed(2)}</strong></div>`;
+          rmsHtml += `<div class="tooltip-row"><span class="tooltip-label">${label}</span><span class="tooltip-value">${rms.toFixed(2)}</span></div>`;
           const range = noiseRange?.[streamerId]?.[sectionIndex];
           if (range && range.count >= 2) {
-            html += `<div class="tooltip-row">Range: ${range.min.toFixed(2)}–${range.max.toFixed(2)} (${range.count} sequences)</div>`;
+            rmsHtml += `<div class="tooltip-row"><span class="tooltip-label">Range</span><span class="tooltip-value">${range.min.toFixed(2)}–${range.max.toFixed(2)} (${range.count} sequences)</span></div>`;
           }
         }
       }
+
+      const tip = getTooltip();
+      // Planning cells are coloured from api/last-cleaned, which counts every method,
+      // so the tooltip counts every method too.
+      const html = buildSectionTooltipHtml({
+        streamerId,
+        sectionIndex,
+        isTail,
+        relIndex,
+        sectionLabel,
+        events: planningEvents,
+        extraHtml: rmsHtml,
+      });
 
       tip.innerHTML = html;
       // Show first so getBoundingClientRect() returns real dimensions for clamping
@@ -887,11 +888,16 @@ async function renderPlanningHeatmap() {
   container.innerHTML = "";
 
   try {
-    let url = "api/last-cleaned";
-    if (selectedProjectFilter) {
-      url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
-    }
-    const data = await API.apiCall(url);
+    const projectQuery = selectedProjectFilter ? `?project=${encodeURIComponent(selectedProjectFilter)}` : "";
+    const [data, loadedEvents] = await Promise.all([
+      API.apiCall(`api/last-cleaned${projectQuery}`),
+      // Cleaning history for the section tooltips; the heatmap still renders without it.
+      API.apiCall(`api/events${projectQuery}`).catch(err => {
+        console.debug("Cleaning events fetch failed:", err?.message ?? err);
+        return [];
+      }),
+    ]);
+    planningEvents = Array.isArray(loadedEvents) ? loadedEvents : [];
     const lastCleaned = data.lastCleaned;
     currentLastCleaned = lastCleaned;
 
@@ -1177,7 +1183,7 @@ async function renderPlanningHeatmap() {
     }
 
     container.appendChild(wrapper);
-    attachSectionTooltips(container, lastCleaned);
+    attachSectionTooltips(container);
 
     if (isNoiseToggleOn() && noiseData) {
       applyNoiseOverlay(container, noiseData);
