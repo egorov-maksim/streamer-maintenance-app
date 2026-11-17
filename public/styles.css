@@ -1791,19 +1791,6 @@
   transform: none;
 }
 
-.login-footer {
-  margin-top: 28px;
-  padding-top: 24px;
-  border-top: 1px solid #e2e8f0;
-  text-align: center;
-}
-
-.login-footer p {
-  font-size: 13px;
-  color: #64748b;
-  margin: 0;
-}
-
 /* =========================
    User Header Bar
    ========================= */
