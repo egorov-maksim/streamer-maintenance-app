@@ -58,6 +58,7 @@ import { initModals, openModal, closeModal } from "./js/modals.js";
 import * as Projects from "./js/projects.js";
 import * as StreamerUtils from "./js/streamer-utils.js";
 import { computeStreamerTooltipData } from "./js/streamer-tooltip.js";
+import { buildSectionTooltipHtml } from "./js/section-tooltip.js";
 import { initPDFGeneration } from "./pdf-generator.js";
 import {
   refreshStatsFiltered,
@@ -145,114 +146,29 @@ function positionTooltipNearCursor(element, event) {
   const rect = element.getBoundingClientRect();
   const x = baseX + rect.width > window.innerWidth ? baseX - rect.width - 30 : baseX;
   const y = baseY + rect.height > window.innerHeight ? baseY - rect.height - 30 : baseY;
+  // Keep a tall tooltip on screen instead of letting it run off the top or left edge.
 
-  element.style.left = `${x}px`;
-  element.style.top = `${y}px`;
+  element.style.left = `${Math.max(8, x)}px`;
+  element.style.top = `${Math.max(8, y)}px`;
 }
 
 function showSectionTooltip(e, streamerId, sectionIndex) {
   const tooltip = createTooltip();
-  const streamerNum = streamerId;
   const effectiveSectionsForStreamer = getEffectiveSectionsPerCable(streamerId);
 
   // Determine if it's a tail section based on this streamer's effective section count
   const isTail = sectionIndex >= effectiveSectionsForStreamer;
   const relIndex = isTail ? sectionIndex - effectiveSectionsForStreamer : sectionIndex;
-  const sectionLabel = formatSectionLabel(relIndex, isTail ? 'tail' : 'active');
 
-  // Get cleaning history for this specific section (by section_type and indices)
-  const sectionEvents = filterEventsByMethod(events, disabledHeatmapMethods).filter(evt => {
-    if (evt.streamerId !== streamerId) return false;
-    if (isTail) {
-      if (evt.sectionType !== 'tail') return false;
-      return relIndex >= evt.sectionIndexStart && relIndex <= evt.sectionIndexEnd;
-    }
-    if (evt.sectionType !== 'active') return false;
-    return sectionIndex >= evt.sectionIndexStart && sectionIndex <= evt.sectionIndexEnd;
+  tooltip.innerHTML = buildSectionTooltipHtml({
+    streamerId,
+    sectionIndex,
+    isTail,
+    relIndex,
+    sectionLabel: formatSectionLabel(relIndex, isTail ? 'tail' : 'active'),
+    events: filterEventsByMethod(events, disabledHeatmapMethods),
+    disabledMethods: disabledHeatmapMethods,
   });
-
-  // Same rule as the stats clean count: each event adds its cleaningCount (1 per logged event).
-  const totalCleanings = sectionEvents.reduce((sum, evt) => sum + (evt.cleaningCount > 0 ? evt.cleaningCount : 1), 0);
-
-  // Sort by date (newest first) — copy so we don't mutate before methodCounts
-  const sortedByDate = [...sectionEvents].sort((a, b) =>
-    new Date(b.cleanedAt) - new Date(a.cleanedAt)
-  );
-
-  // Get last cleaned date from sorted list
-  let lastCleaned = null;
-  let lastMethod = null;
-  let daysSince = null;
-  if (sortedByDate.length > 0) {
-    lastCleaned = sortedByDate[0].cleanedAt;
-    lastMethod = sortedByDate[0].cleaningMethod;
-    daysSince = Math.floor((Date.now() - new Date(lastCleaned)) / (1000 * 60 * 60 * 24));
-  }
-
-  // Build tooltip HTML
-  let html = `<div class="tooltip-header">Streamer ${streamerNum}, Section ${sectionLabel}</div>`;
-
-  if (lastCleaned) {
-    const ageClass = daysSince > 7 ? 'old' : '';
-    html += `
-      <div class="tooltip-row">
-        <span class="tooltip-label">Last Cleaned</span>
-      </div>
-      <div class="tooltip-row" style="margin-top: 4px">
-        <span class="tooltip-value">${escapeHtml(lastMethod)}</span>
-      </div>
-      <div class="tooltip-row">
-        <span class="tooltip-value">${formatDateTime(lastCleaned)}</span>
-      </div>
-      <div class="tooltip-row">
-        <span class="tooltip-age ${ageClass}">${daysSince} days ago</span>
-      </div>
-    `;
-  } else {
-    html += `
-      <div class="tooltip-row">
-        <span class="tooltip-label">Last Cleaned</span>
-        <span class="tooltip-value" style="color: #9ca3af">Never</span>
-      </div>
-    `;
-  }
-
-  html += `
-    <div class="tooltip-section">
-      <div class="tooltip-row">
-        <span class="tooltip-label">Total Times Cleaned</span>
-        <span class="tooltip-value">${totalCleanings}</span>
-      </div>
-    </div>
-  `;
-
-  // Last 5 cleanings by date
-  if (sortedByDate.length > 0) {
-    const lastFive = sortedByDate.slice(0, 5);
-    html += `<div class="tooltip-section"><div class="tooltip-row"><span class="tooltip-label">Last 5 cleanings</span></div>`;
-    lastFive.forEach(evt => {
-      const icon = getMethodIcon(evt.cleaningMethod);
-      html += `
-        <div class="tooltip-row">
-          <span class="tooltip-value">${formatDateTime(evt.cleanedAt)}</span>
-          <span class="tooltip-method">${icon} ${escapeHtml(methodLabel(evt.cleaningMethod))}</span>
-        </div>
-      `;
-    });
-    html += `</div>`;
-  }
-
-  if (disabledHeatmapMethods.length > 0) {
-    html += `
-      <div class="tooltip-section">
-        <div class="tooltip-row">
-          <span class="tooltip-label">Not counted: ${escapeHtml(disabledHeatmapMethods.map(methodLabel).join(', '))}</span>
-        </div>
-      </div>
-    `;
-  }
-
-  tooltip.innerHTML = html;
 
   // Make visible, then position using shared helper
   tooltip.classList.add('show');
@@ -527,17 +443,6 @@ function attachTooltipListeners() {
       }
     });
   });
-}
-
-function getMethodIcon(method) {
-  const icons = {
-    rope: '🪢',
-    scraper: '🛠️',
-    'scraper-rope': '🪢🛠️',
-    scue: '⚙️',
-    knife: '🔪'
-  };
-  return icons[method] || '🔧';
 }
 
 /* ------------ Project API (see js/projects.js) ------------ */
