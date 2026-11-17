@@ -432,13 +432,27 @@
   }
   
   /* Module cells - integrated into streamer */
+  /* Background is not !important: an eBird with a cleaning date is painted by age
+     (paintEbAgeCells). The amber border stays, so it still reads as an eBird. */
   .hm-vcell.hm-module {
-    background: #fbbf24 !important;
+    background: #fbbf24;
     border: 2px solid #f59e0b !important;
     color: #78350f;
     font-weight: 700;
     cursor: default;
     pointer-events: none;
+  }
+
+  /* Main-page heatmap only: EB cells open the eBird cleaning dialog. */
+  #heatmap-container .hm-vcell.hm-module:not(.hm-vcell-inactive) {
+    cursor: pointer;
+    pointer-events: auto;
+  }
+
+  #heatmap-container .hm-vcell.hm-module:not(.hm-vcell-inactive):hover {
+    transform: scale(1.08);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    z-index: 10;
   }
   
   /* Heat buckets */
@@ -3261,6 +3275,89 @@ table.has-noise-data .noise-col {
 .heatmap-legend-reset-btn {
   margin-left: 4px;
   flex-shrink: 0;
+}
+
+/* Method toggles: which cleaning methods the heatmap counts */
+.heatmap-method-filter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.heatmap-method-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.heatmap-method-toggle[aria-pressed="true"] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.heatmap-method-toggle[aria-pressed="false"] {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.heatmap-method-filter-note {
+  flex: 1 1 100%;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* eBird cleaning dialog */
+.eb-clean-history-title {
+  margin: 20px 0 8px;
+  font-size: 14px;
+  color: #111827;
+}
+
+.eb-clean-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.eb-clean-list:empty {
+  display: none;
+}
+
+.eb-clean-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.eb-clean-item:last-child {
+  border-bottom: none;
+}
+
+.eb-clean-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.eb-clean-item-date {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.eb-clean-item-meta {
+  font-size: 12px;
+  color: var(--muted);
 }
 
 @media (max-width: 900px) {

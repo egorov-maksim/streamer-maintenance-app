@@ -21,6 +21,7 @@ const { createEventsRouter } = require("./routes/events");
 const { createStatsRouter } = require("./routes/stats");
 const { createNoiseRouter } = require("./routes/noise");
 const { createUsersRouter } = require("./routes/users");
+const { createEbCleaningsRouter } = require("./routes/ebCleanings");
 const { ensureUsersSeeded } = require("./userStore");
 
 const app = express();
@@ -107,6 +108,7 @@ const eventsRouter = createEventsRouter(authMiddleware, adminOrAbove, superUserO
 const statsRouter = createStatsRouter(authMiddleware);
 const noiseRouter = createNoiseRouter(authMiddleware, adminOrAbove);
 const usersRouter = createUsersRouter(authMiddleware, superUserOnly, sessionStore);
+const ebCleaningsRouter = createEbCleaningsRouter(authMiddleware, adminOrAbove);
 
 app.use("/", authRouter);
 app.use("/", backupsRouter);
@@ -116,6 +118,7 @@ app.use("/", eventsRouter);
 app.use("/", statsRouter);
 app.use("/", noiseRouter);
 app.use("/", usersRouter);
+app.use("/", ebCleaningsRouter);
 
 // fallback
 app.get("*", (_req, res) => {

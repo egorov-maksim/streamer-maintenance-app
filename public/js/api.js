@@ -293,6 +293,31 @@ export async function fetchLastCleaned(params = {}) {
   return apiCall(`api/last-cleaned${searchParams.toString() ? "?" + searchParams : ""}`);
 }
 
+/**
+ * eBird (EB module) cleaning entries, newest first.
+ * @param {{ project?: string }} [params]
+ */
+export async function fetchEbCleanings(params = {}) {
+  const searchParams = new URLSearchParams(params);
+  return apiCall(`api/eb-cleanings${searchParams.toString() ? "?" + searchParams : ""}`);
+}
+
+/** @param {{ streamerId: number, ebNumber: number, cleanedAt: string, projectNumber?: string|null }} entry */
+export async function createEbCleaning(entry) {
+  return apiCall("api/eb-cleanings", {
+    method: "POST",
+    body: JSON.stringify(entry),
+    action: "add eBird cleaning dates",
+  });
+}
+
+export async function deleteEbCleaning(id) {
+  return apiCall(`api/eb-cleanings/${id}`, {
+    method: "DELETE",
+    action: "delete eBird cleaning dates",
+  });
+}
+
 export async function fetchLastCleanedFiltered(params) {
   const searchParams = new URLSearchParams(params);
   return apiCall(`api/last-cleaned-filtered?${searchParams}`);

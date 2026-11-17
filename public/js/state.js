@@ -7,6 +7,8 @@ import { DEFAULT_CLEANING_METHOD } from "./cleaning-method-prefs.js";
 
 export let config = null;
 export let events = [];
+/** eBird (EB module) cleaning entries for the selected project, newest first. */
+export let ebCleanings = [];
 export let selectedMethod = DEFAULT_CLEANING_METHOD;
 export let projects = [];
 export let selectedProjectFilter = null;
@@ -33,6 +35,10 @@ export function setConfig(val) {
 
 export function setEvents(val) {
   events = val;
+}
+
+export function setEbCleanings(val) {
+  ebCleanings = Array.isArray(val) ? val : [];
 }
 
 export function setSelectedMethod(val) {
