@@ -4350,3 +4350,11 @@ main > section[id] {
     overflow-x: auto;
   }
 }
+
+/* "Recent cleanings in tooltip" count, next to the legend thresholds */
+.tooltip-recent-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+}

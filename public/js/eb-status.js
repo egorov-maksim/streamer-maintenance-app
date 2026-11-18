@@ -5,6 +5,7 @@
  */
 
 import { formatDateTime } from "./ui.js";
+import { DEFAULT_TOOLTIP_RECENT_COUNT } from "./tooltip-history-prefs.js";
 
 /** Whole days between an ISO timestamp and now; a date in the future counts as today. */
 export function daysSince(iso, now = Date.now()) {
@@ -67,10 +68,18 @@ export function applyEbCleaningStatus(cell, streamerId, ebNumber, latestEbCleani
  * @param {number} opts.ebNumber
  * @param {Array<{cleanedAt:string}>} opts.entries - this eBird's entries, newest first
  * @param {string} [opts.hint] - closing line, e.g. what a click does; omitted when empty
+ * @param {number} [opts.recentCount] - how many earlier dates to list below the newest
  * @param {number} [opts.now]
  * @returns {string} HTML
  */
-export function buildEbTooltipHtml({ streamerId, ebNumber, entries, hint = "", now = Date.now() }) {
+export function buildEbTooltipHtml({
+  streamerId,
+  ebNumber,
+  entries,
+  hint = "",
+  recentCount = DEFAULT_TOOLTIP_RECENT_COUNT,
+  now = Date.now(),
+}) {
   let html = `<div class="tooltip-header">Streamer ${streamerId}, ${ebLabel(ebNumber)}</div>`;
 
   if (entries.length > 0) {
@@ -88,7 +97,7 @@ export function buildEbTooltipHtml({ streamerId, ebNumber, entries, hint = "", n
     `;
     if (entries.length > 1) {
       html += `<div class="tooltip-section"><div class="tooltip-row"><span class="tooltip-label">Earlier dates</span></div>`;
-      entries.slice(1, 5).forEach((entry) => {
+      entries.slice(1, 1 + Math.max(1, recentCount)).forEach((entry) => {
         html += `<div class="tooltip-row"><span class="tooltip-value">${formatDateTime(entry.cleanedAt)}</span></div>`;
       });
       html += `</div>`;

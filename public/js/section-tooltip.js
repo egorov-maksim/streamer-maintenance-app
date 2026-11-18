@@ -4,6 +4,7 @@
  */
 
 import { escapeHtml, formatDateTime, methodLabel } from "./ui.js";
+import { DEFAULT_TOOLTIP_RECENT_COUNT } from "./tooltip-history-prefs.js";
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 
@@ -53,6 +54,7 @@ export function sectionEventsNewestFirst(events, streamerId, sectionIndex, isTai
  * @param {Array} opts.events - events to count (method filter already applied)
  * @param {string[]} [opts.disabledMethods] - methods left out, listed in a note
  * @param {string} [opts.extraHtml] - trusted markup appended as its own section (e.g. RMS)
+ * @param {number} [opts.recentCount] - how many recent cleanings to list
  * @param {number} [opts.now] - current time in ms, for tests
  * @returns {string}
  */
@@ -65,6 +67,7 @@ export function buildSectionTooltipHtml({
   events,
   disabledMethods = [],
   extraHtml = "",
+  recentCount = DEFAULT_TOOLTIP_RECENT_COUNT,
   now = Date.now(),
 }) {
   const sorted = sectionEventsNewestFirst(events, streamerId, sectionIndex, isTail, relIndex);
@@ -113,9 +116,11 @@ export function buildSectionTooltipHtml({
     html += `<div class="tooltip-section">${extraHtml}</div>`;
   }
 
-  if (sorted.length > 0) {
-    html += `<div class="tooltip-section"><div class="tooltip-row"><span class="tooltip-label">Last 5 cleanings</span></div>`;
-    sorted.slice(0, 5).forEach((evt) => {
+  const recent = sorted.slice(0, Math.max(1, recentCount));
+  if (recent.length > 0) {
+    const heading = recent.length === 1 ? "Last cleaning" : `Last ${recent.length} cleanings`;
+    html += `<div class="tooltip-section"><div class="tooltip-row"><span class="tooltip-label">${heading}</span></div>`;
+    recent.forEach((evt) => {
       html += `
         <div class="tooltip-row">
           <span class="tooltip-value">${escapeHtml(formatDateTime(evt.cleanedAt))}</span>

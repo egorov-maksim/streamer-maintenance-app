@@ -59,6 +59,7 @@ import * as Projects from "./js/projects.js";
 import * as StreamerUtils from "./js/streamer-utils.js";
 import { computeStreamerTooltipData } from "./js/streamer-tooltip.js";
 import { buildSectionTooltipHtml } from "./js/section-tooltip.js";
+import { loadTooltipRecentCount, initTooltipRecentCountInput } from "./js/tooltip-history-prefs.js";
 import { daysSince, ebLabel, latestEbCleaningMap, applyEbCleaningStatus, buildEbTooltipHtml } from "./js/eb-status.js";
 import { initPDFGeneration } from "./pdf-generator.js";
 import {
@@ -164,6 +165,7 @@ function showSectionTooltip(e, streamerId, sectionIndex) {
     sectionLabel: formatSectionLabel(relIndex, isTail ? 'tail' : 'active'),
     events: filterEventsByMethod(events, disabledHeatmapMethods),
     disabledMethods: disabledHeatmapMethods,
+    recentCount: loadTooltipRecentCount(),
   });
 
   // Make visible, then position using shared helper
@@ -206,6 +208,7 @@ function showEBTooltip(e, streamerId, ebNumber) {
     ebNumber,
     entries: ebEntriesFor(streamerId, ebNumber),
     hint: isAdminOrAbove() ? 'Click to enter a cleaning date' : 'Click to see cleaning dates',
+    recentCount: loadTooltipRecentCount(),
   });
 
   tip.innerHTML = html;
@@ -2781,6 +2784,7 @@ async function initAppContent() {
     setupSidebarNavigation();
     setupProjectCollapse();
     initAgeLegendControls();
+    initTooltipRecentCountInput(safeGet("tooltip-recent-count"));
     initHeatmapMethodFilter();
     initOrientationToggle();
   }

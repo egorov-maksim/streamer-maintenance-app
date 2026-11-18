@@ -39,6 +39,7 @@ import {
 } from "./js/streamer-utils.js";
 import { validateNoiseCsv } from "./js/noise-validation.js";
 import { buildSectionTooltipHtml } from "./js/section-tooltip.js";
+import { loadTooltipRecentCount, initTooltipRecentCountInput } from "./js/tooltip-history-prefs.js";
 import { latestEbCleaningMap, applyEbCleaningStatus, buildEbTooltipHtml } from "./js/eb-status.js";
 import { aggregateNoiseDatasets } from "./js/noise-aggregate.js";
 import { toDateTimeLocalInputValue, dateTimeLocalInputToIso } from "./js/date-utils.js";
@@ -492,6 +493,7 @@ function attachSectionTooltips(container) {
         sectionLabel,
         events: planningEvents,
         extraHtml: rmsHtml,
+        recentCount: loadTooltipRecentCount(),
       });
 
       tip.innerHTML = html;
@@ -527,6 +529,7 @@ function attachEbTooltips(container) {
         ebNumber,
         entries: planningEbCleanings.filter(entry => entry.streamerId === streamerId && entry.ebNumber === ebNumber),
         hint: "Cleaning dates are entered on the main page",
+        recentCount: loadTooltipRecentCount(),
       });
       tip.classList.add("show");
       positionTooltip(tip, e);
@@ -1956,6 +1959,7 @@ async function initPlanningApp() {
   showActiveProject();
   initModals();
   initLegendControls(); // populates gradient bars and attaches threshold input listeners
+  initTooltipRecentCountInput(safeGet("tooltip-recent-count"));
   initSuggestionsThresholdControl(); // populates threshold input and wires save button
   initNoiseControls();  // registers noise toggle/upload event listeners
   initSuggestionsSortHandlers();

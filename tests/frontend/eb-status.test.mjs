@@ -58,13 +58,19 @@ describe("daysSince", () => {
 });
 
 describe("buildEbTooltipHtml", () => {
-  it("shows the newest date, its age and up to four earlier dates", () => {
+  it("shows the newest date, its age and three earlier dates by default", () => {
     const entries = [0, 3, 8, 15, 20, 40].map((d) => ({ cleanedAt: ago(d) }));
     const html = buildEbTooltipHtml({ streamerId: 2, ebNumber: 3, entries, now: NOW });
     expect(html).toContain("Streamer 2, EB03");
     expect(html).toContain("0 days ago");
     expect(html).toContain("Earlier dates");
-    expect(html.match(/tooltip-value/g)).toHaveLength(5);
+    expect(html.match(/tooltip-value/g)).toHaveLength(4);
+  });
+
+  it("lists as many earlier dates as asked for", () => {
+    const entries = [0, 3, 8, 15, 20, 40].map((d) => ({ cleanedAt: ago(d) }));
+    const html = buildEbTooltipHtml({ streamerId: 2, ebNumber: 3, entries, recentCount: 5, now: NOW });
+    expect(html.match(/tooltip-value/g)).toHaveLength(6);
   });
 
   it("marks an age over seven days as old", () => {

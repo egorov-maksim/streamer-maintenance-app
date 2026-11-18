@@ -39,13 +39,27 @@ describe("buildSectionTooltipHtml", () => {
     expect(html).toContain(">scraper-rope<");
     expect(html).toContain("42 days ago");
     expect(html).toMatch(/Total Times Cleaned<\/span>\s*<span class="tooltip-value">7</);
-    expect(html.match(/class="tooltip-method"/g)).toHaveLength(5);
+    // Default: the three most recent cleanings are listed.
+    expect(html).toContain("Last 3 cleanings");
+    expect(html.match(/class="tooltip-method"/g)).toHaveLength(3);
+  });
+
+  it("lists as many recent cleanings as asked for, up to what exists", () => {
+    const events = [1, 2, 3, 4, 5, 6, 7].map((d) => ev({ cleanedAt: ago(d) }));
+    const five = buildSectionTooltipHtml({ ...base, events, recentCount: 5 });
+    expect(five).toContain("Last 5 cleanings");
+    expect(five.match(/class="tooltip-method"/g)).toHaveLength(5);
+    const all = buildSectionTooltipHtml({ ...base, events, recentCount: 20 });
+    expect(all).toContain("Last 7 cleanings");
+    const one = buildSectionTooltipHtml({ ...base, events, recentCount: 1 });
+    expect(one).toContain("Last cleaning<");
+    expect(one.match(/class="tooltip-method"/g)).toHaveLength(1);
   });
 
   it("says Never when the section has no cleanings", () => {
     const html = buildSectionTooltipHtml({ ...base, events: [] });
     expect(html).toContain("Never");
-    expect(html).not.toContain("Last 5 cleanings");
+    expect(html).not.toMatch(/Last \d* ?cleaning/);
   });
 
   it("includes extra markup such as RMS noise", () => {
