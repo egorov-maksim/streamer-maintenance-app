@@ -176,8 +176,10 @@ function populateComparePicker(uploads) {
   const panel = safeGet("noise-compare-panel");
   const list = safeGet("noise-compare-list");
   const available = new Set(uploads.map((u) => u.id));
-  [...selectedNoiseUploadIds].forEach((id) => {
-    if (!available.has(id)) selectedNoiseUploadIds.delete(id);
+  [selectedNoiseUploadIds, pendingNoiseUploadIds].forEach((ids) => {
+    [...ids].forEach((id) => {
+      if (!available.has(id)) ids.delete(id);
+    });
   });
 
   if (list) {
@@ -188,7 +190,7 @@ function populateComparePicker(uploads) {
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkbox.value = String(u.id);
-      checkbox.checked = selectedNoiseUploadIds.has(u.id);
+      checkbox.checked = pendingNoiseUploadIds.has(u.id);
       // Label first (what crews call the sequence), date second and muted.
       const date = new Date(u.measuredAt || u.uploadedAt).toLocaleDateString();
       const name = document.createElement("span");
@@ -212,8 +214,9 @@ function populateComparePicker(uploads) {
 }
 
 /**
- * Sync everything the picker shows about the current ticks: the count badge on the
- * button, the highlighted rows, the status line and the footer buttons.
+ * Sync everything the picker shows. The count badge on the button and the upload selector
+ * describe what the heatmap shows; the rows, status line and footer buttons describe the
+ * ticks, which only reach the heatmap on "Show on heatmap".
  */
 function updateComparePickerSummary() {
   const panel = safeGet("noise-compare-panel");
@@ -221,6 +224,8 @@ function updateComparePickerSummary() {
   const count = selectedNoiseUploadIds.size;
   const averaging = count >= 2;
   const overlayOn = isNoiseToggleOn();
+  const tickedCount = pendingNoiseUploadIds.size;
+  const pendingChanges = hasPendingNoiseChanges();
 
   panel.classList.toggle("is-active", averaging);
   const selector = document.getElementById("noise-upload-selector");
@@ -247,16 +252,19 @@ function updateComparePickerSummary() {
 
   const statusEl = document.getElementById("noise-compare-status");
   if (statusEl) {
-    if (count === 0) statusEl.textContent = "None ticked";
-    else if (count === 1) statusEl.textContent = "1 ticked. Tick one more to average.";
-    else statusEl.textContent = overlayOn ? `Averaging ${count} sequences` : `${count} ticked. Noise overlay is off.`;
+    if (tickedCount === 0) statusEl.textContent = pendingChanges ? "None ticked. Show on heatmap to stop averaging." : "None ticked";
+    else if (tickedCount === 1) statusEl.textContent = "1 ticked. Tick one more to average.";
+    else if (pendingChanges) statusEl.textContent = `${tickedCount} ticked. Show on heatmap to apply.`;
+    else statusEl.textContent = overlayOn ? `Averaging ${tickedCount} sequences` : `${tickedCount} ticked. Noise overlay is off.`;
   }
 
   const clearBtn = document.getElementById("noise-compare-clear");
-  if (clearBtn) clearBtn.disabled = count === 0;
-  // With an average ready but the overlay off, the main button turns the overlay on.
+  if (clearBtn) clearBtn.disabled = tickedCount === 0;
+  // Changed ticks, or an average ready with the overlay off: the main button shows them.
   const doneBtn = document.getElementById("noise-compare-done");
-  if (doneBtn) doneBtn.textContent = averaging && !overlayOn ? "Show on heatmap" : "Done";
+  if (doneBtn) {
+    doneBtn.textContent = pendingChanges || (tickedCount >= 2 && !overlayOn) ? "Show on heatmap" : "Done";
+  }
 }
 
 /** Close the sequence picker and return focus to its button. */
@@ -1245,18 +1253,40 @@ async function renderPlanningHeatmap() {
 
 /* ------------ Noise data loading ------------ */
 
-// Uploads ticked in the sequence picker. Two or more are averaged per section.
+// Uploads the heatmap is averaging. Two or more are averaged per section.
 const selectedNoiseUploadIds = new Set();
-// Per-section min/max/count across the ticked sequences; null in single-upload view.
+// Uploads ticked in the sequence picker. They reach the heatmap only on "Show on heatmap".
+const pendingNoiseUploadIds = new Set();
+// Per-section min/max/count across the averaged sequences; null in single-upload view.
 let noiseRange = null;
+
+/** True when the picker's ticks differ from what the heatmap shows. */
+function hasPendingNoiseChanges() {
+  if (pendingNoiseUploadIds.size !== selectedNoiseUploadIds.size) return true;
+  return [...pendingNoiseUploadIds].some((id) => !selectedNoiseUploadIds.has(id));
+}
+
+/** Tick the picker checkboxes to match the pending ticks. */
+function syncComparePickerChecks() {
+  document.querySelectorAll("#noise-compare-list input[type='checkbox']").forEach((cb) => {
+    cb.checked = pendingNoiseUploadIds.has(Number(cb.value));
+  });
+  updateComparePickerSummary();
+}
+
+/** Drop ticks that were never shown, so the picker matches the heatmap again. */
+function discardPendingNoiseChanges() {
+  if (!hasPendingNoiseChanges()) return;
+  pendingNoiseUploadIds.clear();
+  selectedNoiseUploadIds.forEach((id) => pendingNoiseUploadIds.add(id));
+  syncComparePickerChecks();
+}
 
 function clearNoiseSelection() {
   selectedNoiseUploadIds.clear();
+  pendingNoiseUploadIds.clear();
   noiseRange = null;
-  document.querySelectorAll("#noise-compare-list input[type='checkbox']").forEach((cb) => {
-    cb.checked = false;
-  });
-  updateComparePickerSummary();
+  syncComparePickerChecks();
 }
 
 async function loadNoiseData(uploadId, projectNumber) {
@@ -1307,9 +1337,11 @@ async function applyNoiseSelection() {
 }
 
 /**
- * Handle a tick or untick in the sequence picker and redraw the heatmap.
+ * Show the picker's ticks on the heatmap: load and average them, then redraw.
  */
-async function onComparePickerChange() {
+async function applyComparePickerTicks() {
+  selectedNoiseUploadIds.clear();
+  pendingNoiseUploadIds.forEach((id) => selectedNoiseUploadIds.add(id));
   const ids = [...selectedNoiseUploadIds];
   if (ids.length >= 2) {
     await applyNoiseSelection();
@@ -1471,26 +1503,36 @@ function initNoiseControls() {
     const checkbox = e.target;
     if (!(checkbox instanceof HTMLInputElement) || checkbox.type !== "checkbox") return;
     const id = Number(checkbox.value);
-    if (checkbox.checked) selectedNoiseUploadIds.add(id);
-    else selectedNoiseUploadIds.delete(id);
-    onComparePickerChange();
+    // Ticks wait in the picker; the heatmap only changes on "Show on heatmap".
+    if (checkbox.checked) pendingNoiseUploadIds.add(id);
+    else pendingNoiseUploadIds.delete(id);
+    updateComparePickerSummary();
   });
 
-  // Clear: untick everything and go back to the single selected upload
+  // Clear: untick everything; "Show on heatmap" then goes back to the single selected upload
   safeGet("noise-compare-clear")?.addEventListener("click", () => {
-    if (!selectedNoiseUploadIds.size) return;
-    clearNoiseSelection();
-    onComparePickerChange();
+    if (!pendingNoiseUploadIds.size) return;
+    pendingNoiseUploadIds.clear();
+    syncComparePickerChecks();
   });
 
-  // Done / Show on heatmap: close, switching the overlay on when an average is waiting
-  safeGet("noise-compare-done")?.addEventListener("click", () => {
+  // Closing the picker any other way drops ticks that were never shown
+  safeGet("noise-compare-panel")?.addEventListener("toggle", (e) => {
+    if (!e.currentTarget.open) discardPendingNoiseChanges();
+  });
+
+  // Done / Show on heatmap: close, apply changed ticks, and switch the overlay on for an average
+  safeGet("noise-compare-done")?.addEventListener("click", async () => {
     const toggleEl = safeGet("noise-toggle");
+    const pendingChanges = hasPendingNoiseChanges();
     const turnOverlayOn =
-      selectedNoiseUploadIds.size >= 2 && toggleEl && !toggleEl.checked && !toggleEl.disabled;
+      pendingNoiseUploadIds.size >= 2 && toggleEl && !toggleEl.checked && !toggleEl.disabled;
+    // Commit the ticks before closing, so closing does not discard them.
+    const apply = pendingChanges ? applyComparePickerTicks() : null;
     // Close first so focus returns to the picker button before the overlay switches on.
     closeComparePicker();
-    if (turnOverlayOn) toggleEl.click();
+    if (apply) await apply;
+    if (turnOverlayOn && selectedNoiseUploadIds.size >= 2) toggleEl.click();
   });
 
   // The picker is a dropdown: Escape and a click outside close it
