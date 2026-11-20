@@ -2,7 +2,8 @@
 const express = require("express");
 const { getAsync, getAllCamelized, getOneCamelized } = require("../db");
 const { loadConfig, defaultConfig } = require("../config");
-const { getActiveProjectForVessel } = require("../activeProject");
+const { resolveEffectiveConfig, buildSectionsPerCableMap } = require("../utils/effectiveConfig");
+const { collectCleanedSections } = require("../utils/cleanedSections");
 const { toInt, isSafeText } = require("../utils/validation");
 const { sendError, httpError, handleRouteError } = require("../utils/errors");
 const { buildEventsWhereClause } = require("../utils/queryHelpers");
@@ -23,60 +24,16 @@ const {
 const { buildNoiseRmsHistory } = require("../utils/noiseRmsHistory");
 
 /**
- * Build a per-streamer effective sections map for a project, using the project default
- * for any streamer that does not have a specific override in streamer_deployments.
- * @param {number|null} projectId
- * @param {number} numCables
- * @param {number} defaultSections
- * @returns {Promise<Object>} e.g. { 1: 107, 2: 107, 3: 120, ... }
- */
-async function buildSectionsPerCableMap(projectId, numCables, defaultSections) {
-  const map = {};
-  for (let i = 1; i <= numCables; i++) {
-    map[i] = defaultSections;
-  }
-  if (projectId == null) return map;
-  const overrides = await getAllCamelized(
-    "SELECT streamer_id, sections_per_cable FROM streamer_deployments WHERE project_id = ? AND sections_per_cable IS NOT NULL",
-    [projectId]
-  );
-  for (const row of overrides) {
-    if (map[row.streamerId] !== undefined) {
-      map[row.streamerId] = row.sectionsPerCable;
-    }
-  }
-  return map;
-}
-
-/**
- * Resolve config for stats/last-cleaned: when project is in query or default vessel has active project, use that project's sectionsPerCable and useRopeForTail.
+ * Resolve config for stats/last-cleaned: when project is in query or the vessel has an active project, use that project's sectionsPerCable and useRopeForTail.
  * Also resolves a per-streamer sectionsPerCableMap for endpoints that need per-cable sizes.
  */
 async function getEffectiveConfig(req) {
   const config = await loadConfig();
-  const project = req.query?.project;
-  const vesselTag = req.vesselScope || config.vesselTag || defaultConfig.vesselTag;
-  let projectRow = null;
-  if (project) {
-    projectRow = await getOneCamelized("SELECT * FROM projects WHERE project_number = ?", [project]);
-    // A vessel-scoped user may not read another vessel's cable geometry via ?project=.
-    if (projectRow && req.vesselScope && projectRow.vesselTag !== req.vesselScope) {
-      throw httpError(403, "Project does not belong to your vessel");
-    }
-  } else {
-    projectRow = await getActiveProjectForVessel(vesselTag);
-  }
-  const numCables = projectRow?.numCables ?? config.numCables;
-  const sectionsPerCable = projectRow?.sectionsPerCable ?? config.sectionsPerCable;
-  const sectionsPerCableMap = await buildSectionsPerCableMap(projectRow?.id ?? null, numCables, sectionsPerCable);
-  return {
-    ...config,
-    numCables,
-    sectionsPerCable,
-    useRopeForTail: projectRow != null ? projectRow.useRopeForTail === 1 : config.useRopeForTail,
-    sectionLength: projectRow?.sectionLength ?? config.sectionLength,
-    sectionsPerCableMap,
-  };
+  return resolveEffectiveConfig({
+    projectNumber: req.query?.project,
+    vesselTag: req.vesselScope || config.vesselTag || defaultConfig.vesselTag,
+    vesselScope: req.vesselScope,
+  });
 }
 
 /**
@@ -164,24 +121,10 @@ function createStatsRouter(authMiddleware) {
         `SELECT streamer_id, section_index_start, section_index_end, section_type FROM cleaning_events${whereClause}`,
         params
       );
-      const uniqueSections = new Set();
-      const uniqueActiveSections = new Set();
-      const uniqueTailSections = new Set();
-      for (const evt of allEvents) {
-        const isTail = evt.sectionType === "tail";
-        // Use the streamer's effective sections as tail base offset to keep keys globally unique
-        const effectiveSections = sectionsPerCableMap[evt.streamerId] ?? config.sectionsPerCable;
-        const base = isTail ? effectiveSections : 0;
-        for (let s = evt.sectionIndexStart; s <= evt.sectionIndexEnd; s++) {
-          const globalIdx = base + s;
-          uniqueSections.add(`${evt.streamerId}-${globalIdx}`);
-          if (isTail) {
-            uniqueTailSections.add(`${evt.streamerId}-${globalIdx}`);
-          } else {
-            uniqueActiveSections.add(`${evt.streamerId}-${globalIdx}`);
-          }
-        }
-      }
+      const { active: uniqueActiveSections, tail: uniqueTailSections, all: uniqueSections } = collectCleanedSections(
+        allEvents,
+        config
+      );
 
       res.json({
         totalEvents: totalEvents.count,
