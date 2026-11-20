@@ -98,26 +98,28 @@
       </header>
 
       <main>
+        <div id="overview-error" class="overview-error hidden" role="alert"></div>
         <div id="overview-kpis" class="kpis"></div>
 
         <section id="overview-cleaning" class="card">
           <h2 class="card-title">Cleaning</h2>
           <p id="overview-cleaning-msg" class="overview-msg hidden"></p>
-          <canvas id="overview-daily-distance-chart"></canvas>
+          <div class="overview-chart"><canvas id="overview-daily-distance-chart"></canvas></div>
           <div id="overview-overdue"></div>
         </section>
 
         <section id="overview-noise" class="card">
           <h2 class="card-title">Noise</h2>
           <p id="overview-noise-msg" class="overview-msg hidden"></p>
-          <canvas id="overview-rms-chart"></canvas>
+          <div class="overview-chart"><canvas id="overview-rms-chart"></canvas></div>
           <div id="overview-worst-streamers"></div>
         </section>
 
         <section id="overview-efficiency" class="card">
           <h2 class="card-title">Cleaning efficiency</h2>
           <p id="overview-efficiency-msg" class="overview-msg hidden"></p>
-          <canvas id="overview-efficiency-chart"></canvas>
+          <div class="overview-chart"><canvas id="overview-efficiency-chart"></canvas></div>
+          <div id="overview-efficiency-stats"></div>
         </section>
       </main>
     </div>

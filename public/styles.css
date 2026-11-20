@@ -4377,3 +4377,80 @@ main > section[id] {
   flex-wrap: wrap;
   gap: 12px;
 }
+
+/* Fleet overview page */
+#overview-kpis {
+  margin: 16px 0;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+#overview-kpis .kpi {
+  background: var(--card-bg);
+}
+.overview-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.overview-controls select {
+  min-height: var(--touch-target);
+  min-width: 140px;
+  max-width: 100%;
+}
+.overview-delta {
+  font-size: 13px;
+  font-weight: 600;
+}
+.overview-delta-good { color: var(--success); }
+.overview-delta-bad { color: var(--danger); }
+.overview-delta-neutral { color: var(--muted); }
+.overview-chart {
+  position: relative;
+  width: 100%;
+  height: 240px;
+}
+.overview-msg {
+  color: var(--muted);
+  margin: 8px 0;
+}
+.overview-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--danger);
+  border-radius: 10px;
+  color: var(--danger);
+  background: var(--card-bg);
+}
+.overview-retry-btn {
+  min-height: var(--touch-target);
+  padding: 0 16px;
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  cursor: pointer;
+}
+.overview-fact {
+  margin: 8px 0 0;
+}
+.overview-fact-bad { color: var(--danger); font-weight: 600; }
+.overview-muted { color: var(--muted); }
+.overview-subtitle {
+  margin: 12px 0 4px;
+  font-size: 14px;
+}
+.overview-list {
+  margin: 0;
+  padding-left: 20px;
+}
+@media (max-width: 480px) {
+  .overview-controls { width: 100%; }
+  .overview-controls label { flex: 1 1 140px; }
+  .overview-controls select { width: 100%; }
+  .overview-chart { height: 200px; }
+}
