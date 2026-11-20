@@ -13,7 +13,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 - **Compliance**: Comprehensive reporting for operational audits and vessel documentation
 - **Analytics**: Identify cleaning patterns and optimize maintenance schedules
 - **Multi-Project Support**: Manage multiple projects with independent configurations
-- **Access Control**: Role-based access (four levels: GrandSuperUser/SuperUser/Admin/Viewer) with vessel-scoped authentication
+- **Access Control**: Role-based access (five levels: GrandSuperUser/Supervisor/SuperUser/Admin/Viewer) with vessel-scoped authentication
 
 ---
 
@@ -23,10 +23,11 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 - **Multi-User Support**: Secure login system with role-based permissions
 - **Access Levels**:
   - 👑 **GrandSuperUser**: Always global — full access to **all vessels** (projects, global config, deployments, backups incl. restore, clearing events for all projects, cleanup of orphaned streamers, force-delete)
+  - 🔭 **Supervisor**: Read-only fleet view of **all vessels**, limited to the [Fleet Overview page](#-fleet-overview-page-supervisors) (`/overview`); the server refuses every other API route with `403`. Only a GrandSuperUser can create or manage Supervisor accounts
   - 🔑 **SuperUser**: Full access **within their vessel** (projects, per-vessel config, deployments, backups listing/creation, Clear All Events for a project)
   - 👨‍💼 **Admin**: Event management only **within their vessel** (add/edit/delete single events, CSV import)
   - 👁️ **Viewer**: Read-only access **within their vessel** (view data, filter, export reports)
-  - Only GrandSuperUser has access to all vessels; every other role is limited to its own vessel
+  - Only GrandSuperUser can change data on all vessels; Supervisor reads all vessels; every other role is limited to its own vessel
 - **Session Management**: Secure session tokens with localStorage persistence
 - **User Management** (Config page, SuperUser+): add users, set or reset passwords, change role or vessel, and delete users from the browser — no `.env` editing or server restart
   - GrandSuperUser manages every account on every vessel; a SuperUser manages the SuperUser, Admin and Viewer accounts on their own vessel
@@ -37,11 +38,12 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 - **First users from `.env`**: user accounts live in the database. When the database has no users (fresh install, first start after upgrading, or a restored backup from before this feature) they are copied once from `AUTH_USERS` in `.env`, keeping their existing passwords. After that `AUTH_USERS` is ignored
   - Format: `USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG`
     - `PASSWORD_HASH`: bcrypt hash of the password (plain-text passwords are not accepted) — see [Adding a user](#adding-a-user)
-    - `ROLE`: `grandsuperuser`, `superuser`, `admin`, or `viewer`
-    - `VESSEL_TAG`: short code for the vessel (e.g. `TTN`, `RAM`). Required for every role except `grandsuperuser` (use `ALL`); an entry for another role without a vessel tag is skipped at startup
+    - `ROLE`: `grandsuperuser`, `supervisor`, `superuser`, `admin`, or `viewer`
+    - `VESSEL_TAG`: short code for the vessel (e.g. `TTN`, `RAM`). Required for every role except `grandsuperuser` and `supervisor` (use `ALL`); an entry for another role without a vessel tag is skipped at startup
     - A fifth `GLOBAL` field from older `.env` files is ignored: only `grandsuperuser` is global
   - Examples:
     - `GrandRoot:<bcrypt-hash>:grandsuperuser:ALL` (grand superuser, all vessels)
+    - `Fleet:<bcrypt-hash>:supervisor:ALL` (supervisor, read-only overview of all vessels)
     - `TTNOBS:<bcrypt-hash>:superuser:TTN` (superuser for vessel `TTN`)
     - `TTNView:<bcrypt-hash>:viewer:TTN` (viewer for vessel `TTN`)
 
@@ -106,6 +108,15 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 - **Project Management**: Create new project, set active project, clear active project; list of all projects with actions (activate, force-delete with confirmation)
 - **Backup & Restore**: Create manual backup, refresh backup list, restore from backup (restore requires GrandSuperUser; applied live, no server restart needed)
 - **Back to Main**: Header link returns to the main app at `/`
+
+### 🔭 Fleet Overview Page (Supervisors)
+- **Separate page** at `/overview` with its own login form; available to Supervisors and GrandSuperUsers. A Supervisor is sent here after login and is redirected back to it from `/`, `/stats`, `/config`, `/planning` and `/help`; other roles are redirected to `/`
+- **Vessel and period**: pick a vessel and a period of 7, 30 or 90 days; every figure compares the period with the previous period of the same length
+- **Cleaning**: section coverage of the active project (with change in points), distance cleaned (km) and cleaning events (each with change vs. the previous period), overdue sections, daily distance chart, days since the last cleaning
+- **Noise**: average RMS of the latest noise upload vs. the one before, the worst streamers, and the RMS history of the active project
+- **Efficiency**: mean RMS improvement and share of improved cells between noise uploads around cleaning, distance per cleaning day, and a chart of the recent upload pairs
+- Vessels without an active project or with fewer than two noise uploads show an explanation instead of the affected figures
+- Read-only: nothing on this page changes data
 
 ### 🗺️ Planning Page (Dedicated Maintenance Planning View)
 - **Separate page** at `/planning` — read-only heatmap focused on upcoming cleaning decisions; scoped to per-vessel users (GrandSuperUser is intentionally blocked with a "restricted" notice)
@@ -484,8 +495,18 @@ The PDF report includes:
 - `GET /api/users` - List accounts the caller can see (all for GrandSuperUser, own vessel for SuperUser), never with password hashes; also returns `assignableRoles`, `canChooseVessel` and `minPasswordLength`
 - `POST /api/users` - Create an account (`username`, `password`, `role`, `vesselTag`); `409` when the username is taken
 - `PUT /api/users/:id` - Change `password`, `role` and/or `vesselTag`; the user's sessions are ended
+- Only a GrandSuperUser can create, edit or delete `supervisor` accounts (a SuperUser gets `403`)
 - `DELETE /api/users/:id` - Delete an account and end its sessions
 - `403` for accounts outside the caller's reach; `400` for changing your own role or vessel, deleting yourself, or removing the last GrandSuperUser
+
+### Fleet overview (Supervisor, GrandSuperUser)
+- `GET /api/overview/vessels` - `{ vessels: [tag, ...] }`: every vessel that has a project
+- `GET /api/overview?vessel=TTN&days=30` - Overview of one vessel. `vessel` is required (`400` if missing, `404` if unknown); `days` is `7`, `30` (default) or `90` (`400` otherwise); `403` for any other role, `401` without a session
+  - `project`: `{ projectNumber, projectName }` of the vessel's active project, or `null`
+  - `freshness`: `lastCleaningAt`, `daysSinceLastCleaning`, `lastNoiseUploadAt`, `daysSinceLastNoiseUpload` (`null` when none)
+  - `cleaning`: `coverage` (`pct`, `atWindowStartPct`, `deltaPoints`, `cleanedSections`, `totalSections`; `null` without an active project), `distanceKm` and `events` (KPI objects `{ value, previous, deltaPct }`: this period, the previous period and the relative change, `null` when not computable), `overdueSections` (`count`, `thresholdDays`, `totalActiveSections`), `dailyDistanceKm` (`[{ date, km }]`)
+  - `noise`: `latestAvgRms`, `previousAvgRms`, `deltaPct`, `uploadsInWindow`, `worstStreamers` (`[{ streamerId, avgRms }]`), `rmsHistory` (`[{ uploadId, measuredAt, avgRms }]`); `null` without an active project
+  - `efficiency`: `status` (`ok`, `insufficient_uploads`, `no_events` or `no_active_project`), `reason`, `meanImprovementPct`, `improvedSharePct`, `distancePerCleaningDayKm`, `pairs` (up to 8 before/after upload pairs with `meanImprovementPct`, `improvedSharePct`, `cellsPaired`)
 
 ### Configuration
 - `GET /api/config` - Get current configuration
@@ -658,6 +679,7 @@ streamer-maintenance-app/
 │   │   ├── events.js      # Cleaning events CRUD & bulk clear
 │   │   ├── users.js       # User management (list / create / update / delete)
 │   │   ├── noise.js       # RMS noise upload batches & per-section data
+│   │   ├── overview.js    # Read-only fleet overview (Supervisor / GrandSuperUser)
 │   │   ├── projects.js    # Projects CRUD, deployments, cleanup
 │   │   └── stats.js       # Statistics & aggregates
 │   ├── tests/             # Jest suite: route tests and pure unit tests (npm test)
@@ -678,6 +700,8 @@ streamer-maintenance-app/
 │   ├── config-page.js     # Config page logic (SuperUser only)
 │   ├── stats.html         # Standalone stats page at /stats
 │   ├── stats-page.js      # Stats page entry (independent login)
+│   ├── overview.html      # Standalone fleet overview page at /overview
+│   ├── overview-page.js   # Overview page entry (independent login; Supervisor / GrandSuperUser)
 │   ├── planning.html      # Standalone planning page at /planning
 │   ├── planning-page.js   # Planning page entry (independent login; per-vessel only)
 │   ├── help.html          # In-app help page at /help
@@ -691,6 +715,7 @@ streamer-maintenance-app/
 │       ├── auth.js             # Auth state & login
 │       ├── modals.js           # Modal UI
 │       ├── noise-validation.js # Pure CSV validation for noise uploads
+│       ├── overview-format.js  # Delta, km and day formatting for the overview page
 │       ├── projects.js         # Project UI logic
 │       ├── state.js            # Single source of truth for frontend state
 │       ├── users.js            # User management UI (Config page)
@@ -736,7 +761,8 @@ streamer-maintenance-app/
 - ✅ **Duplicate-clean guard**: warning modal when logging a cleaning event over an area already cleaned within the last 24 hours
 - ✅ **Config page** (`/config`): dedicated SuperUser dashboard for project & streamer configuration, vessel–project overview, per-streamer deployment, backups, and project management
 - ✅ Multi-project support with project creation and management (SuperUser+)
-- ✅ Four-role RBAC: GrandSuperUser / SuperUser / Admin / Viewer with vessel scoping
+- ✅ **Supervisor role and fleet overview** (`/overview`): read-only role for all vessels with per-vessel cleaning, noise and efficiency KPIs over 7/30/90 days
+- ✅ Five-role RBAC: GrandSuperUser / Supervisor / SuperUser / Admin / Viewer with vessel scoping
 - ✅ Session management with localStorage persistence
 - ✅ Automated database backups every 12 hours; manual backups on demand
 - ✅ CSV import/export with Added By column and project-suffixed filename
