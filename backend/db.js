@@ -85,6 +85,42 @@ async function applyMigrations() {
       console.error(`Migration failed (add ${column} to ${table}):`, err);
     }
   }
+  try {
+    await migrateUsersRoleCheck();
+  } catch (err) {
+    console.error("Migration failed (users role check):", err);
+  }
+}
+
+const USERS_COLUMNS =
+  "id, username, password_hash, role, vessel_tag, created_at, updated_at, created_by";
+
+/**
+ * SQLite cannot alter a CHECK constraint, so a users table created before the supervisor
+ * role existed is rebuilt: new table, copy rows (ids kept), drop old, rename. Skipped when
+ * the stored DDL already allows 'supervisor'.
+ * @returns {Promise<void>}
+ */
+async function migrateUsersRoleCheck() {
+  const row = await getAsync("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'");
+  if (!row || !row.sql || row.sql.includes("'supervisor'")) return;
+  await execAtomic([
+    "DROP TABLE IF EXISTS users_new",
+    `CREATE TABLE users_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('grandsuperuser', 'superuser', 'admin', 'supervisor', 'viewer')),
+      vessel_tag TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      created_by TEXT
+    )`,
+    `INSERT INTO users_new (${USERS_COLUMNS}) SELECT ${USERS_COLUMNS} FROM users`,
+    "DROP TABLE users",
+    "ALTER TABLE users_new RENAME TO users",
+  ]);
+  console.log("Migration applied: users.role now allows supervisor");
 }
 
 /**
@@ -310,6 +346,7 @@ module.exports = {
   initDb,
   createBackup,
   restoreFromFile,
+  applyMigrations,
   execAtomic,
   sqlLiteral,
   runAsync,

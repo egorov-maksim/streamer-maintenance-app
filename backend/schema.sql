@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT NOT NULL UNIQUE COLLATE NOCASE,
   password_hash TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('grandsuperuser', 'superuser', 'admin', 'viewer')),
+  role TEXT NOT NULL CHECK (role IN ('grandsuperuser', 'superuser', 'admin', 'supervisor', 'viewer')),
   vessel_tag TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
