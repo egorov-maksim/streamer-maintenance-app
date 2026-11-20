@@ -126,6 +126,27 @@ function getVesselScope(user) {
   return isGlobalUser(user) ? null : user?.vesselTag || null;
 }
 
+/** The only requests a supervisor session may make: "METHOD path". Everything else is denied. */
+const SUPERVISOR_ALLOWED = new Set([
+  "GET /api/session",
+  "GET /api/overview",
+  "GET /api/overview/vessels",
+]);
+
+/**
+ * Default-deny allowlist for the read-only supervisor role.
+ * Strips ONE trailing slash and any query string; method and path are otherwise exact.
+ * @param {string} method HTTP method (exact, upper case)
+ * @param {string} path request path
+ * @returns {boolean}
+ */
+function isSupervisorAllowed(method, path) {
+  if (typeof method !== "string" || typeof path !== "string") return false;
+  let p = path.split("?")[0];
+  if (p.length > 1 && p.endsWith("/")) p = p.slice(0, -1);
+  return SUPERVISOR_ALLOWED.has(`${method} ${p}`);
+}
+
 /**
  * Create auth middleware that validates Bearer token via sessionStore.getSession (TTL eviction).
  * @param {{ getSession: function(string): Object|null }} sessionStore
@@ -143,6 +164,10 @@ function createAuthMiddleware(sessionStore) {
 
     if (!session) {
       return res.status(401).json({ error: "Invalid or expired session" });
+    }
+
+    if (session.role === ROLES.SUPERVISOR && !isSupervisorAllowed(req.method, req.path)) {
+      return res.status(403).json({ error: "Access denied" });
     }
 
     req.user = session;
@@ -200,6 +225,7 @@ module.exports = {
   loadUsersFromEnv,
   generateSessionToken,
   createAuthMiddleware,
+  isSupervisorAllowed,
   isGlobalUser,
   canSeeAllVessels,
   getVesselScope,
