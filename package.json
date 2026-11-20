@@ -1,6 +1,6 @@
 {
   "name": "streamer-maintenance-app",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "description": "Streamer cleaning tracking app with SQLite backend",
   "main": "backend/server.js",
   "scripts": {
