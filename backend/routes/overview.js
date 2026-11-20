@@ -7,6 +7,8 @@ const { requireRole, ROLES } = require("../middleware/auth");
 const { resolveEffectiveConfig } = require("../utils/effectiveConfig");
 const { summarizeSectionCoverage } = require("../utils/cleanedSections");
 const { parseDays, buildPeriods, kpi, deltaPoints } = require("../utils/overviewPeriods");
+const { buildNoiseOverview, buildEfficiencyPairs } = require("../utils/overviewNoise");
+const { MEASURED_AT_SQL, withMeasuredAt, assessCleaningPeriod } = require("../utils/noiseUploadTime");
 const { sendError, httpError, handleRouteError } = require("../utils/errors");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -26,7 +28,94 @@ async function windowTotals(vessel, from, to) {
   return { events: row.events, km: row.meters / 1000 };
 }
 
+const MAX_PAIRS = 8;
+
 const startOfUtcDay = (ms) => Math.floor(ms / DAY_MS) * DAY_MS;
+
+/** Whole UTC days from `thenMs` to `nowMs` (0 = same UTC day), never negative. */
+const wholeUtcDaysSince = (thenMs, nowMs) =>
+  Math.max(0, Math.round((startOfUtcDay(nowMs) - startOfUtcDay(thenMs)) / DAY_MS));
+
+const NO_PAIR_FIGURES = { meanImprovementPct: null, improvedSharePct: null };
+
+/**
+ * Noise block, efficiency block and freshness of the active project's noise uploads.
+ * @returns {Promise<{ noise: Object, efficiency: Object, lastNoiseUploadAt: string|null, daysSinceLastNoiseUpload: number|null }>}
+ */
+async function loadNoiseAndEfficiency({ project, vessel, config, start, end, now, distancePerCleaningDayKm }) {
+  const uploads = (
+    await getAllCamelized(
+      `SELECT id, uploaded_at, recorded_at, label FROM noise_uploads
+        WHERE project_number = ? AND vessel_tag = ? ORDER BY ${MEASURED_AT_SQL} ASC, id ASC`,
+      [project.projectNumber, vessel]
+    )
+  ).map(withMeasuredAt);
+
+  const latest = uploads[uploads.length - 1];
+  const latestMs = latest ? Date.parse(latest.measuredAt) : NaN;
+  const hasLatest = !Number.isNaN(latestMs);
+
+  // One query for every upload; only active-section cells are needed (the history ignores the rest).
+  let noiseRows = [];
+  if (uploads.length > 0) {
+    const maxSection = Math.max(0, ...Object.values(config.sectionsPerCableMap));
+    const ids = uploads.map((u) => u.id);
+    noiseRows = await getAllCamelized(
+      `SELECT upload_id, cable_number, section_number, rms_value FROM noise_data
+        WHERE upload_id IN (${ids.map(() => "?").join(", ")}) AND section_number BETWEEN 1 AND ?`,
+      [...ids, maxSection]
+    );
+  }
+  const noise = buildNoiseOverview(uploads, noiseRows, config.sectionsPerCableMap, config.numCables, start, end);
+
+  const base = { ...NO_PAIR_FIGURES, distancePerCleaningDayKm, pairs: [] };
+  let efficiency;
+  if (uploads.length < 2) {
+    efficiency = {
+      status: "insufficient_uploads",
+      reason: "At least 2 noise uploads are needed to measure the effect of cleaning.",
+      ...base,
+    };
+  } else {
+    const pairUploads = uploads.slice(-(MAX_PAIRS + 1));
+    const rowsByUploadId = new Map();
+    for (const row of noiseRows) {
+      if (!rowsByUploadId.has(row.uploadId)) rowsByUploadId.set(row.uploadId, []);
+      rowsByUploadId.get(row.uploadId).push(row);
+    }
+    const events = await getAllCamelized(
+      `SELECT id, streamer_id, section_index_start, section_index_end, section_type, cleaned_at, cleaning_method
+         FROM cleaning_events WHERE project_number = ? AND section_type = 'active'`,
+      [project.projectNumber]
+    );
+    const pairs = buildEfficiencyPairs(pairUploads, rowsByUploadId, events, MAX_PAIRS);
+    const newest = pairs[pairs.length - 1];
+    const { periodByEventId } = assessCleaningPeriod(pairUploads[pairUploads.length - 2], pairUploads[pairUploads.length - 1], events);
+    const cleanedInside = [...periodByEventId.values()].some((p) => p === "inside");
+    efficiency = cleanedInside
+      ? {
+          status: "ok",
+          reason: null,
+          meanImprovementPct: newest.meanImprovementPct,
+          improvedSharePct: newest.improvedSharePct,
+          distancePerCleaningDayKm,
+          pairs,
+        }
+      : {
+          status: "no_events",
+          reason: "No cleaning was logged between the two newest noise uploads.",
+          ...base,
+          pairs,
+        };
+  }
+
+  return {
+    noise,
+    efficiency,
+    lastNoiseUploadAt: hasLatest ? latest.measuredAt : null,
+    daysSinceLastNoiseUpload: hasLatest ? wholeUtcDaysSince(latestMs, now.getTime()) : null,
+  };
+}
 
 function createOverviewRouter(authMiddleware) {
   const router = express.Router();
@@ -79,11 +168,23 @@ function createOverviewRouter(authMiddleware) {
       if (last && !Number.isNaN(Date.parse(last.cleanedAt))) {
         const lastMs = Date.parse(last.cleanedAt);
         lastCleaningAt = new Date(lastMs).toISOString();
-        daysSinceLastCleaning = Math.max(0, Math.round((startOfUtcDay(now.getTime()) - startOfUtcDay(lastMs)) / DAY_MS));
+        daysSinceLastCleaning = wholeUtcDaysSince(lastMs, now.getTime());
       }
+
+      const distancePerCleaningDayKm = daily.length > 0 ? cur.km / daily.length : null;
 
       let coverage = null;
       let overdueSections = null;
+      let noise = null;
+      let efficiency = {
+        status: "no_active_project",
+        reason: "The vessel has no active project.",
+        ...NO_PAIR_FIGURES,
+        distancePerCleaningDayKm,
+        pairs: [],
+      };
+      let lastNoiseUploadAt = null;
+      let daysSinceLastNoiseUpload = null;
       if (project) {
         const config = await resolveEffectiveConfig({
           projectNumber: project.projectNumber,
@@ -109,6 +210,15 @@ function createOverviewRouter(authMiddleware) {
           totalSections: s.totalSections,
         };
         overdueSections = { count: s.overdueSections, thresholdDays, totalActiveSections: s.totalActiveSections };
+        ({ noise, efficiency, lastNoiseUploadAt, daysSinceLastNoiseUpload } = await loadNoiseAndEfficiency({
+          project,
+          vessel,
+          config,
+          start,
+          end,
+          now,
+          distancePerCleaningDayKm,
+        }));
       }
 
       res.json({
@@ -119,8 +229,8 @@ function createOverviewRouter(authMiddleware) {
         freshness: {
           lastCleaningAt,
           daysSinceLastCleaning,
-          lastNoiseUploadAt: null,
-          daysSinceLastNoiseUpload: null,
+          lastNoiseUploadAt,
+          daysSinceLastNoiseUpload,
         },
         cleaning: {
           coverage,
@@ -129,6 +239,8 @@ function createOverviewRouter(authMiddleware) {
           overdueSections,
           dailyDistanceKm: daily.map((d) => ({ date: d.date, km: d.meters / 1000 })),
         },
+        noise,
+        efficiency,
       });
     } catch (err) {
       handleRouteError(res, err, "Failed to load overview");
