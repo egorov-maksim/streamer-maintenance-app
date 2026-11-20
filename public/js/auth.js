@@ -334,7 +334,10 @@ export function updateUIForRole() {
 
   const roleBadge = safeGet("user-role-badge");
   if (roleBadge) {
-    if (isSuperUserRole) {
+    if (currentUser?.role === "supervisor") {
+      roleBadge.textContent = "Supervisor";
+      roleBadge.className = "user-role-badge supervisor";
+    } else if (isSuperUserRole) {
       roleBadge.textContent = "Super User";
       roleBadge.className = "user-role-badge superuser";
     } else if (isAdminRole) {
