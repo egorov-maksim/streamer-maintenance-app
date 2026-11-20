@@ -287,7 +287,7 @@ function renderCleaning(data) {
   const daily = Array.isArray(c.dailyDistanceKm) ? c.dailyDistanceKm : [];
   setMsg("overview-cleaning-msg", null);
   showChart("overview-daily-distance-chart", false);
-  if (daily.length === 0) {
+  if (!daily.some((d) => isNum(d.km) && d.km > 0)) {
     setMsg("overview-cleaning-msg", NO_CLEANING_MSG);
   } else {
     const ok = tryChart("daily", "overview-daily-distance-chart", {
@@ -322,7 +322,7 @@ function renderCleaning(data) {
     box.append(el("p", "overview-fact overview-muted", `Overdue sections: ${NO_PROJECT_MSG}`));
   }
   const days = data.freshness ? data.freshness.daysSinceLastCleaning : null;
-  box.append(el("p", "overview-fact", `Days since last cleaning: ${isNum(days) ? days : DASH}`));
+  box.append(el("p", "overview-fact", `Days since last cleaning: ${formatDays(days)}`));
 }
 
 function renderNoise(data) {
@@ -409,13 +409,28 @@ function renderEfficiency(data) {
           {
             label: "Mean improvement (%)",
             data: pairs.map((p) => (isNum(p.meanImprovementPct) ? p.meanImprovementPct : null)),
-            backgroundColor: cssVar("--success", "#16a34a"),
+            // Negative = noise got worse: red; otherwise green. Bars start at zero.
+            backgroundColor: pairs.map((p) =>
+              isNum(p.meanImprovementPct) && p.meanImprovementPct < 0
+                ? cssVar("--danger", "#ef4444")
+                : cssVar("--success", "#16a34a")
+            ),
           },
         ],
       },
       options: (() => {
         const o = baseOptions("% improvement");
-        o.scales.y.beginAtZero = false;
+        // Colour is not the only signal: the tooltip carries the signed value and its direction.
+        o.plugins.tooltip = {
+          callbacks: {
+            label: (ctx) => {
+              const v = ctx.parsed.y;
+              if (!isNum(v)) return "No data";
+              const signed = `${v > 0 ? "+" : ""}${v}%`;
+              return v < 0 ? `${signed} (noise increased)` : v > 0 ? `${signed} (noise reduced)` : signed;
+            },
+          },
+        };
         return o;
       })(),
     });

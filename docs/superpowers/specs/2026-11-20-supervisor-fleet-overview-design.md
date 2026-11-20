@@ -33,7 +33,7 @@ The supervisor is a new role. Logging in as one lands directly on `/overview` (p
 
 - Roles live in `backend/middleware/auth.js` (`ROLES`), `backend/routes/users.js` (`ALL_ROLES`, `VESSEL_ROLES`, `canManage`), `public/js/users.js` (`ROLE_LABELS`) and the role badge code in `public/js/auth.js`. Only `grandsuperuser` is global today (`isGlobalUser`, `getVesselScope`).
 - `users.role` has a SQL `CHECK (role IN ('grandsuperuser','superuser','admin','viewer'))`. SQLite cannot alter a CHECK, and `applyMigrations()` in `backend/db.js` only adds columns. Adding the role needs a **table-rebuild migration** that also runs after a backup restore (`applySchemaAndMigrations`), plus the same CHECK change in `schema.sql` for fresh installs.
-- Users can also be seeded from `AUTH_USERS` (`USERNAME:HASH:ROLE:VESSEL_TAG`). `loadUsersFromEnv` currently skips non-global users without a vessel tag; `supervisor` must be treated as global like `grandsuperuser` there, and `isGlobal` in the login/session response must be true for it.
+- Users can also be seeded from `AUTH_USERS` (`USERNAME:HASH:ROLE:VESSEL_TAG`). `loadUsersFromEnv` skipped non-global users without a vessel tag; a `supervisor` is now accepted without one (and never keeps one). A supervisor is deliberately **not** treated as global like `grandsuperuser`: `isGlobalUser` and the session `isGlobal` flag stay grandsuperuser-only, because that flag also grants write scope across vessels; the overview uses a separate `canSeeAllVessels` instead.
 - Auth is a Bearer token kept in `localStorage` by the frontend, so page routes (`/`, `/stats`, ...) are served as static files without auth. Redirecting a supervisor is a client-side job (after login and on every page load); the real enforcement is on the API.
 - Many API routes use `authMiddleware` only (any logged-in role, scoped by `req.vesselScope`). A global supervisor would therefore pass through today's read endpoints with no vessel restriction. They must be blocked explicitly.
 - Existing numbers to match: coverage, distance and event counts come from `GET /api/stats` (unique active+tail sections cleaned vs available; distance = sections × section length). Noise efficiency comes from `backend/utils/cleaningNoiseEfficiency.js`; noise level history from `backend/utils/noiseRmsHistory.js`. Both are pure functions, and `getEffectiveConfig`/`buildSectionsPerCableMap` in `routes/stats.js` resolve per-project cable geometry.
@@ -119,6 +119,7 @@ Efficiency noise improvement per cleaning pair · distance per cleaning day
 - Server-side lock-in: a supervisor can only call the overview API and session endpoints; all others return 403.
 - `grandsuperuser` may also open `/overview`.
 - Only a grandsuperuser can create or manage supervisor accounts.
+- Supervisor accounts from AUTH_USERS never keep a vessel tag.
 - Overdue = active sections of the active project never cleaned or last cleaned longer ago than the project's `suggested_cleaning_threshold_days` (default 10). On a brand-new project nearly everything will show as overdue; that is intended.
 - Coverage change is shown in percentage points (versus the start of the window); other changes are percent.
 - Which direction is "good" is set per KPI (more distance, coverage and improvement are good; more noise, more overdue sections and more days since cleaning are bad).

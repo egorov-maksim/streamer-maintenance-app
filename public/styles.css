@@ -4018,8 +4018,8 @@ table.has-noise-data .noise-col {
 }
 
 .user-role-badge.supervisor {
-  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-  color: #1e40af;
+  background: linear-gradient(135deg, #ccfbf1 0%, #99f6e4 100%);
+  color: #115e59;
 }
 
 .user-form .input-full {

@@ -113,7 +113,7 @@ The **Streamer Maintenance Tracker** is a purpose-built solution for tracking cl
 - **Separate page** at `/overview` with its own login form; available to Supervisors and GrandSuperUsers. A Supervisor is sent here after login and is redirected back to it from `/`, `/stats`, `/config`, `/planning` and `/help`; other roles are redirected to `/`
 - **Vessel and period**: pick a vessel and a period of 7, 30 or 90 days; every figure compares the period with the previous period of the same length
 - **Cleaning**: section coverage of the active project (with change in points), distance cleaned (km) and cleaning events (each with change vs. the previous period), overdue sections, daily distance chart, days since the last cleaning
-- **Noise**: average RMS of the latest noise upload vs. the one before, the worst streamers, and the RMS history of the active project
+- **Noise**: average RMS of the latest noise upload vs. the last upload measured before the start of the selected period (no earlier upload: no change shown), the worst streamers, and the RMS history of the active project
 - **Efficiency**: mean RMS improvement and share of improved cells between noise uploads around cleaning, distance per cleaning day, and a chart of the recent upload pairs
 - Vessels without an active project or with fewer than two noise uploads show an explanation instead of the affected figures
 - Read-only: nothing on this page changes data
@@ -504,7 +504,7 @@ The PDF report includes:
 - `GET /api/overview?vessel=TTN&days=30` - Overview of one vessel. `vessel` is required (`400` if missing, `404` if unknown); `days` is `7`, `30` (default) or `90` (`400` otherwise); `403` for any other role, `401` without a session
   - `project`: `{ projectNumber, projectName }` of the vessel's active project, or `null`
   - `freshness`: `lastCleaningAt`, `daysSinceLastCleaning`, `lastNoiseUploadAt`, `daysSinceLastNoiseUpload` (`null` when none)
-  - `cleaning`: `coverage` (`pct`, `atWindowStartPct`, `deltaPoints`, `cleanedSections`, `totalSections`; `null` without an active project), `distanceKm` and `events` (KPI objects `{ value, previous, deltaPct }`: this period, the previous period and the relative change, `null` when not computable), `overdueSections` (`count`, `thresholdDays`, `totalActiveSections`), `dailyDistanceKm` (`[{ date, km }]`)
+  - `cleaning`: `coverage` (`pct`, `atWindowStartPct`, `deltaPoints`, `cleanedSections`, `totalSections`; `null` without an active project), `distanceKm` and `events` (KPI objects `{ value, previous, deltaPct }`: this period, the previous period and the relative change, `null` when not computable), `overdueSections` (`count`, `thresholdDays`, `totalActiveSections`), `dailyDistanceKm` (`[{ date, km }]`, one entry per UTC day of the period, `km` is 0 on days without cleaning)
   - `noise`: `latestAvgRms`, `previousAvgRms`, `deltaPct`, `uploadsInWindow`, `worstStreamers` (`[{ streamerId, avgRms }]`), `rmsHistory` (`[{ uploadId, measuredAt, avgRms }]`); `null` without an active project
   - `efficiency`: `status` (`ok`, `insufficient_uploads`, `no_events` or `no_active_project`), `reason`, `meanImprovementPct`, `improvedSharePct`, `distancePerCleaningDayKm`, `pairs` (up to 8 before/after upload pairs with `meanImprovementPct`, `improvedSharePct`, `cellsPaired`)
 
