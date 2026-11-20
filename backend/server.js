@@ -95,6 +95,11 @@ app.get("/planning", (_req, res) => {
   res.sendFile(path.join(__dirname, "..", "public", "planning.html"));
 });
 
+// dedicated overview page (supervisor landing; data is protected by the API)
+app.get("/overview", (_req, res) => {
+  res.sendFile(path.join(__dirname, "..", "public", "overview.html"));
+});
+
 // dedicated help page
 app.get("/help", (_req, res) => {
   res.sendFile(path.join(__dirname, "..", "public", "help.html"));

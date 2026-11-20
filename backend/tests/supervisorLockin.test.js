@@ -142,4 +142,15 @@ describe("supervisor lock-in", () => {
       expect(res.status).toBe(200);
     });
   });
+
+  describe("GET /overview page", () => {
+    it("serves the overview page, not the index fallback", async () => {
+      const res = await request(app).get("/overview");
+      expect(res.status).toBe(200);
+      expect(res.headers["content-type"]).toMatch(/text\/html/);
+      expect(res.text).toContain("Fleet Overview");
+      const index = await request(app).get("/some-unknown-path");
+      expect(res.text).not.toBe(index.text);
+    });
+  });
 });

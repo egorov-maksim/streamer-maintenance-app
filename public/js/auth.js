@@ -11,6 +11,7 @@ import {
 } from "./state.js";
 import { apiCall, fetchSession } from "./api.js";
 import { safeGet } from "./ui.js";
+import { redirectTarget } from "./role-routing.js";
 
 let onShowAppCallback = null;
 
@@ -43,6 +44,16 @@ export function clearSession() {
   localStorage.removeItem("currentUser");
 }
 
+// Send the user to the page their role belongs on. Hides the page first so no login or
+// app UI flashes, and never resolves so callers cannot go on to load data.
+async function redirectIfNeeded() {
+  const target = redirectTarget(currentUser?.role, location.pathname);
+  if (!target) return;
+  document.documentElement.style.visibility = "hidden";
+  location.replace(target);
+  await new Promise(() => {});
+}
+
 export async function validateSession() {
   if (!authToken) return false;
   try {
@@ -54,6 +65,7 @@ export async function validateSession() {
         vesselTag: data.vesselTag ?? null,
         isGlobal: Boolean(data.isGlobal),
       });
+      await redirectIfNeeded();
       return true;
     }
     clearSession();
@@ -137,6 +149,10 @@ export async function handleLogin(event) {
         vesselTag: data.vesselTag ?? null,
         isGlobal: Boolean(data.isGlobal),
       });
+      if (redirectTarget(currentUser?.role, location.pathname)) {
+        await redirectIfNeeded();
+        return;
+      }
       showApp();
     } else {
       if (errorDiv) {
