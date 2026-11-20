@@ -18,7 +18,7 @@
         <p class="login-subtitle">Sign in to access the planning dashboard</p>
       </div>
 
-      <form id="login-form" class="login-form" method="post" action="#" onsubmit="return false;">
+      <form id="login-form" class="login-form" method="post" action="#">
         <div class="form-group">
           <label for="login-username">Username</label>
           <div class="input-wrapper">
@@ -46,26 +46,17 @@
               autocomplete="current-password"
               required
             >
-            <button type="button" class="password-toggle" id="password-toggle">👁️</button>
+            <button type="button" class="password-toggle" id="password-toggle" aria-label="Show password" aria-pressed="false">👁️</button>
           </div>
         </div>
 
-        <div id="login-error" class="login-error"></div>
+        <div id="login-error" class="login-error" role="alert"></div>
 
-        <button type="button" class="login-btn" id="login-submit">
+        <button type="submit" class="login-btn" id="login-submit">
           <span class="btn-text">Sign In</span>
           <span class="btn-loader hidden">⏳</span>
         </button>
       </form>
-
-      <div class="login-footer">
-        <p>Access Levels:</p>
-        <div class="access-info">
-          <span class="access-badge superuser">⚡ Super User</span>
-          <span class="access-badge admin">🔑 Administrator</span>
-          <span class="access-badge viewer">👁️ Viewer</span>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -200,6 +191,24 @@
                 <p id="noise-toolbar-status" class="noise-toolbar-status hidden"></p>
                 <select id="noise-upload-selector" class="noise-upload-selector hidden" title="Select a historical noise upload to display">
                 </select>
+                <details id="noise-compare-panel" class="noise-compare-panel hidden">
+                  <summary class="noise-compare-summary" title="Average the RMS of several sequences per section">
+                    <span id="noise-compare-summary-text">Average sequences</span>
+                    <span id="noise-compare-count" class="noise-compare-count hidden" aria-hidden="true"></span>
+                  </summary>
+                  <div class="noise-compare-popover" role="group" aria-labelledby="noise-compare-title">
+                    <div class="noise-compare-header">
+                      <p id="noise-compare-title" class="noise-compare-title">Average several sequences</p>
+                      <p class="noise-compare-hint">Tick two or more, then choose Show on heatmap. The heatmap shows the average RMS per section; the section tooltip shows the range.</p>
+                    </div>
+                    <div id="noise-compare-list" class="noise-compare-list"></div>
+                    <div class="noise-compare-footer">
+                      <span id="noise-compare-status" class="noise-compare-status" aria-live="polite"></span>
+                      <button type="button" id="noise-compare-clear" class="btn btn-outline btn-sm">Clear</button>
+                      <button type="button" id="noise-compare-done" class="btn btn-primary btn-sm">Done</button>
+                    </div>
+                  </div>
+                </details>
                 <div class="noise-dataset-actions">
                   <button
                     type="button"
@@ -251,6 +260,10 @@
                 <button type="button" id="age-legend-reset-btn" class="btn btn-outline btn-sm heatmap-legend-reset-btn">
                   Reset
                 </button>
+                <label class="heatmap-legend-break-label tooltip-recent-count" for="tooltip-recent-count">
+                  Recent cleanings in tooltip:
+                  <input type="number" id="tooltip-recent-count" class="heatmap-legend-break-input" min="1" max="20" value="3" title="How many recent cleanings the hover tooltip lists">
+                </label>
               </div>
             </div>
           </div>
@@ -306,7 +319,7 @@
         <button class="modal-close" id="noise-rename-modal-close" aria-label="Close edit dialog">×</button>
       </div>
       <div class="modal-body">
-        <p class="muted mb-12">Update the display name and optional water speed readings for this RMS upload.</p>
+        <p class="muted mb-12">Update the display name, sequence time and optional water speed readings for this RMS upload.</p>
         <label for="noise-rename-input">Upload label</label>
         <input
           type="text"
@@ -316,6 +329,13 @@
           placeholder="Enter upload label"
         >
         <div class="noise-water-speed-fields">
+          <label for="noise-rename-recorded-at">Sequence time (when the noise was recorded, optional)</label>
+          <input
+            type="datetime-local"
+            id="noise-rename-recorded-at"
+            class="noise-water-speed-input"
+          >
+          <p class="muted noise-recorded-at-hint">Local time. If left blank, the upload time is used.</p>
           <label for="noise-rename-speed-start">Water speed at start of line (kts, optional)</label>
           <input
             type="number"
@@ -358,8 +378,15 @@
       </div>
       <div class="modal-body">
         <p id="noise-water-speed-modal-filename" class="noise-water-speed-filename muted mb-12"></p>
-        <p class="muted mb-12">Optionally record the water speed at the start and end of the acquisition line. These fields can be left blank and filled in later.</p>
+        <p class="muted mb-12">Enter when this noise sequence was recorded, and optionally the water speed at the start and end of the acquisition line. These fields can be left blank and filled in later.</p>
         <div class="noise-water-speed-fields">
+          <label for="noise-upload-recorded-at">Sequence time (when the noise was recorded, optional)</label>
+          <input
+            type="datetime-local"
+            id="noise-upload-recorded-at"
+            class="noise-water-speed-input"
+          >
+          <p class="muted noise-recorded-at-hint">Local time. If left blank, the upload time is used.</p>
           <label for="noise-upload-speed-start">Water speed at start of line (kts, optional)</label>
           <input
             type="number"

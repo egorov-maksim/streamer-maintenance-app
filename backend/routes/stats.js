@@ -2,11 +2,19 @@
 const express = require("express");
 const { getAsync, getAllCamelized, getOneCamelized } = require("../db");
 const { loadConfig, defaultConfig } = require("../config");
-const { getActiveProjectForVessel } = require("../activeProject");
-const { toInt } = require("../utils/validation");
-const { sendError } = require("../utils/errors");
+const { resolveEffectiveConfig, buildSectionsPerCableMap } = require("../utils/effectiveConfig");
+const { collectCleanedSections } = require("../utils/cleanedSections");
+const { toInt, isSafeText } = require("../utils/validation");
+const { sendError, httpError, handleRouteError } = require("../utils/errors");
 const { buildEventsWhereClause } = require("../utils/queryHelpers");
 const { calculateEBRange } = require("../utils/eb");
+const {
+  computeSectionCleanCounts,
+  groupSectionCleanCounts,
+  rankMostCleaned,
+  summarizeByStreamer,
+} = require("../utils/sectionCleanCounts");
+const { MEASURED_AT_SQL, withMeasuredAt, assessCleaningPeriod } = require("../utils/noiseUploadTime");
 const {
   expandEventsToSectionKeys,
   buildNoiseMap,
@@ -16,56 +24,32 @@ const {
 const { buildNoiseRmsHistory } = require("../utils/noiseRmsHistory");
 
 /**
- * Build a per-streamer effective sections map for a project, using the project default
- * for any streamer that does not have a specific override in streamer_deployments.
- * @param {number|null} projectId
- * @param {number} numCables
- * @param {number} defaultSections
- * @returns {Promise<Object>} e.g. { 1: 107, 2: 107, 3: 120, ... }
- */
-async function buildSectionsPerCableMap(projectId, numCables, defaultSections) {
-  const map = {};
-  for (let i = 1; i <= numCables; i++) {
-    map[i] = defaultSections;
-  }
-  if (projectId == null) return map;
-  const overrides = await getAllCamelized(
-    "SELECT streamer_id, sections_per_cable FROM streamer_deployments WHERE project_id = ? AND sections_per_cable IS NOT NULL",
-    [projectId]
-  );
-  for (const row of overrides) {
-    if (map[row.streamerId] !== undefined) {
-      map[row.streamerId] = row.sectionsPerCable;
-    }
-  }
-  return map;
-}
-
-/**
- * Resolve config for stats/last-cleaned: when project is in query or default vessel has active project, use that project's sectionsPerCable and useRopeForTail.
+ * Resolve config for stats/last-cleaned: when project is in query or the vessel has an active project, use that project's sectionsPerCable and useRopeForTail.
  * Also resolves a per-streamer sectionsPerCableMap for endpoints that need per-cable sizes.
  */
 async function getEffectiveConfig(req) {
   const config = await loadConfig();
-  const project = req.query?.project;
-  const vesselTag = req.vesselScope || config.vesselTag || defaultConfig.vesselTag;
-  let projectRow = null;
-  if (project) {
-    projectRow = await getOneCamelized("SELECT * FROM projects WHERE project_number = ?", [project]);
-  } else {
-    projectRow = await getActiveProjectForVessel(vesselTag);
+  return resolveEffectiveConfig({
+    projectNumber: req.query?.project,
+    vesselTag: req.vesselScope || config.vesselTag || defaultConfig.vesselTag,
+    vesselScope: req.vesselScope,
+  });
+}
+
+/**
+ * Parses the optional ?excludeMethods=scue,knife filter of /api/last-cleaned. Lets the
+ * heatmap ask "when was this last cleaned by hand?" by leaving out methods such as SCUE.
+ * Methods are excluded rather than listed so events with an unusual method keep counting.
+ * @param {*} raw - query value
+ * @returns {string[]|null} methods to leave out, or null when no filter was given
+ */
+function parseExcludeMethods(raw) {
+  if (raw === undefined || raw === null || raw === "") return null;
+  const methods = String(raw).split(",").map((m) => m.trim()).filter(Boolean);
+  if (methods.length === 0 || methods.length > 20 || !methods.every((m) => isSafeText(m))) {
+    throw httpError(400, "Invalid excludeMethods filter");
   }
-  const numCables = projectRow?.numCables ?? config.numCables;
-  const sectionsPerCable = projectRow?.sectionsPerCable ?? config.sectionsPerCable;
-  const sectionsPerCableMap = await buildSectionsPerCableMap(projectRow?.id ?? null, numCables, sectionsPerCable);
-  return {
-    ...config,
-    numCables,
-    sectionsPerCable,
-    useRopeForTail: projectRow != null ? projectRow.useRopeForTail === 1 : config.useRopeForTail,
-    sectionLength: projectRow?.sectionLength ?? config.sectionLength,
-    sectionsPerCableMap,
-  };
+  return methods;
 }
 
 /**
@@ -95,8 +79,7 @@ function createStatsRouter(authMiddleware) {
       const ebRange = calculateEBRange(startSection, endSection, config);
       res.json({ ebRange });
     } catch (err) {
-      console.error(err);
-      sendError(res, 500, "Failed to calculate EB range");
+      handleRouteError(res, err, "Failed to calculate EB range");
     }
   });
 
@@ -138,24 +121,10 @@ function createStatsRouter(authMiddleware) {
         `SELECT streamer_id, section_index_start, section_index_end, section_type FROM cleaning_events${whereClause}`,
         params
       );
-      const uniqueSections = new Set();
-      const uniqueActiveSections = new Set();
-      const uniqueTailSections = new Set();
-      for (const evt of allEvents) {
-        const isTail = evt.sectionType === "tail";
-        // Use the streamer's effective sections as tail base offset to keep keys globally unique
-        const effectiveSections = sectionsPerCableMap[evt.streamerId] ?? config.sectionsPerCable;
-        const base = isTail ? effectiveSections : 0;
-        for (let s = evt.sectionIndexStart; s <= evt.sectionIndexEnd; s++) {
-          const globalIdx = base + s;
-          uniqueSections.add(`${evt.streamerId}-${globalIdx}`);
-          if (isTail) {
-            uniqueTailSections.add(`${evt.streamerId}-${globalIdx}`);
-          } else {
-            uniqueActiveSections.add(`${evt.streamerId}-${globalIdx}`);
-          }
-        }
-      }
+      const { active: uniqueActiveSections, tail: uniqueTailSections, all: uniqueSections } = collectCleanedSections(
+        allEvents,
+        config
+      );
 
       res.json({
         totalEvents: totalEvents.count,
@@ -168,14 +137,14 @@ function createStatsRouter(authMiddleware) {
         totalAvailableTail,
       });
     } catch (err) {
-      console.error(err);
-      sendError(res, 500, "Failed to get stats");
+      handleRouteError(res, err, "Failed to get stats");
     }
   });
 
   router.get("/api/last-cleaned", authMiddleware, async (req, res) => {
     try {
       const { project } = req.query;
+      const excludeMethods = parseExcludeMethods(req.query.excludeMethods);
       const config = await getEffectiveConfig(req);
       const cableCount = config.numCables;
       const tailSections = config.useRopeForTail ? 0 : 5;
@@ -184,6 +153,10 @@ function createStatsRouter(authMiddleware) {
       let sql = `SELECT streamer_id, section_index_start, section_index_end, section_type, cleaned_at FROM cleaning_events`;
       const params = [];
       const conditions = [];
+      if (excludeMethods) {
+        conditions.push(`cleaning_method NOT IN (${excludeMethods.map(() => "?").join(", ")})`);
+        params.push(...excludeMethods);
+      }
       if (project) {
         conditions.push("project_number = ?");
         params.push(project);
@@ -216,8 +189,7 @@ function createStatsRouter(authMiddleware) {
       }
       res.json({ lastCleaned: map });
     } catch (err) {
-      console.error(err);
-      sendError(res, 500, "Failed to compute last-cleaned");
+      handleRouteError(res, err, "Failed to compute last-cleaned");
     }
   });
 
@@ -269,8 +241,59 @@ function createStatsRouter(authMiddleware) {
       }
       res.json({ lastCleaned: map });
     } catch (err) {
-      console.error(err);
-      sendError(res, 500, "Failed to compute filtered last-cleaned");
+      handleRouteError(res, err, "Failed to compute filtered last-cleaned");
+    }
+  });
+
+  /**
+   * GET /api/stats/section-clean-counts
+   *
+   * How many times each section was cleaned: the sum of cleaning_count (1 per logged event)
+   * over the events whose range covers the section.
+   *
+   * Query params:
+   *   project - optional project_number (defaults to all events in the caller's vessel scope)
+   *   start   - optional ISO date (YYYY-MM-DD); lower bound for cleaned_at
+   *   end     - optional ISO date (YYYY-MM-DD); upper bound for cleaned_at
+   *   limit   - optional size of the mostCleaned ranking (default 10, max 100)
+   *
+   * Response:
+   *   sections    - one row per cleaned section: streamerId, sectionType, sectionIndex (0-based),
+   *                 count, byMethod, lastCleanedAt
+   *   mostCleaned - neighbouring sections with the same count joined into ranges, highest count first
+   *   perStreamer - sectionsCleaned, totalCleanings and maxCount per streamer
+   *   maxCount, sectionsCleaned, totalCleanings - totals over all sections
+   */
+  router.get("/api/stats/section-clean-counts", authMiddleware, async (req, res) => {
+    try {
+      const { start, end, project } = req.query;
+      const limit = Math.min(Math.max(toInt(req.query.limit, 10), 1), 100);
+      const config = await getEffectiveConfig(req);
+
+      const { sql: baseWhereSql, params } = buildEventsWhereClause({ project, start, end });
+      let whereSql = baseWhereSql;
+      if (req.vesselScope) {
+        whereSql += whereSql ? " AND vessel_tag = ?" : " WHERE vessel_tag = ?";
+        params.push(req.vesselScope);
+      }
+
+      const events = await getAllCamelized(
+        "SELECT streamer_id, section_index_start, section_index_end, section_type, cleaning_method, cleaned_at, cleaning_count " +
+          `FROM cleaning_events${whereSql}`,
+        params
+      );
+
+      const sections = computeSectionCleanCounts(events, config);
+      res.json({
+        sectionsCleaned: sections.length,
+        totalCleanings: sections.reduce((sum, s) => sum + s.count, 0),
+        maxCount: sections.reduce((max, s) => Math.max(max, s.count), 0),
+        mostCleaned: rankMostCleaned(groupSectionCleanCounts(sections), limit),
+        perStreamer: summarizeByStreamer(sections),
+        sections,
+      });
+    } catch (err) {
+      handleRouteError(res, err, "Failed to get section clean counts");
     }
   });
 
@@ -339,8 +362,7 @@ function createStatsRouter(authMiddleware) {
         tailCleanedSections: uniqueTailSections.size,
       });
     } catch (err) {
-      console.error(err);
-      sendError(res, 500, "Failed to get filtered stats");
+      handleRouteError(res, err, "Failed to get filtered stats");
     }
   });
 
@@ -357,6 +379,11 @@ function createStatsRouter(authMiddleware) {
    *   uploadAfterId  - optional int; defaults to latest upload for the project
    *   start          - optional ISO date (YYYY-MM-DD); lower bound for cleaned_at
    *   end            - optional ISO date (YYYY-MM-DD); upper bound for cleaned_at
+   *
+   * An upload's time is its sequence time (recorded_at) when entered, otherwise its upload time.
+   * The response carries `warnings` when the uploads are in the wrong order or cleaning events
+   * fall outside the time between them; the comparison is still computed. Each entry in `ranges`
+   * has `period` ("inside" | "before" | "after") and `outsidePeriod`.
    */
   router.get("/api/stats/cleaning-noise-efficiency", authMiddleware, async (req, res) => {
     try {
@@ -396,11 +423,11 @@ function createStatsRouter(authMiddleware) {
         // Both supplied explicitly
         [uploadBefore, uploadAfter] = await Promise.all([
           getOneCamelized(
-            `SELECT id, uploaded_at, label FROM noise_uploads${uploadScopeWhere} AND id = ?`,
+            `SELECT id, uploaded_at, recorded_at, label FROM noise_uploads${uploadScopeWhere} AND id = ?`,
             [...uploadScopeParams, uploadBeforeId]
           ),
           getOneCamelized(
-            `SELECT id, uploaded_at, label FROM noise_uploads${uploadScopeWhere} AND id = ?`,
+            `SELECT id, uploaded_at, recorded_at, label FROM noise_uploads${uploadScopeWhere} AND id = ?`,
             [...uploadScopeParams, uploadAfterId]
           ),
         ]);
@@ -409,7 +436,7 @@ function createStatsRouter(authMiddleware) {
       } else {
         // Default: latest two uploads
         const latestTwo = await getAllCamelized(
-          `SELECT id, uploaded_at, label FROM noise_uploads${uploadScopeWhere} ORDER BY uploaded_at DESC LIMIT 2`,
+          `SELECT id, uploaded_at, recorded_at, label FROM noise_uploads${uploadScopeWhere} ORDER BY ${MEASURED_AT_SQL} DESC, id DESC LIMIT 2`,
           uploadScopeParams
         );
         if (latestTwo.length < 2) {
@@ -425,14 +452,17 @@ function createStatsRouter(authMiddleware) {
             improvedSharePct: null,
             meanRmsBefore: null,
             meanRmsAfter: null,
-            uploadBefore: latestTwo[1] ?? null,
-            uploadAfter: latestTwo[0] ?? null,
+            warnings: [],
+            uploadBefore: withMeasuredAt(latestTwo[1] ?? null),
+            uploadAfter: withMeasuredAt(latestTwo[0] ?? null),
           });
         }
         // latestTwo[0] = newest (after), latestTwo[1] = older (before)
         uploadAfter = latestTwo[0];
         uploadBefore = latestTwo[1];
       }
+      uploadBefore = withMeasuredAt(uploadBefore);
+      uploadAfter = withMeasuredAt(uploadAfter);
 
       // Fetch active cleaning events in the date window
       const { sql: baseWhereSql, params: baseParams } = buildEventsWhereClause({
@@ -461,6 +491,10 @@ function createStatsRouter(authMiddleware) {
 
       const sectionKeys = expandEventsToSectionKeys(cleaningEvents);
 
+      // Warn (never block) when the uploads are in the wrong order or the cleaning
+      // did not happen between them.
+      const { warnings, periodByEventId } = assessCleaningPeriod(uploadBefore, uploadAfter, cleaningEvents);
+
       if (sectionKeys.size === 0) {
         return res.json({
           status: "no_events",
@@ -474,8 +508,9 @@ function createStatsRouter(authMiddleware) {
           improvedSharePct: null,
           meanRmsBefore: null,
           meanRmsAfter: null,
-          uploadBefore: { id: uploadBefore.id, uploadedAt: uploadBefore.uploadedAt, label: uploadBefore.label },
-          uploadAfter: { id: uploadAfter.id, uploadedAt: uploadAfter.uploadedAt, label: uploadAfter.label },
+          warnings,
+          uploadBefore,
+          uploadAfter,
         });
       }
 
@@ -492,14 +527,19 @@ function createStatsRouter(authMiddleware) {
       const noiseMapAfter = buildNoiseMap(rowsAfter);
 
       const kpi = computeNoiseEfficiency(sectionKeys, noiseMapBefore, noiseMapAfter);
-      const ranges = computeNoiseEfficiencyByRange(cleaningEvents, noiseMapBefore, noiseMapAfter);
+      // period: "inside" | "before" | "after" the time between the two uploads
+      const ranges = computeNoiseEfficiencyByRange(cleaningEvents, noiseMapBefore, noiseMapAfter).map((range) => {
+        const period = periodByEventId.get(range.id) || "unknown";
+        return { ...range, period, outsidePeriod: period === "before" || period === "after" };
+      });
 
       res.json({
         status: "ok",
         ...kpi,
         ranges,
-        uploadBefore: { id: uploadBefore.id, uploadedAt: uploadBefore.uploadedAt, label: uploadBefore.label },
-        uploadAfter: { id: uploadAfter.id, uploadedAt: uploadAfter.uploadedAt, label: uploadAfter.label },
+        warnings,
+        uploadBefore,
+        uploadAfter,
       });
     } catch (err) {
       console.error("GET /api/stats/cleaning-noise-efficiency failed", err);
@@ -552,10 +592,12 @@ function createStatsRouter(authMiddleware) {
       }
       const uploadWhere = uploadConditions.join(" AND ");
 
-      const uploads = await getAllCamelized(
-        `SELECT id, uploaded_at, label, water_speed_start, water_speed_end FROM noise_uploads WHERE ${uploadWhere} ORDER BY uploaded_at ASC`,
-        uploadParams
-      );
+      const uploads = (
+        await getAllCamelized(
+          `SELECT id, uploaded_at, recorded_at, label, water_speed_start, water_speed_end FROM noise_uploads WHERE ${uploadWhere} ORDER BY ${MEASURED_AT_SQL} ASC, id ASC`,
+          uploadParams
+        )
+      ).map(withMeasuredAt);
 
       if (uploads.length === 0) {
         return res.json({ uploads: [], streamers: [], waterSpeedAvg: [] });

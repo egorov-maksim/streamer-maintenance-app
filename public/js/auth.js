@@ -11,6 +11,7 @@ import {
 } from "./state.js";
 import { apiCall, fetchSession } from "./api.js";
 import { safeGet } from "./ui.js";
+import { redirectTarget } from "./role-routing.js";
 
 let onShowAppCallback = null;
 
@@ -43,6 +44,16 @@ export function clearSession() {
   localStorage.removeItem("currentUser");
 }
 
+// Send the user to the page their role belongs on. Hides the page first so no login or
+// app UI flashes, and never resolves so callers cannot go on to load data.
+async function redirectIfNeeded() {
+  const target = redirectTarget(currentUser?.role, location.pathname);
+  if (!target) return;
+  document.documentElement.style.visibility = "hidden";
+  location.replace(target);
+  await new Promise(() => {});
+}
+
 export async function validateSession() {
   if (!authToken) return false;
   try {
@@ -54,6 +65,7 @@ export async function validateSession() {
         vesselTag: data.vesselTag ?? null,
         isGlobal: Boolean(data.isGlobal),
       });
+      await redirectIfNeeded();
       return true;
     }
     clearSession();
@@ -137,6 +149,10 @@ export async function handleLogin(event) {
         vesselTag: data.vesselTag ?? null,
         isGlobal: Boolean(data.isGlobal),
       });
+      if (redirectTarget(currentUser?.role, location.pathname)) {
+        await redirectIfNeeded();
+        return;
+      }
       showApp();
     } else {
       if (errorDiv) {
@@ -195,7 +211,9 @@ export function showLogin() {
 
 export function showApp() {
   window.scrollTo(0, 0);
-  document.body.style.overflow = "auto";
+  // Clear the login lock rather than setting "auto": a body that is its own scroll
+  // container stops position: sticky (top bar, heatmap headers) from following the page.
+  document.body.style.overflow = "";
   const loginPage = safeGet("login-page");
   const appContainer = safeGet("app-container");
   if (loginPage) {
@@ -213,6 +231,9 @@ export function showApp() {
     if (currentUser.role === "grandsuperuser") {
       userRoleBadge.textContent = "Grand Super User";
       userRoleBadge.className = "user-role-badge superuser";
+    } else if (currentUser.role === "supervisor") {
+      userRoleBadge.textContent = "Supervisor";
+      userRoleBadge.className = "user-role-badge supervisor";
     } else if (currentUser.role === "superuser") {
       userRoleBadge.textContent = "Super User";
       userRoleBadge.className = "user-role-badge superuser";
@@ -240,6 +261,10 @@ export function updateUIForRole() {
     el.classList.toggle("hidden", !isSuperUserRole)
   );
 
+  document.querySelectorAll(".grandsuperuser-only").forEach((el) =>
+    el.classList.toggle("hidden", !isGrandSuper)
+  );
+
   document.querySelectorAll(".admin-only").forEach((el) =>
     el.classList.toggle("hidden", !isAdminRole)
   );
@@ -249,7 +274,7 @@ export function updateUIForRole() {
   );
 
   const btnClearAll = safeGet("btn-clear-all");
-  if (btnClearAll) btnClearAll.classList.toggle("hidden", !isGrandSuper);
+  if (btnClearAll) btnClearAll.classList.toggle("hidden", !isSuperUserRole);
 
   const btnSaveConfig = safeGet("btn-save-config");
   if (btnSaveConfig) btnSaveConfig.classList.toggle("hidden", !isSuperUserRole);
@@ -309,7 +334,10 @@ export function updateUIForRole() {
 
   const roleBadge = safeGet("user-role-badge");
   if (roleBadge) {
-    if (isSuperUserRole) {
+    if (currentUser?.role === "supervisor") {
+      roleBadge.textContent = "Supervisor";
+      roleBadge.className = "user-role-badge supervisor";
+    } else if (isSuperUserRole) {
       roleBadge.textContent = "Super User";
       roleBadge.className = "user-role-badge superuser";
     } else if (isAdminRole) {
@@ -327,13 +355,11 @@ export function setupPasswordToggle() {
   const passwordInput = safeGet("login-password");
   if (toggle && passwordInput) {
     toggle.addEventListener("click", () => {
-      if (passwordInput.type === "password") {
-        passwordInput.type = "text";
-        toggle.textContent = "🙈";
-      } else {
-        passwordInput.type = "password";
-        toggle.textContent = "👁️";
-      }
+      const reveal = passwordInput.type === "password";
+      passwordInput.type = reveal ? "text" : "password";
+      toggle.textContent = reveal ? "🙈" : "👁️";
+      toggle.setAttribute("aria-label", reveal ? "Hide password" : "Show password");
+      toggle.setAttribute("aria-pressed", String(reveal));
     });
   }
 }

@@ -101,6 +101,36 @@ export async function updateConfig(body) {
   });
 }
 
+// --- Users (SuperUser and above) ---
+export async function fetchUsers() {
+  return apiCall("api/users");
+}
+
+/** @param {{ username: string, password: string, role: string, vesselTag?: string }} body */
+export async function createUser(body) {
+  return apiCall("api/users", {
+    method: "POST",
+    body: JSON.stringify(body),
+    action: "create users",
+  });
+}
+
+/** @param {number} id @param {{ password?: string, role?: string, vesselTag?: string }} changes */
+export async function updateUser(id, changes) {
+  return apiCall(`api/users/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(changes),
+    action: "change this user",
+  });
+}
+
+export async function deleteUser(id) {
+  return apiCall(`api/users/${id}`, {
+    method: "DELETE",
+    action: "delete this user",
+  });
+}
+
 // --- Projects ---
 export async function fetchProjects() {
   return apiCall("api/projects");
@@ -226,8 +256,8 @@ export async function deleteEvent(id) {
 }
 
 export async function clearEvents(project = null) {
-  let url = "api/events";
-  if (project) url += `?project=${encodeURIComponent(project)}`;
+  let url = "api/events?confirm=DELETE";
+  if (project) url += `&project=${encodeURIComponent(project)}`;
   return apiCall(url, {
     method: "DELETE",
     action: "clear events",
@@ -240,6 +270,19 @@ export async function fetchStats(params = {}) {
   return apiCall(`api/stats${searchParams.toString() ? "?" + searchParams : ""}`);
 }
 
+/**
+ * Per-section clean counts (how many times each section was cleaned) and the ranking of
+ * the most frequently cleaned section ranges.
+ * @param {{ project?: string, start?: string, end?: string, limit?: number }} params
+ */
+export async function fetchSectionCleanCounts(params = {}) {
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== null && value !== undefined && value !== "") searchParams.append(key, value);
+  }
+  return apiCall(`api/stats/section-clean-counts?${searchParams}`);
+}
+
 export async function fetchFilteredStats(params) {
   const searchParams = new URLSearchParams(params);
   return apiCall(`api/stats/filter?${searchParams}`);
@@ -248,6 +291,31 @@ export async function fetchFilteredStats(params) {
 export async function fetchLastCleaned(params = {}) {
   const searchParams = new URLSearchParams(params);
   return apiCall(`api/last-cleaned${searchParams.toString() ? "?" + searchParams : ""}`);
+}
+
+/**
+ * eBird (EB module) cleaning entries, newest first.
+ * @param {{ project?: string }} [params]
+ */
+export async function fetchEbCleanings(params = {}) {
+  const searchParams = new URLSearchParams(params);
+  return apiCall(`api/eb-cleanings${searchParams.toString() ? "?" + searchParams : ""}`);
+}
+
+/** @param {{ streamerId: number, ebNumber: number, cleanedAt: string, projectNumber?: string|null }} entry */
+export async function createEbCleaning(entry) {
+  return apiCall("api/eb-cleanings", {
+    method: "POST",
+    body: JSON.stringify(entry),
+    action: "add eBird cleaning dates",
+  });
+}
+
+export async function deleteEbCleaning(id) {
+  return apiCall(`api/eb-cleanings/${id}`, {
+    method: "DELETE",
+    action: "delete eBird cleaning dates",
+  });
 }
 
 export async function fetchLastCleanedFiltered(params) {
@@ -306,9 +374,9 @@ export async function uploadNoiseData(payload) {
 }
 
 /**
- * Update one or more fields on a noise upload batch (label, water speeds).
+ * Update one or more fields on a noise upload batch (label, water speeds, sequence time).
  * @param {number} uploadId
- * @param {{ label?: string, waterSpeedStart?: number|null, waterSpeedEnd?: number|null }} fields
+ * @param {{ label?: string, waterSpeedStart?: number|null, waterSpeedEnd?: number|null, recordedAt?: string|null }} fields
  */
 export async function updateNoiseUpload(uploadId, fields) {
   return apiCall(`api/noise-data/uploads/${uploadId}`, {

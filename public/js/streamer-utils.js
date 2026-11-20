@@ -50,6 +50,17 @@ export function formatSectionLabel(sectionIndex, sectionType) {
   return formatAS(sectionIndex);
 }
 
+/**
+ * "AS05–AS10" / "Tail 1–Tail 3": start label first, then end label. Shared by the
+ * log table, the recent-events modal and the modals so every view agrees.
+ * @param {{ sectionIndexStart: number, sectionIndexEnd: number, sectionType?: string }} evt
+ * @returns {string}
+ */
+export function formatRangeLabel(evt) {
+  const sectionType = evt.sectionType || "active";
+  return `${formatSectionLabel(evt.sectionIndexStart, sectionType)}–${formatSectionLabel(evt.sectionIndexEnd, sectionType)}`;
+}
+
 export function formatEB(num) {
   return `EB${String(num).padStart(2, "0")}`;
 }
@@ -80,23 +91,17 @@ export function getEBRangeForSectionRange(startSection, endSection, cfg) {
     allModules.push({ num: lastBuilt.num + 1, section: sectionsPerCable - 1 });
   }
 
+  // EB01 sits at section 0 and a closing module sits at the last active section,
+  // so a module always exists on both sides of a range within the active sections.
   const before = allModules
     .filter((m) => m.section <= startSection)
     .sort((a, b) => b.section - a.section)[0];
   const after = allModules
     .filter((m) => m.section >= endSection)
     .sort((a, b) => a.section - b.section)[0];
-  const effectiveAfter = after || allModules[allModules.length - 1];
 
-  if (before && effectiveAfter) {
-    if (before.num === effectiveAfter.num) return formatEB(before.num);
-    return `${formatEB(Math.max(before.num, effectiveAfter.num))} – ${formatEB(Math.min(before.num, effectiveAfter.num))}`;
-  } else if (before) {
-    return `Tail Adaptor – ${formatEB(before.num)}`;
-  } else if (effectiveAfter) {
-    return formatEB(effectiveAfter.num);
-  }
-  return "—";
+  if (before.num === after.num) return formatEB(before.num);
+  return `${formatEB(Math.max(before.num, after.num))} – ${formatEB(Math.min(before.num, after.num))}`;
 }
 
 /**

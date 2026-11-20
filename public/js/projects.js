@@ -5,7 +5,7 @@
 
 import { config, projects, setConfig, setProjects, setSelectedProjectFilter, currentUser, getActiveProject } from "./state.js";
 import * as API from "./api.js";
-import { safeGet, setStatus, showErrorToast, showWarningToast, showSuccessToast, showAccessDeniedToast } from "./ui.js";
+import { safeGet, setStatus, showErrorToast, showWarningToast, showSuccessToast, showAccessDeniedToast, escapeHtml } from "./ui.js";
 import { isSuperUser, isGrandSuperUser } from "./auth.js";
 import { openModal, closeModal } from "./modals.js";
 
@@ -158,7 +158,7 @@ export async function handleStreamerCountChange(previousNumCables, newNumCables)
   if (newNumCables < previousNumCables && isSuperUser()) {
     showWarningToast(
       "Streamer count reduced",
-      `Streamers ${newNumCables + 1}-${previousNumCables} are now hidden. Events and deployment data for those streamers still exist. Use "Cleanup orphaned streamers" to remove them.`
+      `Streamers ${newNumCables + 1}-${previousNumCables} are now hidden. Events and deployment data for those streamers still exist. ${isGrandSuperUser() ? 'Use "Cleanup orphaned streamers" to remove them.' : 'A GrandSuperUser can remove them with "Cleanup orphaned streamers".'}`
     );
   }
   await renderStreamerDeploymentGrid();
@@ -167,7 +167,7 @@ export async function handleStreamerCountChange(previousNumCables, newNumCables)
 
 /** Opens the cleanup orphaned streamers modal and sets the "streamers affected" range. Call from button click. */
 export function cleanupOrphanedStreamers() {
-  if (!isSuperUser()) {
+  if (!isGrandSuperUser()) {
     showAccessDeniedToast("cleanup orphaned streamers");
     return;
   }
@@ -413,9 +413,9 @@ export function renderProjectList() {
       return `
         <div class="project-item ${isActive ? "active" : ""}">
           <div class="project-item-info">
-            <span class="project-number">${p.projectNumber}</span>
-            ${p.projectName ? `<span class="project-name">${p.projectName}</span>` : ""}
-            <span class="project-vessel">${p.vesselTag || "TTN"}</span>
+            <span class="project-number">${escapeHtml(p.projectNumber)}</span>
+            ${p.projectName ? `<span class="project-name">${escapeHtml(p.projectName)}</span>` : ""}
+            <span class="project-vessel">${escapeHtml(p.vesselTag || "TTN")}</span>
             <span class="project-event-count" title="Events in this project">${eventCount} events</span>
             ${isActive ? '<span class="badge badge-active">Active</span>' : ""}
           </div>
@@ -442,6 +442,21 @@ export function populateProjectSelector() {
   });
   const activeProject = projects.find((p) => p.isActive === true);
   if (activeProject) selector.value = activeProject.projectNumber;
+  syncActivateProjectButton();
+}
+
+/**
+ * Disables "Set as Active" while the selected project is already the active one,
+ * so the button is only offered when pressing it would change something.
+ */
+export function syncActivateProjectButton() {
+  const selector = safeGet("project-selector");
+  const btn = document.getElementById("btn-activate-project");
+  if (!selector || !btn) return;
+  const activeProject = projects.find((p) => p.isActive === true);
+  const alreadyActive = Boolean(activeProject) && selector.value === activeProject.projectNumber;
+  btn.disabled = alreadyActive;
+  btn.title = alreadyActive ? "This project is already active" : "";
 }
 
 export function updateActiveProjectBanner() {
@@ -787,11 +802,11 @@ export async function loadBackups() {
         return `
           <div class="backup-item">
             <div class="backup-item-info">
-              <span class="backup-filename">${backup.filename}</span>
+              <span class="backup-filename">${escapeHtml(backup.filename)}</span>
               <div class="backup-meta"><span>📅 ${formattedDate}</span><span>📦 ${sizeKB} KB</span></div>
             </div>
             <div class="backup-item-actions">
-              <button class="btn btn-sm btn-restore" data-filename="${backup.filename}" title="Restore this backup">🔄 Restore</button>
+              ${isGrandSuperUser() ? `<button class="btn btn-sm btn-restore" data-filename="${escapeHtml(backup.filename)}" title="Restore this backup">🔄 Restore</button>` : ""}
             </div>
           </div>
         `;
@@ -826,7 +841,7 @@ export async function createBackup() {
 }
 
 export function restoreBackup(filename) {
-  if (!isSuperUser()) {
+  if (!isGrandSuperUser()) {
     showAccessDeniedToast("restore backups");
     return;
   }

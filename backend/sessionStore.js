@@ -15,7 +15,9 @@ function parseSessionTtlMs() {
  *
  * @returns {{ getSession: function(string): Object|null, setSession: function(string,
  *   { username: string, role: string, vesselTag: string|null, isGlobal: boolean }): void,
- *   deleteSession: function(string): void }}
+ *   deleteSession: function(string): void,
+ *   deleteSessionsForUser: function(string, string=): void,
+ *   deleteAllSessions: function(string=): void }}
  */
 function createSessionStore() {
   /** @type {Map<string, { username: string, role: string, vesselTag: string|null, isGlobal: boolean, expiresAt: number }>} */
@@ -51,7 +53,29 @@ function createSessionStore() {
     sessions.delete(token);
   }
 
-  return { getSession, setSession, deleteSession };
+  /**
+   * Log a user out everywhere (account deleted, or its password, role or vessel changed).
+   * @param {string} username - matched case-insensitively, like login
+   * @param {string} [exceptToken] - a session to keep (the caller's own)
+   */
+  function deleteSessionsForUser(username, exceptToken) {
+    const wanted = String(username).toLowerCase();
+    for (const [token, entry] of sessions) {
+      if (token !== exceptToken && String(entry.username).toLowerCase() === wanted) sessions.delete(token);
+    }
+  }
+
+  /**
+   * Drop every session (the database was replaced by a restore, so accounts may differ).
+   * @param {string} [exceptToken] - a session to keep (the caller's own)
+   */
+  function deleteAllSessions(exceptToken) {
+    for (const token of [...sessions.keys()]) {
+      if (token !== exceptToken) sessions.delete(token);
+    }
+  }
+
+  return { getSession, setSession, deleteSession, deleteSessionsForUser, deleteAllSessions };
 }
 
 module.exports = { createSessionStore, DEFAULT_SESSION_TTL_MS };

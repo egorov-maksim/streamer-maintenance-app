@@ -1,4 +1,4 @@
-import { safeGet, showErrorToast } from "./js/ui.js";
+import { safeGet, showErrorToast, escapeHtml, methodLabel } from "./js/ui.js";
 import {
   setOnShowAppCallback,
   loadSession,
@@ -91,7 +91,7 @@ async function populateNoiseUploadSelectors(projectNumber) {
   }
 
   const formatLabel = (u) => {
-    const date = u.uploadedAt ? u.uploadedAt.slice(0, 16).replace("T", " ") : "unknown date";
+    const date = formatUploadTime(u, 16) ?? "unknown date";
     return u.label ? `${date} — ${u.label}` : date;
   };
 
@@ -132,9 +132,38 @@ function updateNoiseEfficiencyVisibility(projectNumber) {
   }
 }
 
+/**
+ * Time a noise upload was measured, as UTC text: the sequence time when one was entered,
+ * otherwise the upload time (marked as such, since it can be much later than the recording).
+ * @param {{ measuredAt?: string, uploadedAt?: string, recordedAt?: string|null }} upload
+ * @param {number} length - 10 for the date, 16 for date and time
+ * @returns {string|null}
+ */
+function formatUploadTime(upload, length) {
+  const measuredAt = upload?.measuredAt || upload?.uploadedAt;
+  if (!measuredAt) return null;
+  const text = measuredAt.slice(0, length).replace("T", " ");
+  return upload.recordedAt ? text : `${text} (upload time)`;
+}
+
+/** Shows the non-blocking warnings returned with a noise efficiency result. */
+function renderNoiseEfficiencyWarnings(warnings) {
+  const box = safeGet("ne-warnings");
+  const list = safeGet("ne-warnings-list");
+  if (!box || !list) return;
+  list.innerHTML = "";
+  for (const warning of warnings || []) {
+    const item = document.createElement("li");
+    item.textContent = warning.message;
+    list.appendChild(item);
+  }
+  box.classList.toggle("hidden", list.children.length === 0);
+}
+
 function clearNoiseEfficiencyResults() {
   safeGet("ne-results")?.classList.add("hidden");
   safeGet("ne-message")?.classList.add("hidden");
+  safeGet("ne-warnings")?.classList.add("hidden");
   const bd = safeGet("ne-breakdown");
   if (bd) bd.innerHTML = "";
 }
@@ -157,8 +186,11 @@ function renderNoiseEfficiencyResults(data) {
   }
   if (data.status === "no_events") {
     showNoiseEfficiencyMessage(data.message);
+    renderNoiseEfficiencyWarnings(data.warnings);
     return;
   }
+
+  renderNoiseEfficiencyWarnings(data.warnings);
 
   const fmt = (v, suffix = "%") =>
     v == null ? "—" : `${v > 0 ? "+" : ""}${v}${suffix}`;
@@ -175,12 +207,12 @@ function renderNoiseEfficiencyResults(data) {
   safeGet("ne-rms-pair").textContent = `${rmsB} / ${rmsA}`;
   safeGet("ne-paired-count").textContent = `${data.cellsPaired} section-cells with paired data`;
 
-  const beforeLabel = data.uploadBefore?.label
-    ? `${data.uploadBefore.uploadedAt?.slice(0, 10)} (${data.uploadBefore.label})`
-    : data.uploadBefore?.uploadedAt?.slice(0, 10) ?? "—";
-  const afterLabel = data.uploadAfter?.label
-    ? `${data.uploadAfter.uploadedAt?.slice(0, 10)} (${data.uploadAfter.label})`
-    : data.uploadAfter?.uploadedAt?.slice(0, 10) ?? "—";
+  const uploadLabel = (upload) => {
+    const date = formatUploadTime(upload, 10) ?? "—";
+    return upload?.label ? `${date} (${upload.label})` : date;
+  };
+  const beforeLabel = uploadLabel(data.uploadBefore);
+  const afterLabel = uploadLabel(data.uploadAfter);
 
   const skipped = data.skippedMissing > 0
     ? ` ${data.skippedMissing} section-cells lacked data in one or both uploads and were skipped.`
@@ -259,12 +291,20 @@ function renderNoiseEfficiencyBreakdown(ranges) {
         ? `${fmtRms(row.meanRmsBefore)} → ${fmtRms(row.meanRmsAfter)}`
         : "—";
 
+    // Cleaned before the "before" upload or after the "after" upload: the row is unreliable.
+    const outsideTag = row.outsidePeriod
+      ? `<span class="ne-outside-tag" title="This cleaning did not happen between the two noise uploads">${
+          row.period === "before" ? "before uploads" : "after uploads"
+        }</span>`
+      : "";
+
     const tr = document.createElement("tr");
+    if (row.outsidePeriod) tr.className = "ne-breakdown-outside";
     tr.innerHTML = `
       <td>${row.streamerId}</td>
       <td>${rangeLabel}</td>
-      <td>${date}</td>
-      <td>${row.cleaningMethod || "—"}</td>
+      <td>${date}${outsideTag}</td>
+      <td>${escapeHtml(methodLabel(row.cleaningMethod) || "—")}</td>
       <td class="${pctClass}">${pctText}</td>
       <td>${rmsText}</td>
       <td>${row.cellsPaired} / ${row.cellsInEvent}</td>
@@ -461,8 +501,6 @@ async function init() {
   const loginForm = safeGet("login-form");
   if (loginForm) loginForm.addEventListener("submit", handleLogin);
 
-  const loginBtn = safeGet("login-submit");
-  if (loginBtn) loginBtn.addEventListener("click", handleLogin);
 
   const logoutBtn = safeGet("logout-btn");
   if (logoutBtn) logoutBtn.addEventListener("click", handleLogout);

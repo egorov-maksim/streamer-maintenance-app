@@ -84,6 +84,43 @@ export function showAccessDeniedToast(action = "perform this action") {
   );
 }
 
+/**
+ * Escapes text for interpolation into innerHTML templates. Any value that came from
+ * the API or user input (methods, project numbers, user tags, labels) must pass
+ * through this before being placed in markup.
+ * @param {*} value
+ * @returns {string}
+ */
+export function escapeHtml(value) {
+  if (value === null || value === undefined) return "";
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/** Display names for the stored cleaning method values, as shown on the method tiles. */
+const METHOD_LABELS = {
+  rope: "Rope",
+  scraper: "Scraper",
+  "scraper-rope": "Scraper&Rope",
+  scue: "SCUE",
+  knife: "Knife",
+};
+
+/**
+ * Display name for a stored cleaning method value; unknown values are shown as stored.
+ * The result is not HTML-escaped.
+ * @param {string|null|undefined} method
+ * @returns {string}
+ */
+export function methodLabel(method) {
+  if (method === null || method === undefined) return "";
+  return METHOD_LABELS[method] || String(method);
+}
+
 export function formatDateTime(iso) {
   if (!iso) return "-";
   const d = new Date(iso);

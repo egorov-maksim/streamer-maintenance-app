@@ -18,7 +18,7 @@
         <p class="login-subtitle">Sign in to access the configuration dashboard</p>
       </div>
       
-      <form id="login-form" class="login-form" method="post" action="#" onsubmit="return false;">
+      <form id="login-form" class="login-form" method="post" action="#">
         <div class="form-group">
           <label for="login-username">Username</label>
           <div class="input-wrapper">
@@ -46,26 +46,17 @@
               autocomplete="current-password"
               required
             >
-            <button type="button" class="password-toggle" id="password-toggle">👁️</button>
+            <button type="button" class="password-toggle" id="password-toggle" aria-label="Show password" aria-pressed="false">👁️</button>
           </div>
         </div>
         
-        <div id="login-error" class="login-error"></div>
+        <div id="login-error" class="login-error" role="alert"></div>
         
-        <button type="button" class="login-btn" id="login-submit">
+        <button type="submit" class="login-btn" id="login-submit">
           <span class="btn-text">Sign In</span>
           <span class="btn-loader hidden">⏳</span>
         </button>
       </form>
-      
-      <div class="login-footer">
-        <p>Access Levels:</p>
-        <div class="access-info">
-          <span class="access-badge superuser">⚡ Super User</span>
-          <span class="access-badge admin">🔑 Administrator</span>
-          <span class="access-badge viewer">👁️ Viewer</span>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -121,7 +112,7 @@
               <label for="project-comments">Project comments</label>
               <textarea id="project-comments" class="project-comments-textarea" rows="3" placeholder="Free-form notes for this project (superuser only)"></textarea>
               <div class="actions mt-8">
-                <button type="button" class="btn btn-primary superuser-only" id="btn-save-project-comments">💾 Save comments</button>
+                <button type="button" class="btn btn-secondary superuser-only" id="btn-save-project-comments">💾 Save comments</button>
                 <span id="project-comments-status" class="status"></span>
               </div>
             </div>
@@ -134,7 +125,7 @@
                 </select>
               </label>
               <div class="actions actions-align-end">
-                <button class="btn btn-primary" id="btn-activate-project">🎯 Set as Active</button>
+                <button class="btn btn-secondary" id="btn-activate-project">🎯 Set as Active</button>
               </div>
             </div>
             
@@ -156,10 +147,10 @@
               </div>
               <div class="actions mt-12">
                 <button class="btn btn-primary superuser-only" id="btn-save-config">💾 Save Configuration</button>
-                <button type="button" class="btn btn-outline btn-outline-danger superuser-only" id="btn-cleanup-streamers" title="Remove events and deployments for streamers above current count">🧹 Cleanup orphaned streamers</button>
+                <button type="button" class="btn btn-outline btn-outline-danger grandsuperuser-only" id="btn-cleanup-streamers" title="Remove events and deployments for streamers above current count">🧹 Cleanup orphaned streamers</button>
                 <span id="config-status" class="status"></span>
               </div>
-              <div class="cleanup-explanation mt-8">
+              <div class="cleanup-explanation mt-8 grandsuperuser-only">
                 <p class="info-text-sm">
                   <strong>Cleanup orphaned streamers:</strong> Removes cleaning events and deployment configs for streamers above the current count. Use after reducing the number of streamers (e.g. decommissioned streamers). This cannot be undone.
                 </p>
@@ -252,7 +243,7 @@
                 New projects inherit the current streamer configuration. You can modify it after creation.
               </p>
               <div class="actions mt-12">
-                <button class="btn btn-secondary" id="btn-create-project">➕ Create Project</button>
+                <button class="btn btn-primary" id="btn-create-project">➕ Create Project</button>
                 <span id="project-status" class="status"></span>
               </div>
             </div>
@@ -280,6 +271,33 @@
           </div>
         </section>
 
+        <!-- User Management (SuperUser and above) -->
+        <section class="card superuser-only" id="user-management-section">
+          <h2 class="card-title">👥 User Management</h2>
+          <p class="info-text-sm">
+            Add users, set their passwords and change their role without editing the server's <code>.env</code> file.
+            A GrandSuperUser manages every account; a SuperUser manages the accounts on their own vessel.
+            Users cannot change their own password. Changes take effect immediately.
+          </p>
+          <div class="actions mb-12">
+            <button type="button" class="btn btn-secondary" id="btn-add-user">➕ Add User</button>
+          </div>
+          <div class="table-wrapper">
+            <table class="table" id="user-list-table">
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Role</th>
+                  <th>Vessel</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="user-list-body"></tbody>
+            </table>
+          </div>
+        </section>
+
         <!-- Alerts -->
         <div id="alerts-container"></div>
 
@@ -288,13 +306,76 @@
 
   </div> <!-- Close app-container -->
 
+  <!-- Add / Edit User Modal -->
+  <div id="user-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="user-modal-title">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="user-modal-title">Add User</h3>
+        <button class="modal-close" id="btn-user-modal-close" aria-label="Close user dialog">×</button>
+      </div>
+      <form id="user-form" class="modal-body user-form" autocomplete="off">
+        <p id="user-self-note" class="info-text-sm hidden">This is your own account: you can change the password, but not the role or vessel.</p>
+        <div class="form-group">
+          <label for="user-username">Username</label>
+          <input type="text" id="user-username" class="input-full" maxlength="32" autocomplete="off" placeholder="e.g. TTNOBS">
+          <p class="info-text-sm">3–32 characters: letters, numbers, dot, hyphen or underscore. Cannot be changed later.</p>
+        </div>
+        <div class="form-group">
+          <label for="user-password" id="user-password-label">Password</label>
+          <input type="password" id="user-password" class="input-full" maxlength="72" autocomplete="new-password">
+          <label class="user-password-show"><input type="checkbox" id="user-password-show"> Show password</label>
+          <p class="info-text-sm" id="user-password-hint"></p>
+        </div>
+        <div class="form-group">
+          <label for="user-role">Role</label>
+          <select id="user-role" class="input-full"></select>
+        </div>
+        <div class="form-group">
+          <label for="user-vessel">Vessel tag</label>
+          <input type="text" id="user-vessel" class="input-full" maxlength="16" autocomplete="off" placeholder="e.g. TTN">
+          <p class="info-text-sm" id="user-vessel-hint"></p>
+        </div>
+        <p id="user-form-error" class="error-text-md" role="alert"></p>
+      </form>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btn-user-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btn-user-save">Add User</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete User Modal -->
+  <div id="user-delete-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="user-delete-title">
+    <div class="modal-overlay"></div>
+    <div class="modal-content modal-delete">
+      <div class="modal-header modal-header-delete">
+        <h3 id="user-delete-title">🗑️ Delete User</h3>
+        <button class="modal-close" id="btn-user-delete-close" aria-label="Close delete dialog">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="delete-warning">
+          <div class="warning-icon">⚠️</div>
+          <div class="warning-text">
+            <strong id="user-delete-message">Delete user?</strong>
+            The user is logged out immediately and can no longer log in. Events they logged keep their name.
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer modal-footer-delete">
+        <button class="btn btn-secondary" id="btn-user-delete-cancel">Cancel</button>
+        <button class="btn btn-danger" id="btn-user-delete-confirm">Delete User</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Force Delete Project Modal (type DELETE to confirm) -->
   <div id="force-delete-project-modal" class="modal">
     <div class="modal-overlay"></div>
     <div class="modal-content modal-delete">
       <div class="modal-header modal-header-delete">
         <h3>⚠️ Force Delete Project</h3>
-        <button class="modal-close" id="btn-force-delete-project-close">×</button>
+        <button class="modal-close" id="btn-force-delete-project-close" aria-label="Close dialog">×</button>
       </div>
       <div class="modal-body">
         <div class="delete-warning">
@@ -322,7 +403,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h3>📅 Set All Deployment Dates</h3>
-        <button class="modal-close" id="btn-set-all-date-close">×</button>
+        <button class="modal-close" id="btn-set-all-date-close" aria-label="Close dialog">×</button>
       </div>
       <div class="modal-body">
         <p class="info-text-sm mb-12">Set the same deployment date for all streamers. Click Save Streamer Configurations after applying.</p>
@@ -344,7 +425,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h3>🛡️ Set All Coating Status</h3>
-        <button class="modal-close" id="btn-set-all-coating-close">×</button>
+        <button class="modal-close" id="btn-set-all-coating-close" aria-label="Close dialog">×</button>
       </div>
       <div class="modal-body">
         <p class="info-text-sm mb-12">Set the same coating status for all streamers. Click Save Streamer Configurations after applying.</p>
@@ -367,7 +448,7 @@
     <div class="modal-content modal-delete">
       <div class="modal-header modal-header-delete">
         <h3>🗑️ Clear All Configurations</h3>
-        <button class="modal-close" id="btn-clear-all-deployments-close">×</button>
+        <button class="modal-close" id="btn-clear-all-deployments-close" aria-label="Close dialog">×</button>
       </div>
       <div class="modal-body">
         <div class="delete-warning">
@@ -391,7 +472,7 @@
     <div class="modal-content modal-delete">
       <div class="modal-header modal-header-delete">
         <h3>🗑️ Clear Streamer Configuration</h3>
-        <button class="modal-close" id="btn-clear-one-deployment-close">×</button>
+        <button class="modal-close" id="btn-clear-one-deployment-close" aria-label="Close dialog">×</button>
       </div>
       <div class="modal-body">
         <div class="delete-warning">
@@ -415,7 +496,7 @@
     <div class="modal-content modal-delete">
       <div class="modal-header modal-header-delete">
         <h3>🧹 Cleanup orphaned streamers</h3>
-        <button class="modal-close" id="btn-cleanup-orphaned-close">×</button>
+        <button class="modal-close" id="btn-cleanup-orphaned-close" aria-label="Close dialog">×</button>
       </div>
       <div class="modal-body">
         <div class="delete-warning">

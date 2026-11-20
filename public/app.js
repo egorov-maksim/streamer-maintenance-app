@@ -9,6 +9,8 @@ import {
   setConfig,
   events,
   setEvents,
+  ebCleanings,
+  setEbCleanings,
   projects,
   setProjects,
   selectedMethod,
@@ -31,7 +33,11 @@ import {
   showSuccessToast,
   showAccessDeniedToast,
   formatDateTime,
+  escapeHtml,
+  methodLabel,
 } from "./js/ui.js";
+import { toDateInputValue, toTimeInputValue } from "./js/date-utils.js";
+import { parseCsvEventRows } from "./js/csv-import.js";
 import {
   setOnShowAppCallback,
   loadSession,
@@ -46,11 +52,15 @@ import {
   isSuperUser,
   isAdminOrAbove,
   isAdmin,
+  isGrandSuperUser,
 } from "./js/auth.js";
 import { initModals, openModal, closeModal } from "./js/modals.js";
 import * as Projects from "./js/projects.js";
 import * as StreamerUtils from "./js/streamer-utils.js";
 import { computeStreamerTooltipData } from "./js/streamer-tooltip.js";
+import { buildSectionTooltipHtml } from "./js/section-tooltip.js";
+import { loadTooltipRecentCount, initTooltipRecentCountInput } from "./js/tooltip-history-prefs.js";
+import { daysSince, ebLabel, latestEbCleaningMap, applyEbCleaningStatus, buildEbTooltipHtml } from "./js/eb-status.js";
 import { initPDFGeneration } from "./pdf-generator.js";
 import {
   refreshStatsFiltered,
@@ -64,6 +74,7 @@ import {
   saveHeatmapLegendPrefs,
   validateAgeBreaks,
   paintScrapingAgeCells,
+  paintEbAgeCells,
   scrapingAgeLegendGradient,
   renderAgeTicks,
 } from "./js/heatmap-legend.js";
@@ -75,6 +86,12 @@ import {
   shouldInsertModuleAfterSection,
   countHeatmapColumnRows,
 } from "./js/heatmap-layout.js";
+import {
+  loadDisabledMethods,
+  saveDisabledMethods,
+  toggleDisabledMethod,
+  filterEventsByMethod,
+} from "./js/heatmap-method-filter.js";
 
 const sectionCount = StreamerUtils.sectionCount;
 const eventDistance = StreamerUtils.eventDistance;
@@ -83,6 +100,7 @@ const fmtKm = StreamerUtils.fmtKm;
 const getChannelRange = StreamerUtils.getChannelRange;
 const formatAS = StreamerUtils.formatAS;
 const formatSectionLabel = StreamerUtils.formatSectionLabel;
+const formatRangeLabel = StreamerUtils.formatRangeLabel;
 const formatEB = StreamerUtils.formatEB;
 const getConfigForProject = StreamerUtils.getConfigForProject;
 const getSectionsPerCableWithTail = StreamerUtils.getSectionsPerCableWithTail;
@@ -97,6 +115,13 @@ const getEffectiveSectionsPerCable = StreamerUtils.getEffectiveSectionsPerCable;
    ============================================================================ */
 
 let tooltip = null;
+
+/**
+ * Cleaning methods switched off in the Streamers Detail View. The heatmap, its section
+ * tooltips and the streamer header tooltips all behave as if events of these methods
+ * did not exist. Kept in memory so hover handlers do not re-read localStorage.
+ */
+let disabledHeatmapMethods = loadDisabledMethods();
 
 function createTooltip() {
   if (tooltip) return tooltip;
@@ -118,103 +143,30 @@ function positionTooltipNearCursor(element, event) {
   const rect = element.getBoundingClientRect();
   const x = baseX + rect.width > window.innerWidth ? baseX - rect.width - 30 : baseX;
   const y = baseY + rect.height > window.innerHeight ? baseY - rect.height - 30 : baseY;
+  // Keep a tall tooltip on screen instead of letting it run off the top or left edge.
 
-  element.style.left = `${x}px`;
-  element.style.top = `${y}px`;
+  element.style.left = `${Math.max(8, x)}px`;
+  element.style.top = `${Math.max(8, y)}px`;
 }
 
 function showSectionTooltip(e, streamerId, sectionIndex) {
   const tooltip = createTooltip();
-  const streamerNum = streamerId;
   const effectiveSectionsForStreamer = getEffectiveSectionsPerCable(streamerId);
 
   // Determine if it's a tail section based on this streamer's effective section count
   const isTail = sectionIndex >= effectiveSectionsForStreamer;
   const relIndex = isTail ? sectionIndex - effectiveSectionsForStreamer : sectionIndex;
-  const sectionLabel = formatSectionLabel(relIndex, isTail ? 'tail' : 'active');
 
-  // Get cleaning history for this specific section (by section_type and indices)
-  const sectionEvents = events.filter(evt => {
-    if (evt.streamerId !== streamerId) return false;
-    if (isTail) {
-      if (evt.sectionType !== 'tail') return false;
-      return relIndex >= evt.sectionIndexStart && relIndex <= evt.sectionIndexEnd;
-    }
-    if (evt.sectionType !== 'active') return false;
-    return sectionIndex >= evt.sectionIndexStart && sectionIndex <= evt.sectionIndexEnd;
+  tooltip.innerHTML = buildSectionTooltipHtml({
+    streamerId,
+    sectionIndex,
+    isTail,
+    relIndex,
+    sectionLabel: formatSectionLabel(relIndex, isTail ? 'tail' : 'active'),
+    events: filterEventsByMethod(events, disabledHeatmapMethods),
+    disabledMethods: disabledHeatmapMethods,
+    recentCount: loadTooltipRecentCount(),
   });
-
-  const totalCleanings = sectionEvents.length;
-
-  // Sort by date (newest first) — copy so we don't mutate before methodCounts
-  const sortedByDate = [...sectionEvents].sort((a, b) =>
-    new Date(b.cleanedAt) - new Date(a.cleanedAt)
-  );
-
-  // Get last cleaned date from sorted list
-  let lastCleaned = null;
-  let lastMethod = null;
-  let daysSince = null;
-  if (sortedByDate.length > 0) {
-    lastCleaned = sortedByDate[0].cleanedAt;
-    lastMethod = sortedByDate[0].cleaningMethod;
-    daysSince = Math.floor((Date.now() - new Date(lastCleaned)) / (1000 * 60 * 60 * 24));
-  }
-
-  // Build tooltip HTML
-  let html = `<div class="tooltip-header">Streamer ${streamerNum}, Section ${sectionLabel}</div>`;
-
-  if (lastCleaned) {
-    const ageClass = daysSince > 7 ? 'old' : '';
-    html += `
-      <div class="tooltip-row">
-        <span class="tooltip-label">Last Cleaned</span>
-      </div>
-      <div class="tooltip-row" style="margin-top: 4px">
-        <span class="tooltip-value">${lastMethod}</span>
-      </div>
-      <div class="tooltip-row">
-        <span class="tooltip-value">${formatDateTime(lastCleaned)}</span>
-      </div>
-      <div class="tooltip-row">
-        <span class="tooltip-age ${ageClass}">${daysSince} days ago</span>
-      </div>
-    `;
-  } else {
-    html += `
-      <div class="tooltip-row">
-        <span class="tooltip-label">Last Cleaned</span>
-        <span class="tooltip-value" style="color: #9ca3af">Never</span>
-      </div>
-    `;
-  }
-
-  html += `
-    <div class="tooltip-section">
-      <div class="tooltip-row">
-        <span class="tooltip-label">Total Times Cleaned</span>
-        <span class="tooltip-value">${totalCleanings}</span>
-      </div>
-    </div>
-  `;
-
-  // Last 5 cleanings by date
-  if (sortedByDate.length > 0) {
-    const lastFive = sortedByDate.slice(0, 5);
-    html += `<div class="tooltip-section"><div class="tooltip-row"><span class="tooltip-label">Last 5 cleanings</span></div>`;
-    lastFive.forEach(evt => {
-      const icon = getMethodIcon(evt.cleaningMethod);
-      html += `
-        <div class="tooltip-row">
-          <span class="tooltip-value">${formatDateTime(evt.cleanedAt)}</span>
-          <span class="tooltip-method">${icon} ${evt.cleaningMethod}</span>
-        </div>
-      `;
-    });
-    html += `</div>`;
-  }
-
-  tooltip.innerHTML = html;
 
   // Make visible, then position using shared helper
   tooltip.classList.add('show');
@@ -225,24 +177,184 @@ function hideSectionTooltip() {
   if (tooltip) tooltip.classList.remove('show');
 }
 
-function showEBTooltip(e, ebNum) {
+/* ------------ eBird (EB module) cleaning dates ------------ */
+
+/** Cleaning entries for one eBird, newest first (state order). */
+function ebEntriesFor(streamerId, ebNumber) {
+  return ebCleanings.filter(entry => entry.streamerId === streamerId && entry.ebNumber === ebNumber);
+}
+
+/**
+ * Builds one EB cell. An eBird only counts as cleaned through an entry made for it;
+ * scraping runs that pass it do not change it. With an entry the cell carries
+ * data-eb-days and is coloured like a section; without one it keeps the plain EB look.
+ * @param {number} streamerId
+ * @param {number} ebNumber - 1-based along the streamer
+ * @param {Map<string, string>} latestEbCleaning - "streamer:eb" -> newest cleanedAt
+ * @returns {HTMLElement}
+ */
+function buildEbCell(streamerId, ebNumber, latestEbCleaning) {
+  const cell = document.createElement('div');
+  cell.className = 'hm-vcell hm-module';
+  cell.textContent = ebLabel(ebNumber);
+  applyEbCleaningStatus(cell, streamerId, ebNumber, latestEbCleaning);
+  return cell;
+}
+
+function showEBTooltip(e, streamerId, ebNumber) {
   const tip = createTooltip();
-  tip.innerHTML = `<div class="tooltip-header">EB${ebNum}</div>`;
+  const html = buildEbTooltipHtml({
+    streamerId,
+    ebNumber,
+    entries: ebEntriesFor(streamerId, ebNumber),
+    hint: isAdminOrAbove() ? 'Click to enter a cleaning date' : 'Click to see cleaning dates',
+    recentCount: loadTooltipRecentCount(),
+  });
+
+  tip.innerHTML = html;
   tip.classList.add('show');
   positionTooltipNearCursor(tip, e);
 }
 
 /**
- * Attaches EB module hover tooltips for horizontal mode only.
- * Cells are tagged with data-eb-num during horizontal grid build.
+ * Hover tooltip and click-to-open on every EB cell, in both orientations.
+ * Cells are rebuilt on each render, so listeners are attached per render.
  */
-function attachHorizontalEBTooltips(wrapper) {
-  const ebCells = wrapper.querySelectorAll('.hm-module[data-eb-num]');
-  ebCells.forEach(cell => {
-    cell.addEventListener('mouseenter', (e) => showEBTooltip(e, cell.dataset.ebNum));
-    cell.addEventListener('mousemove', (e) => showEBTooltip(e, cell.dataset.ebNum));
+function attachEbCellListeners(wrapper) {
+  wrapper.querySelectorAll('.hm-module[data-eb-num]').forEach(cell => {
+    const streamerId = parseInt(cell.dataset.ebStreamer, 10);
+    const ebNumber = parseInt(cell.dataset.ebNum, 10);
+    if (!streamerId || !ebNumber) return;
+    cell.addEventListener('mouseenter', (e) => { if (!dragState.active) showEBTooltip(e, streamerId, ebNumber); });
+    cell.addEventListener('mousemove', (e) => { if (!dragState.active) showEBTooltip(e, streamerId, ebNumber); });
     cell.addEventListener('mouseleave', hideSectionTooltip);
+    cell.addEventListener('click', () => openEbCleanModal(streamerId, ebNumber));
   });
+}
+
+/** Which eBird the cleaning dialog is showing: { streamerId, ebNumber } or null. */
+let ebModalTarget = null;
+
+function openEbCleanModal(streamerId, ebNumber) {
+  ebModalTarget = { streamerId, ebNumber };
+  hideSectionTooltip();
+
+  const title = safeGet('eb-clean-modal-title');
+  if (title) title.textContent = `eBird Cleaning: ${ebLabel(ebNumber)}`;
+  const subtitle = safeGet('eb-clean-modal-subtitle');
+  if (subtitle) subtitle.textContent = `Streamer ${streamerId}`;
+
+  const now = new Date();
+  const dateInput = safeGet('eb-clean-date');
+  const timeInput = safeGet('eb-clean-time');
+  if (dateInput) {
+    dateInput.value = toDateInputValue(now);
+    dateInput.max = toDateInputValue(now);
+  }
+  if (timeInput) timeInput.value = toTimeInputValue(now);
+
+  renderEbCleanList();
+  openModal('eb-clean-modal');
+}
+
+function closeEbCleanModal() {
+  closeModal('eb-clean-modal');
+  ebModalTarget = null;
+}
+
+/** Fills the dialog's list of dates already entered for the eBird it is showing. */
+function renderEbCleanList() {
+  const list = safeGet('eb-clean-list');
+  const empty = safeGet('eb-clean-empty');
+  if (!list || !ebModalTarget) return;
+
+  const entries = ebEntriesFor(ebModalTarget.streamerId, ebModalTarget.ebNumber);
+  if (empty) empty.classList.toggle('hidden', entries.length > 0);
+  const canDelete = isAdminOrAbove();
+
+  list.innerHTML = entries.map(entry => {
+    const days = daysSince(entry.cleanedAt);
+    const by = entry.addedByUsertag ? ` · by ${escapeHtml(entry.addedByUsertag)}` : '';
+    const when = escapeHtml(formatDateTime(entry.cleanedAt));
+    const deleteBtn = canDelete
+      ? `<button type="button" class="btn btn-sm btn-outline-danger" data-eb-clean-delete="${entry.id}" aria-label="Delete cleaning date ${when}">Delete</button>`
+      : '';
+    return `
+      <li class="eb-clean-item">
+        <span class="eb-clean-item-text">
+          <span class="eb-clean-item-date">${when}</span>
+          <span class="eb-clean-item-meta">${days === 0 ? 'today' : `${days} day${days === 1 ? '' : 's'} ago`}${by}</span>
+        </span>
+        ${deleteBtn}
+      </li>
+    `;
+  }).join('');
+}
+
+async function saveEbCleaning() {
+  if (!ebModalTarget) return;
+  if (!isAdminOrAbove()) {
+    showAccessDeniedToast('add eBird cleaning dates');
+    return;
+  }
+
+  const dateVal = safeGet('eb-clean-date')?.value;
+  const timeVal = safeGet('eb-clean-time')?.value || '12:00';
+  const cleanedAt = dateVal ? new Date(`${dateVal}T${timeVal}`) : null;
+  if (!cleanedAt || isNaN(cleanedAt.getTime())) {
+    showErrorToast('Date Needed', 'Enter the date the eBird was cleaned.');
+    return;
+  }
+  if (cleanedAt.getTime() > Date.now()) {
+    showErrorToast('Date In The Future', 'The cleaning date cannot be later than now.');
+    return;
+  }
+
+  const { streamerId, ebNumber } = ebModalTarget;
+  // Same project choice as section cleaning events, so the entry shows under the current filter.
+  const activeProject = projects.find(p => p.isActive);
+  const projectNumber = selectedProjectFilter || config.activeProjectNumber || (activeProject ? activeProject.projectNumber : null);
+
+  const saveBtn = safeGet('btn-eb-clean-save');
+  if (saveBtn) saveBtn.disabled = true;
+  try {
+    await API.createEbCleaning({ streamerId, ebNumber, cleanedAt: cleanedAt.toISOString(), projectNumber });
+    closeEbCleanModal();
+    await loadEbCleanings();
+    await renderHeatmap();
+    showSuccessToast('eBird date saved', `${ebLabel(ebNumber)} on streamer ${streamerId} marked as cleaned.`);
+  } catch (err) {
+    console.error(err);
+    showErrorToast('Save Failed', err?.message || 'Failed to save the eBird cleaning date. Please try again.');
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+/**
+ * Delete button in the dialog list. The first click arms the button ("Confirm delete"),
+ * the second deletes, so one stray tap cannot remove a date.
+ */
+async function handleEbCleanListClick(e) {
+  const btn = e.target.closest('[data-eb-clean-delete]');
+  if (!btn) return;
+  if (btn.dataset.armed !== '1') {
+    btn.dataset.armed = '1';
+    btn.textContent = 'Confirm delete';
+    return;
+  }
+  btn.disabled = true;
+  try {
+    await API.deleteEbCleaning(btn.dataset.ebCleanDelete);
+    await loadEbCleanings();
+    renderEbCleanList();
+    await renderHeatmap();
+    showSuccessToast('eBird date deleted', 'The cleaning date was removed.');
+  } catch (err) {
+    console.error(err);
+    btn.disabled = false;
+    showErrorToast('Delete Failed', err?.message || 'Failed to delete the eBird cleaning date. Please try again.');
+  }
 }
 
 /* ------------ Attach Tooltip Listeners ------------ */
@@ -278,17 +390,6 @@ function attachTooltipListeners() {
   });
 }
 
-function getMethodIcon(method) {
-  const icons = {
-    rope: '🪢',
-    scraper: '🛠️',
-    'scraper-rope': '🪢🛠️',
-    scue: '⚙️',
-    knife: '🔪'
-  };
-  return icons[method] || '🔧';
-}
-
 /* ------------ Project API (see js/projects.js) ------------ */
 
 
@@ -298,6 +399,18 @@ async function loadEvents() {
     url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
   }
   setEvents(await API.apiCall(url));
+}
+
+/**
+ * Loads eBird cleaning dates for the same project scope as the events. A failure keeps
+ * the dates already on screen: they are an extra on the heatmap and must not block it.
+ */
+async function loadEbCleanings() {
+  try {
+    setEbCleanings(await API.fetchEbCleanings(selectedProjectFilter ? { project: selectedProjectFilter } : {}));
+  } catch (err) {
+    console.debug('eBird cleaning dates fetch failed:', err?.message ?? err);
+  }
 }
 
 /* ------------ Recent-clean check helpers ------------ */
@@ -413,7 +526,7 @@ function showRecentCleanWarning(recentClean, body) {
   safeGet('recent-clean-headline').textContent =
     `Streamer ${evt.streamerId}, sections ${rangeLabel} was cleaned ${formatTimeAgo(diffMs)}.`;
   safeGet('recent-clean-detail').textContent =
-    `Method: ${evt.cleaningMethod} · Recorded: ${formatDateTime(evt.cleanedAt)}`;
+    `Method: ${methodLabel(evt.cleaningMethod)} · Recorded: ${formatDateTime(evt.cleanedAt)}`;
 
   pendingCleaningPayload = body;
   openModal('recent-clean-warning-modal');
@@ -436,7 +549,7 @@ function showAdjacentMergeModal(adjacentMatch, body) {
   const mergedRange = `${formatSectionLabel(mergedStart, sectionType)}–${formatSectionLabel(mergedEnd, sectionType)}`;
 
   safeGet('adjacent-merge-headline').textContent =
-    `Streamer ${evt.streamerId}: "${evt.cleaningMethod}" was applied to sections ${existingRange} ${formatTimeAgo(diffMs)}.`;
+    `Streamer ${evt.streamerId}: "${methodLabel(evt.cleaningMethod)}" was applied to sections ${existingRange} ${formatTimeAgo(diffMs)}.`;
   safeGet('adjacent-merge-detail').textContent =
     `Your new event covers adjacent sections ${proposedRange}. Merge into one event covering ${mergedRange}?`;
 
@@ -578,7 +691,7 @@ async function deleteEvent(id) {
     : getEBRangeForSectionRange(evt.sectionIndexStart, evt.sectionIndexEnd, config);
 
   safeGet('delete-eb-display').textContent = ebRangeRaw;
-  safeGet('delete-method-display').textContent = evt.cleaningMethod;
+  safeGet('delete-method-display').textContent = methodLabel(evt.cleaningMethod);
   safeGet('delete-date-display').textContent = formatDateTime(evt.cleanedAt);
   safeGet('delete-distance-display').textContent = `${eventDistance(evt)} m`;
 
@@ -627,9 +740,10 @@ function editEventPrompt(id) {
   safeGet("edit-project-number").value = evt.projectNumber || "";
   safeGet("edit-vessel-tag").value = evt.vesselTag || "TTN";
 
+  // Both inputs are read back as LOCAL time, so fill both from local getters.
   const dateObj = new Date(evt.cleanedAt);
-  safeGet('edit-date').value = dateObj.toISOString().split('T')[0];
-  safeGet('edit-time').value = dateObj.toTimeString().slice(0, 5);
+  safeGet('edit-date').value = toDateInputValue(dateObj);
+  safeGet('edit-time').value = toTimeInputValue(dateObj);
 
   safeGet('edit-modal').classList.add('show');
 }
@@ -710,6 +824,10 @@ function showClearAllModal() {
   }
   
   const activeProject = projects.find(p => p.isActive === true);
+  if (!activeProject && !isGrandSuperUser()) {
+    showWarningToast('No Active Project', 'Activate a project first. Only GrandSuperUser can clear events for all projects.');
+    return;
+  }
   const modal = safeGet('clear-all-modal');
   const scopeEl = safeGet('clear-all-scope');
   const countEl = safeGet('clear-all-count');
@@ -762,15 +880,7 @@ async function confirmClearAllEvents() {
   }
   
   try {
-    let url = '/api/events';
-    if (activeProject) {
-      url += `?project=${encodeURIComponent(activeProject.projectNumber)}`;
-    }
-    
-    await API.apiCall(url, {
-      method: 'DELETE',
-      action: 'clear all events'
-    });
+    await API.clearEvents(activeProject ? activeProject.projectNumber : null);
     
     closeClearAllModal();
     
@@ -898,10 +1008,6 @@ function importCsv() {
   input.click();
 }
 
-function normalizeCsvRow(row) {
-  return row.map((field) => String(field ?? "").trim().replace(/^"|"$/g, ""));
-}
-
 async function handleCsvFile(file) {
   if (!isAdminOrAbove()) {
     showAccessDeniedToast('import CSV data');
@@ -923,69 +1029,9 @@ async function handleCsvFile(file) {
     const importBtn = safeGet('btn-import-csv');
     const progressEl = safeGet('csv-import-progress');
     const dataRows = rows.slice(1).filter((row) => row.some((cell) => String(cell ?? "").trim()));
-    const total = dataRows.length;
 
-    const hasSectionTypeColumn = total > 0 && (() => {
-      const firstParts = normalizeCsvRow(dataRows[0]);
-      return firstParts.length >= 8 && (firstParts[1] === 'active' || firstParts[1] === 'tail');
-    })();
-
-    // Parse and client-side-validate all rows first; collect valid ones for batch send.
-    const validRows = [];
-    let parseErrorCount = 0;
-
-    for (const rawRow of dataRows) {
-      const parts = normalizeCsvRow(rawRow);
-      if (!parts.length) continue;
-      let streamerNum, startSection, endSection, method, dateTimeStr, projectNumber, vesselTag, sectionType;
-
-      if (hasSectionTypeColumn && parts.length >= 8 && (parts[1] === 'active' || parts[1] === 'tail')) {
-        streamerNum   = parseInt(parts[0], 10);
-        sectionType   = parts[1];
-        startSection  = parseInt(parts[2], 10);
-        endSection    = parseInt(parts[3], 10);
-        method        = parts[4];
-        dateTimeStr   = parts[5].replace(/"/g, '').trim();
-        projectNumber = parts[6] ? parts[6].replace(/"/g, '').trim() : null;
-        vesselTag     = parts[7] ? parts[7].replace(/"/g, '').trim() : 'TTN';
-      } else if (parts.length >= 5) {
-        streamerNum   = parseInt(parts[0], 10);
-        startSection  = parseInt(parts[1], 10);
-        endSection    = parseInt(parts[2], 10);
-        method        = parts[3];
-        dateTimeStr   = parts[4].replace(/"/g, '').trim();
-        projectNumber = parts[5] ? parts[5].replace(/"/g, '').trim() : null;
-        vesselTag     = parts[6] ? parts[6].replace(/"/g, '').trim() : 'TTN';
-        sectionType   = null;
-      } else {
-        parseErrorCount++;
-        continue;
-      }
-
-      if (
-        isNaN(streamerNum) || isNaN(startSection) || isNaN(endSection) ||
-        streamerNum < 1 || streamerNum > (config.numCables + 1)
-      ) { parseErrorCount++; continue; }
-
-      const dateObj = new Date(dateTimeStr);
-      if (isNaN(dateObj.getTime())) { parseErrorCount++; continue; }
-
-      const actualStart = Math.min(startSection, endSection) - 1;
-      const actualEnd   = Math.max(startSection, endSection) - 1;
-
-      const row = {
-        streamerId: streamerNum,
-        sectionIndexStart: actualStart,
-        sectionIndexEnd: actualEnd,
-        cleaningMethod: method,
-        cleanedAt: dateObj.toISOString(),
-        cleaningCount: 1,
-        projectNumber,
-        vesselTag,
-      };
-      if (sectionType) row.sectionType = sectionType;
-      validRows.push(row);
-    }
+    // Parse and client-side-validate all rows first (see js/csv-import.js); collect valid ones for batch send.
+    const { validRows, parseErrorCount } = parseCsvEventRows(dataRows, config);
 
     if (validRows.length === 0) {
       showErrorToast('Import Failed', `No valid rows found. ${parseErrorCount} row(s) could not be parsed.`);
@@ -1049,31 +1095,32 @@ async function renderLog() {
     const tr = document.createElement('tr');
     const streamerNum = evt.streamerId;
     const sectionType = evt.sectionType || 'active';
-    const rangeLabel = `${formatSectionLabel(evt.sectionIndexEnd, sectionType)}–${formatSectionLabel(evt.sectionIndexStart, sectionType)}`;
+    const rangeLabel = formatRangeLabel(evt);
     const ebRange = sectionType === 'tail'
       ? '—'
       : getEBRangeForSectionRange(evt.sectionIndexStart, evt.sectionIndexEnd, config);
     const distance = eventDistance(evt);
-    const projectDisplay = evt.projectNumber || '<span style="color:#9ca3af">—</span>';
-    const vesselDisplay = evt.vesselTag || 'TTN';
-    const addedByDisplay = evt.addedByUsertag || '—';
+    // API text goes through escapeHtml: this row is built with innerHTML.
+    const projectDisplay = evt.projectNumber ? escapeHtml(evt.projectNumber) : '<span style="color:#9ca3af">—</span>';
+    const vesselDisplay = escapeHtml(evt.vesselTag || 'TTN');
+    const addedByDisplay = escapeHtml(evt.addedByUsertag || '—');
 
     const actionButtons = isAdminUser
-      ? `<button class="btn btn-outline btn-edit" data-id="${evt.id}">✏️</button>
-         <button class="btn btn-outline btn-delete" data-id="${evt.id}">🗑️</button>`
+      ? `<button class="btn btn-outline btn-icon btn-edit" data-id="${evt.id}" aria-label="Edit event" title="Edit event">✏️</button>
+         <button class="btn btn-outline btn-icon btn-delete" data-id="${evt.id}" aria-label="Delete event" title="Delete event">🗑️</button>`
       : '<span class="view-only-badge">View Only</span>';
 
     tr.innerHTML = `
-      <td>${formatDateTime(evt.cleanedAt)}</td>
-      <td>${projectDisplay}</td>
-      <td>${vesselDisplay}</td>
-      <td>${addedByDisplay}</td>
-      <td>Streamer ${streamerNum}</td>
-      <td>${rangeLabel}</td>
-      <td>${ebRange}</td>
-      <td>${distance} m</td>
-      <td>${evt.cleaningMethod}</td>
-      <td>${actionButtons}</td>
+      <td data-label="Date & Time">${formatDateTime(evt.cleanedAt)}</td>
+      <td data-label="Project">${projectDisplay}</td>
+      <td data-label="Vessel">${vesselDisplay}</td>
+      <td data-label="Added by">${addedByDisplay}</td>
+      <td data-label="Streamer">Streamer ${streamerNum}</td>
+      <td data-label="Section Range">${rangeLabel}</td>
+      <td data-label="EB Range">${ebRange}</td>
+      <td data-label="Length">${distance} m</td>
+      <td data-label="Method">${escapeHtml(methodLabel(evt.cleaningMethod))}</td>
+      <td data-label="Action" class="log-actions-cell">${actionButtons}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -1213,9 +1260,13 @@ function initOrientationToggle() {
 
 /* ------------ Heat-map rendering ------------ */
 
+/** Bumped on every renderHeatmap call so a slow, older render cannot overwrite a newer one. */
+let heatmapRenderSeq = 0;
+
 async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments = null) {
   const container = safeGet('heatmap-container');
   if (!container) return;
+  const renderSeq = ++heatmapRenderSeq;
 
   // Do NOT clear the container here — keep the previous render visible while
   // data loads so there is no blank-flash on re-render. innerHTML is cleared
@@ -1223,14 +1274,20 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
 
   try {
     let data;
-    if (preloadedLastCleaned) {
+    if (preloadedLastCleaned && disabledHeatmapMethods.length === 0) {
       data = preloadedLastCleaned;
     } else {
-      let url = 'api/last-cleaned';
-      if (selectedProjectFilter) url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
-      data = await API.apiCall(url);
+      // Preloaded data counts every method (alerts and stats need that), so with a method
+      // switched off the heatmap asks the server for its own filtered view.
+      const params = {};
+      if (selectedProjectFilter) params.project = selectedProjectFilter;
+      if (disabledHeatmapMethods.length > 0) params.excludeMethods = disabledHeatmapMethods.join(',');
+      data = await API.fetchLastCleaned(params);
     }
     const lastCleaned = data.lastCleaned;
+
+    // Newest cleaning date per eBird; ebCleanings is sorted newest first.
+    const latestEbCleaning = latestEbCleaningMap(ebCleanings);
 
     let deployments = {};
     const activeProject = projects.find(p => p.isActive);
@@ -1246,6 +1303,9 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
         }
       }
     }
+
+    // A newer render started while this one was waiting for data; let that one draw.
+    if (renderSeq !== heatmapRenderSeq) return;
 
     // All data is ready — clear old render now to avoid a blank intermediate state.
     container.innerHTML = '';
@@ -1371,6 +1431,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
         row.appendChild(streamerLabel);
 
         const cellCount = buildRowCells(row, (type, s, modNum, tailIdx) => {
+          if (type === 'module') return buildEbCell(streamerId, modNum, latestEbCleaning);
           const cell = document.createElement('div');
           if (type === 'section') {
             const lastDate = sections[s];
@@ -1387,12 +1448,6 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
             const ageText = days === null ? 'never cleaned' : days === 0 ? 'cleaned today' : `cleaned ${days} day${days === 1 ? '' : 's'} ago`;
             cell.title = `Streamer ${streamerId}, Section ${s + 1}: ${ageText}`;
             cell.setAttribute('aria-label', `Streamer ${streamerId}, Section ${s + 1}: ${ageText}`);
-          } else if (type === 'module') {
-            const ebLabel = String(modNum).padStart(2, '0');
-            cell.className = 'hm-vcell hm-module';
-            cell.textContent = `EB${ebLabel}`;
-            cell.title = `Equipment Box ${ebLabel}`;
-            cell.dataset.ebNum = ebLabel;
           } else {
             const tailSectionIdx = effectiveSections + tailIdx;
             const lastDate = sections[tailSectionIdx] || null;
@@ -1426,7 +1481,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
       wrapper.className = 'hm-grid-vertical';
       wrapper.style.width = '100%';
       wrapper.style.display = 'grid';
-      wrapper.style.gridTemplateColumns = `repeat(${cableCount + 1}, 1fr)`;
+      wrapper.style.gridTemplateColumns = `repeat(${cableCount + 1}, minmax(var(--hm-col-min, auto), 1fr))`;
       wrapper.style.gap = '4px';
       wrapper.style.columnGap = '8px';
       // Signal cells to fill their column rather than using a fixed px width
@@ -1527,11 +1582,7 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
           col.appendChild(cell);
 
           if (shouldInsertModuleAfterSection(s + 1, effectiveSections, moduleFreq)) {
-            const moduleCell = document.createElement('div');
-            moduleCell.className = 'hm-vcell hm-module';
-            moduleCell.textContent = `EB${String(moduleNum).padStart(2, '0')}`;
-            moduleCell.title = `Equipment Box ${String(moduleNum).padStart(2, '0')}`;
-            col.appendChild(moduleCell);
+            col.appendChild(buildEbCell(streamerId, moduleNum, latestEbCleaning));
             moduleNum++;
           }
         }
@@ -1570,9 +1621,12 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
       }
     }
 
-    // Scroll listener
+    // Scroll listener — bound once; renderHeatmap runs every 45 s and on every filter
+    // change, so re-adding it here would accumulate handlers for the life of the tab.
     function attachScrollListener() {
       const container = safeGet('heatmap-container');
+      if (container.dataset.scrollListenerBound === '1') return;
+      container.dataset.scrollListenerBound = '1';
       let scrollTimeout;
       container.addEventListener('scroll', () => {
         container.classList.add('scrolling');
@@ -1590,8 +1644,10 @@ async function renderHeatmap(preloadedLastCleaned = null, preloadedDeployments =
     attachDragListeners();
     attachTooltipListeners();
     attachStreamerHeaderTooltips(wrapper, lastCleaned, deployments);
-    attachHorizontalEBTooltips(wrapper);
-    paintScrapingAgeCells(container, loadHeatmapLegendPrefs());
+    attachEbCellListeners(wrapper);
+    const legendPrefs = loadHeatmapLegendPrefs();
+    paintScrapingAgeCells(container, legendPrefs);
+    paintEbAgeCells(container, legendPrefs);
   } catch (err) {
     console.error(err);
     showErrorToast("Heatmap Error", "Failed to render the heatmap. Please try refreshing.");
@@ -1623,7 +1679,7 @@ function attachStreamerHeaderTooltips(wrapper, lastCleaned, deployments) {
       const baseEvents = activeProject
         ? events.filter(ev => String(ev.projectNumber) === String(activeProject.projectNumber))
         : getFilteredEvents();
-      const streamerEvents = baseEvents.filter(ev => ev.streamerId === streamerId);
+      const streamerEvents = filterEventsByMethod(baseEvents, disabledHeatmapMethods).filter(ev => ev.streamerId === streamerId);
 
       const data = computeStreamerTooltipData(streamerId, { deployments, lastCleaned, streamerEvents });
       const { daysToFirstScraping, lastCleanedDate, coatingLabel } = data;
@@ -1701,7 +1757,31 @@ function _stopScrollLoop() {
   if (_scrollRAF) { cancelAnimationFrame(_scrollRAF); _scrollRAF = null; }
 }
 
+let dragDocumentListenersBound = false;
+
+/**
+ * Document-level drag handlers are registered exactly once. Per-cell handlers are
+ * re-attached on every render because the cells themselves are rebuilt.
+ */
+function bindDragDocumentListeners() {
+  if (dragDocumentListenersBound) return;
+  dragDocumentListenersBound = true;
+
+  document.addEventListener('mousemove', (e) => {
+    _mouseY = e.clientY;
+    if (dragState.active) _startScrollLoop();
+  });
+
+  document.addEventListener('mouseup', () => {
+    _stopScrollLoop();
+    if (dragState.active) {
+      showConfirmationModal();
+    }
+  });
+}
+
 function attachDragListeners() {
+  bindDragDocumentListeners();
   const cells = document.querySelectorAll('.hm-vcell:not(.hm-module)');
 
   cells.forEach(cell => {
@@ -1732,18 +1812,6 @@ function attachDragListeners() {
         updateDragHighlight();
       }
     });
-  });
-
-  document.addEventListener('mousemove', (e) => {
-    _mouseY = e.clientY;
-    if (dragState.active) _startScrollLoop();
-  });
-
-  document.addEventListener('mouseup', () => {
-    _stopScrollLoop();
-    if (dragState.active) {
-      showConfirmationModal();
-    }
   });
 }
 
@@ -1825,8 +1893,8 @@ function showConfirmationModal() {
   methodSelect.value = selectedMethod;
 
   const now = new Date();
-  safeGet('modal-date').value = now.toISOString().split('T')[0];
-  safeGet('modal-time').value = now.toTimeString().slice(0, 5);
+  safeGet('modal-date').value = toDateInputValue(now);
+  safeGet('modal-time').value = toTimeInputValue(now);
 
   updateModalSummary();
   safeGet('confirmation-modal').classList.add('show');
@@ -1970,6 +2038,7 @@ async function refreshEverything(preloadedLastCleaned = null) {
   const [, lastCleanedData] = await Promise.all([
     loadEvents(),
     lastCleanedPromise,
+    loadEbCleanings(),
   ]);
 
   // Render log, alerts, and streamer cards in parallel — they use already-loaded
@@ -2235,6 +2304,13 @@ function setupEventListeners() {
   // Manual event entry
   safeGet('btn-add-event')?.addEventListener('click', addEvent);
 
+  // eBird cleaning dialog
+  safeGet('btn-eb-clean-save')?.addEventListener('click', saveEbCleaning);
+  safeGet('btn-eb-clean-cancel')?.addEventListener('click', closeEbCleanModal);
+  safeGet('btn-eb-clean-close')?.addEventListener('click', closeEbCleanModal);
+  document.querySelector('#eb-clean-modal .modal-overlay')?.addEventListener('click', closeEbCleanModal);
+  safeGet('eb-clean-list')?.addEventListener('click', handleEbCleanListClick);
+
   // CSV
   safeGet('btn-export-csv')?.addEventListener('click', openExportCsvModal);
   safeGet('btn-export-csv-confirm')?.addEventListener('click', confirmExportCsv);
@@ -2467,7 +2543,10 @@ function initAgeLegendControls() {
     refreshAgeLegend(newPrefs);
 
     const container = safeGet("heatmap-container");
-    if (container) paintScrapingAgeCells(container, newPrefs);
+    if (container) {
+      paintScrapingAgeCells(container, newPrefs);
+      paintEbAgeCells(container, newPrefs);
+    }
   }
 
   for (let i = 0; i < 4; i++) {
@@ -2480,7 +2559,46 @@ function initAgeLegendControls() {
     refreshAgeLegend(resetPrefs);
 
     const container = safeGet("heatmap-container");
-    if (container) paintScrapingAgeCells(container, resetPrefs);
+    if (container) {
+      paintScrapingAgeCells(container, resetPrefs);
+      paintEbAgeCells(container, resetPrefs);
+    }
+  });
+}
+
+/**
+ * Method toggles above the heatmap. Switching a method off re-renders the heatmap as if
+ * events of that method did not exist; the choice is remembered on this device.
+ */
+function initHeatmapMethodFilter() {
+  const buttons = document.querySelectorAll(".heatmap-method-toggle");
+  const note = safeGet("heatmap-method-filter-note");
+
+  function syncToggles() {
+    buttons.forEach((btn) => {
+      btn.setAttribute("aria-pressed", String(!disabledHeatmapMethods.includes(btn.dataset.method)));
+    });
+    if (!note) return;
+    const filtered = disabledHeatmapMethods.length > 0;
+    note.textContent = filtered
+      ? `Not counted: ${disabledHeatmapMethods.map(methodLabel).join(", ")}. Colours and days show the last cleaning by the other methods.`
+      : "";
+    note.classList.toggle("hidden", !filtered);
+  }
+
+  syncToggles();
+
+  buttons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const next = toggleDisabledMethod(disabledHeatmapMethods, btn.dataset.method);
+      if (next === null) {
+        showWarningToast("One Method Needed", "At least one cleaning method must stay switched on.");
+        return;
+      }
+      disabledHeatmapMethods = saveDisabledMethods(next) ?? next;
+      syncToggles();
+      renderHeatmap();
+    });
   });
 }
 
@@ -2524,6 +2642,7 @@ async function fetchDashboardDataBundle() {
     API.apiCall(lastCleanedUrl),
     deploymentsPromise,
     API.apiCall(statsUrl),
+    loadEbCleanings(),
   ]);
 
   return { lastCleanedData, deployments, overallStats };
@@ -2648,8 +2767,8 @@ async function initAppContent() {
 
   // Set default date/time for manual entry
   const now = new Date();
-  const dateStr = now.toISOString().split('T')[0];
-  const timeStr = now.toTimeString().slice(0, 5);
+  const dateStr = toDateInputValue(now);
+  const timeStr = toTimeInputValue(now);
   const evtDate = safeGet('evt-date');
   const evtTime = safeGet('evt-time');
   if (evtDate) evtDate.value = dateStr;
@@ -2665,6 +2784,8 @@ async function initAppContent() {
     setupSidebarNavigation();
     setupProjectCollapse();
     initAgeLegendControls();
+    initTooltipRecentCountInput(safeGet("tooltip-recent-count"));
+    initHeatmapMethodFilter();
     initOrientationToggle();
   }
 
@@ -2696,8 +2817,6 @@ async function init() {
   const loginForm = safeGet("login-form");
   if (loginForm) loginForm.addEventListener("submit", handleLogin);
 
-  const loginBtn = safeGet("login-submit");
-  if (loginBtn) loginBtn.addEventListener("click", handleLogin);
 
   const logoutBtn = safeGet("logout-btn");
   if (logoutBtn) logoutBtn.addEventListener("click", handleLogout);

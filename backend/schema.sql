@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS cleaning_events (
   section_type TEXT NOT NULL DEFAULT 'active' CHECK (section_type IN ('active', 'tail')),
   cleaning_method TEXT NOT NULL,
   cleaned_at TEXT NOT NULL,
+  -- Each logged event counts as one cleaning of every section in its range. A section's
+  -- clean count is the sum of this value over the events that cover it.
   cleaning_count INTEGER DEFAULT 1,
   project_number TEXT,
   vessel_tag TEXT DEFAULT 'TTN',
@@ -34,6 +36,24 @@ CREATE INDEX IF NOT EXISTS idx_cleaning_events_streamer ON cleaning_events(strea
 CREATE INDEX IF NOT EXISTS idx_cleaning_events_date ON cleaning_events(cleaned_at);
 CREATE INDEX IF NOT EXISTS idx_cleaning_events_project ON cleaning_events(project_number);
 CREATE INDEX IF NOT EXISTS idx_cleaning_events_section_type ON cleaning_events(section_type);
+
+-- eBird (EB module) cleaning entries. eBirds are cleaned by hand, often at a wing change
+-- between scraping runs, so their dates are kept apart from section cleaning events and
+-- never enter distance, coverage or clean-count statistics.
+-- eb_number is 1-based along the streamer (EB01 sits at the first section).
+CREATE TABLE IF NOT EXISTS eb_cleaning_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  streamer_id INTEGER NOT NULL,
+  eb_number INTEGER NOT NULL,
+  cleaned_at TEXT NOT NULL,
+  project_number TEXT,
+  vessel_tag TEXT DEFAULT 'TTN',
+  added_by_usertag TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(project_number) REFERENCES projects(project_number) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_eb_cleaning_events_project ON eb_cleaning_events(project_number);
 
 -- Projects table - tracks all defined projects with their streamer configuration
 -- Active project per vessel is stored in vessel_context, not here.
@@ -78,6 +98,19 @@ CREATE TABLE IF NOT EXISTS streamer_deployments (
 -- Index for streamer_deployments
 CREATE INDEX IF NOT EXISTS idx_streamer_deployments_project ON streamer_deployments(project_id);
 
+-- User accounts, managed from the Config page. Seeded once from AUTH_USERS when empty.
+-- vessel_tag is NULL only for grandsuperuser (always global).
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('grandsuperuser', 'superuser', 'admin', 'supervisor', 'viewer')),
+  vessel_tag TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  created_by TEXT
+);
+
 -- Noise data: one row per CSV upload (batch header), scoped to a project
 CREATE TABLE IF NOT EXISTS noise_uploads (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,6 +118,8 @@ CREATE TABLE IF NOT EXISTS noise_uploads (
   vessel_tag TEXT NOT NULL,
   label TEXT,
   uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
+  -- When the noise sequence was recorded (entered by the user); NULL = unknown, use uploaded_at
+  recorded_at TEXT,
   water_speed_start REAL,
   water_speed_end REAL,
   FOREIGN KEY(project_number) REFERENCES projects(project_number) ON DELETE CASCADE

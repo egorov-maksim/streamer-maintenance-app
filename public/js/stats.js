@@ -5,7 +5,7 @@
  * All DOM element IDs referenced here must exist on any page that uses this module:
  * filter-start, filter-end, kpi-coverage, kpi-coverage-sub, kpi-breakdown,
  * kpi-distance, kpi-distance-sub, kpi-events, kpi-events-sub, kpi-last,
- * kpi-last-sub, deploy-days-breakdown, method-breakdown, streamer-cards-container
+ * kpi-last-sub, deploy-days-breakdown, method-breakdown, most-cleaned-sections, streamer-cards-container
  * (daily-distance-chart exists only on /stats stats.html, not index.html)
  *
  * Recent-events modal IDs (both pages):
@@ -15,9 +15,9 @@
 
 import { config, events, projects, selectedProjectFilter, getFilteredEvents } from "./state.js";
 import * as API from "./api.js";
-import { safeGet, showErrorToast, formatDateTime } from "./ui.js";
+import { safeGet, showErrorToast, formatDateTime, escapeHtml, methodLabel } from "./ui.js";
 import {
-  fmtKm, formatSectionLabel, eventDistance, getEBRangeForSectionRange, getEffectiveSectionsPerCable,
+  fmtKm, formatRangeLabel, formatSectionLabel, eventDistance, getEBRangeForSectionRange, getEffectiveSectionsPerCable,
   countUniqueSectionsInPeriod,
 } from "./streamer-utils.js";
 import { openModal, closeModal } from "./modals.js";
@@ -141,8 +141,8 @@ export async function refreshStatsFiltered(
       safeGet("kpi-breakdown").textContent =
         `Active: ${activeCoverage}% (${coverage.spreadActive}/${totalActiveSections}) · Tail: ${tailCoverage}% (${coverage.spreadTail}/${totalTailSections})`;
     } else {
-      safeGet("kpi-breakdown").textContent =
-        `Active: ${activeCoverage}% (${coverage.spreadActive}/${totalActiveSections})`;
+      // Without tail sections the active figure is the overall figure shown above.
+      safeGet("kpi-breakdown").textContent = "";
     }
 
     safeGet("kpi-distance").textContent = fmtKm(data.totalDistance);
@@ -258,7 +258,7 @@ export async function refreshStatsFiltered(
         const bar = document.createElement("div");
         bar.innerHTML = `
           <div class="bar-label">
-            <span>${method}</span>
+            <span>${escapeHtml(methodLabel(method))}</span>
             <span>${distance} m</span>
           </div>
           <div class="bar">
@@ -269,12 +269,104 @@ export async function refreshStatsFiltered(
       });
     }
 
+    await renderMostCleanedSections(startDate, endDate);
+
     await renderStreamerCards(startDate, endDate, coverage.perStreamer);
     renderDailyDistanceChart(startDate, endDate);
   } catch (err) {
     console.error("refreshStatsFiltered failed", err);
     showErrorToast("Stats Error", "Failed to load statistics. Please try again.");
   }
+}
+
+/**
+ * "Most frequently cleaned sections": ranks section ranges by how many times they were cleaned
+ * in the current project and date filter. Neighbouring sections with the same count are one row.
+ * @param {string|null} startDate - YYYY-MM-DD
+ * @param {string|null} endDate - YYYY-MM-DD
+ */
+async function renderMostCleanedSections(startDate, endDate) {
+  const container = safeGet("most-cleaned-sections");
+  if (!container) return;
+
+  let data;
+  try {
+    data = await API.fetchSectionCleanCounts({
+      project: selectedProjectFilter,
+      start: startDate,
+      end: endDate,
+      limit: 10,
+    });
+  } catch (err) {
+    console.error("Failed to load section clean counts", err);
+    container.innerHTML =
+      '<h3 class="section-title">Most Frequently Cleaned Sections</h3><p class="error-text-md">Could not load clean counts</p>';
+    return;
+  }
+
+  container.innerHTML = '<h3 class="section-title">Most Frequently Cleaned Sections</h3>';
+  if (!data.mostCleaned || data.mostCleaned.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "most-cleaned-hint";
+    empty.textContent = "No cleaning events in the selected period.";
+    container.appendChild(empty);
+    return;
+  }
+
+  const hint = document.createElement("p");
+  hint.className = "most-cleaned-hint";
+  hint.textContent =
+    "Times cleaned = number of logged cleaning events covering the section. " +
+    "Neighbouring sections cleaned equally often are shown as one range.";
+  container.appendChild(hint);
+
+  const table = document.createElement("table");
+  table.className = "most-cleaned-table";
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Streamer</th>
+        <th>Sections</th>
+        <th>Times cleaned</th>
+        <th>By method</th>
+        <th>Last cleaned</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  `;
+  const tbody = table.querySelector("tbody");
+
+  data.mostCleaned.forEach((row, index) => {
+    const startLabel = formatSectionLabel(row.sectionIndexStart, row.sectionType);
+    const endLabel = formatSectionLabel(row.sectionIndexEnd, row.sectionType);
+    const range = row.sectionIndexStart === row.sectionIndexEnd ? startLabel : `${startLabel}–${endLabel}`;
+    const sectionsNote = row.sectionCount > 1 ? ` (${row.sectionCount} sections)` : "";
+    const methods = Object.entries(row.byMethod)
+      .sort((a, b) => b[1] - a[1])
+      .map(([method, count]) => `${escapeHtml(methodLabel(method))} ×${count}`)
+      .join(", ");
+    const lastCleaned = row.lastCleanedAt ? new Date(row.lastCleanedAt).toLocaleDateString() : "—";
+    const barWidth = data.maxCount > 0 ? Math.round((row.count / data.maxCount) * 100) : 0;
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${index + 1}</td>
+      <td>S${row.streamerId}</td>
+      <td>${range}<span class="most-cleaned-note">${sectionsNote}</span></td>
+      <td>
+        <div class="most-cleaned-count">
+          <strong>${row.count}</strong>
+          <div class="bar"><div class="bar-fill" style="width: ${barWidth}%"></div></div>
+        </div>
+      </td>
+      <td>${methods}</td>
+      <td>${lastCleaned}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  container.appendChild(table);
 }
 
 export async function resetFilter() {
@@ -360,7 +452,7 @@ function renderRecentCleaningEventsModal() {
 
   function appendEventRow(evt) {
     const sectionType = evt.sectionType || "active";
-    const rangeLabel = `${formatSectionLabel(evt.sectionIndexStart, sectionType)}–${formatSectionLabel(evt.sectionIndexEnd, sectionType)}`;
+    const rangeLabel = formatRangeLabel(evt);
     const ebRange = sectionType === "tail" ? "—" : getEBRangeForSectionRange(evt.sectionIndexStart, evt.sectionIndexEnd, config);
     const tr = document.createElement("tr");
     tr.innerHTML = `
@@ -369,7 +461,7 @@ function renderRecentCleaningEventsModal() {
       <td>${rangeLabel}</td>
       <td>${ebRange}</td>
       <td>${eventDistance(evt)}</td>
-      <td>${evt.cleaningMethod}</td>
+      <td>${escapeHtml(methodLabel(evt.cleaningMethod))}</td>
     `;
     tbody.appendChild(tr);
   }

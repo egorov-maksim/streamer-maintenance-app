@@ -23,13 +23,15 @@ const STREAMER_COLORS = [
 ];
 
 function formatUploadLabel(upload) {
-  const date = upload.uploadedAt ? upload.uploadedAt.slice(0, 10) : "?";
+  const measuredAt = upload.measuredAt || upload.uploadedAt;
+  const date = measuredAt ? measuredAt.slice(0, 10) : "?";
   if (upload.label) return `${date} (${upload.label})`;
   return date;
 }
 
 function shortUploadLabel(upload, index) {
-  const date = upload.uploadedAt ? upload.uploadedAt.slice(0, 10) : `Upload ${index + 1}`;
+  const measuredAt = upload.measuredAt || upload.uploadedAt;
+  const date = measuredAt ? measuredAt.slice(0, 10) : `Upload ${index + 1}`;
   if (upload.label) {
     const short = upload.label.length > 12 ? `${upload.label.slice(0, 10)}…` : upload.label;
     return `${date}\n${short}`;

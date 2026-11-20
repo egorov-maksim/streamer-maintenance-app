@@ -30,7 +30,7 @@
         <p class="login-subtitle">Sign in to access the maintenance dashboard</p>
       </div>
       
-      <form id="login-form" class="login-form" method="post" action="#" onsubmit="return false;">
+      <form id="login-form" class="login-form" method="post" action="#">
         <div class="form-group">
           <label for="login-username">Username</label>
           <div class="input-wrapper">
@@ -58,26 +58,17 @@
               autocomplete="current-password"
               required
             >
-            <button type="button" class="password-toggle" id="password-toggle">👁️</button>
+            <button type="button" class="password-toggle" id="password-toggle" aria-label="Show password" aria-pressed="false">👁️</button>
           </div>
         </div>
         
-        <div id="login-error" class="login-error"></div>
+        <div id="login-error" class="login-error" role="alert"></div>
         
-        <button type="button" class="login-btn" id="login-submit">
+        <button type="submit" class="login-btn" id="login-submit">
           <span class="btn-text">Sign In</span>
           <span class="btn-loader hidden">⏳</span>
         </button>
       </form>
-      
-      <div class="login-footer">
-        <p>Access Levels:</p>
-        <div class="access-info">
-          <span class="access-badge superuser">⚡ Super User</span>
-          <span class="access-badge admin">🔑 Administrator</span>
-          <span class="access-badge viewer">👁️ Viewer</span>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -171,7 +162,8 @@
             <div class="method-name">Knife</div>
           </div>
         </div>
-        <p class="info-text mt-12"><strong>How to mark sections:</strong> Click and drag across active section cells to mark them as cleaned. Your selected method is remembered on this device.</p>
+        <p class="info-text mt-12 hint-pointer"><strong>How to mark sections:</strong> Click and drag across active section cells to mark them as cleaned. Your selected method is remembered on this device. Click an EB cell to enter the date an eBird was cleaned.</p>
+        <p class="info-text mt-12 hint-touch"><strong>How to mark sections:</strong> Tap a section, then set the first and last section in the dialog that opens. Your selected method is remembered on this device. Tap an EB cell to enter the date an eBird was cleaned.</p>
       </section>
 
       <!-- Heat Map -->
@@ -188,7 +180,18 @@
               </div>
               <div class="legend">
                 <div class="badge"><span class="legend-swatch legend-swatch-never"></span> Never cleaned</div>
-                <div class="badge"><span class="legend-swatch legend-swatch-module"></span> EB Module</div>
+                <div class="badge"><span class="legend-swatch legend-swatch-module"></span> EB Module (no cleaning date)</div>
+              </div>
+              <div class="heatmap-method-filter" role="group" aria-labelledby="heatmap-method-filter-label">
+                <span class="heatmap-legend-break-label" id="heatmap-method-filter-label">Count cleaning by:</span>
+                <div class="heatmap-method-toggles" id="heatmap-method-toggles">
+                  <button type="button" class="btn btn-sm btn-outline heatmap-method-toggle" data-method="rope" aria-pressed="true">Rope</button>
+                  <button type="button" class="btn btn-sm btn-outline heatmap-method-toggle" data-method="scraper" aria-pressed="true">Scraper</button>
+                  <button type="button" class="btn btn-sm btn-outline heatmap-method-toggle" data-method="scraper-rope" aria-pressed="true">Scraper&amp;Rope</button>
+                  <button type="button" class="btn btn-sm btn-outline heatmap-method-toggle" data-method="scue" aria-pressed="true">SCUE</button>
+                  <button type="button" class="btn btn-sm btn-outline heatmap-method-toggle" data-method="knife" aria-pressed="true">Knife</button>
+                </div>
+                <span id="heatmap-method-filter-note" class="heatmap-method-filter-note hidden" role="status"></span>
               </div>
             </div>
             <div class="heatmap-legend-breakpoints">
@@ -202,6 +205,10 @@
               <button type="button" id="age-legend-reset-btn" class="btn btn-outline btn-sm heatmap-legend-reset-btn">
                 Reset
               </button>
+              <label class="heatmap-legend-break-label tooltip-recent-count" for="tooltip-recent-count">
+                Recent cleanings in tooltip:
+                <input type="number" id="tooltip-recent-count" class="heatmap-legend-break-input" min="1" max="20" value="3" title="How many recent cleanings the hover tooltip lists">
+              </label>
             </div>
           </div>
         </div>
@@ -338,7 +345,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h3 id="pdf-events-modal-title">🧾 PDF Options</h3>
-        <button class="modal-close" id="btn-pdf-events-close">×</button>
+        <button class="modal-close" id="btn-pdf-events-close" aria-label="Close dialog">×</button>
       </div>
       <div class="modal-body">
         <div class="alert alert-warning">
@@ -378,7 +385,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h3 id="confirm-modal-title">✅ Confirm Cleaning Event</h3>
-        <button class="modal-close" id="btn-modal-close">×</button>
+        <button class="modal-close" id="btn-modal-close" aria-label="Close dialog">×</button>
       </div>
       <div class="modal-body">
         <div class="grid grid-2">
@@ -419,13 +426,42 @@
     </div>
   </div>
 
+  <!-- eBird Cleaning Modal (opened by clicking an EB cell in the heatmap) -->
+  <div id="eb-clean-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="eb-clean-modal-title">
+    <div class="modal-overlay" aria-hidden="true"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h3 id="eb-clean-modal-title">eBird Cleaning</h3>
+          <p id="eb-clean-modal-subtitle" class="modal-subtitle"></p>
+        </div>
+        <button type="button" class="modal-close" id="btn-eb-clean-close" aria-label="Close dialog">×</button>
+      </div>
+      <div class="modal-body">
+        <div id="eb-clean-form" class="admin-only">
+          <div class="grid grid-2">
+            <label>Date cleaned <input type="date" id="eb-clean-date"></label>
+            <label>Time <input type="time" id="eb-clean-time"></label>
+          </div>
+        </div>
+        <h4 class="eb-clean-history-title">Cleaning dates entered</h4>
+        <p id="eb-clean-empty" class="modal-body-note">No cleaning date entered for this eBird yet.</p>
+        <ul id="eb-clean-list" class="eb-clean-list"></ul>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btn-eb-clean-cancel">Close</button>
+        <button type="button" class="btn btn-primary admin-only" id="btn-eb-clean-save">Save Date</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Edit Event Modal -->
   <div id="edit-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title">
     <div class="modal-overlay" aria-hidden="true"></div>
     <div class="modal-content">
       <div class="modal-header">
         <h3 id="edit-modal-title">✏️ Edit Cleaning Event</h3>
-        <button class="modal-close" id="btn-edit-close">×</button>
+        <button class="modal-close" id="btn-edit-close" aria-label="Close dialog">×</button>
       </div>
       <div class="modal-body">
         <input type="hidden" id="edit-event-id">
@@ -464,7 +500,7 @@
     <div class="modal-content modal-delete">
       <div class="modal-header modal-header-delete">
         <h3 id="delete-modal-title">🗑️ Delete Cleaning Event</h3>
-        <button class="modal-close" id="btn-delete-close">×</button>
+        <button class="modal-close" id="btn-delete-close" aria-label="Close dialog">×</button>
       </div>
       <div class="modal-body">
         <input type="hidden" id="delete-event-id">
@@ -516,7 +552,7 @@
     <div class="modal-content modal-delete">
       <div class="modal-header modal-header-delete">
         <h3 id="clear-all-modal-title">⚠️ Clear All Events</h3>
-        <button class="modal-close" id="btn-clear-all-close">×</button>
+        <button class="modal-close" id="btn-clear-all-close" aria-label="Close dialog">×</button>
       </div>
       
       <div class="modal-body">
@@ -573,7 +609,7 @@
     <div class="modal-content modal-delete">
       <div class="modal-header modal-header-warning">
         <h3 id="adjacent-merge-modal-title">Adjacent Cleaning Event</h3>
-        <button class="modal-close" id="btn-adjacent-merge-close">×</button>
+        <button class="modal-close" id="btn-adjacent-merge-close" aria-label="Close dialog">×</button>
       </div>
       <div class="modal-body">
         <div class="clean-warning">
@@ -599,7 +635,7 @@
     <div class="modal-content modal-delete">
       <div class="modal-header modal-header-warning">
         <h3 id="recent-clean-modal-title">Area Recently Cleaned</h3>
-        <button class="modal-close" id="btn-recent-clean-close">×</button>
+        <button class="modal-close" id="btn-recent-clean-close" aria-label="Close dialog">×</button>
       </div>
       <div class="modal-body">
         <div class="clean-warning">
@@ -624,7 +660,7 @@
     <div class="modal-content modal-delete">
       <div class="modal-header modal-header-delete">
         <h3 id="restore-confirm-title">⚠️ Restore Backup</h3>
-        <button class="modal-close" id="btn-restore-confirm-close">×</button>
+        <button class="modal-close" id="btn-restore-confirm-close" aria-label="Close dialog">×</button>
       </div>
       <div class="modal-body">
         <div class="delete-warning">
@@ -658,7 +694,7 @@
           <h3 id="recent-cleaning-events-title">🧹 Cleaning Events — Today &amp; Yesterday</h3>
           <p id="recent-cleaning-events-subtitle" class="modal-subtitle"></p>
         </div>
-        <button type="button" class="modal-close" id="btn-recent-cleaning-events-close">×</button>
+        <button type="button" class="modal-close" id="btn-recent-cleaning-events-close" aria-label="Close dialog">×</button>
       </div>
       <div class="modal-body">
         <p id="recent-cleaning-events-empty" class="hidden modal-body-note">No cleaning events recorded in the last two days.</p>
@@ -690,7 +726,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h3 id="export-csv-modal-title">📥 Export cleaning log (CSV)</h3>
-        <button type="button" class="modal-close" id="btn-export-csv-close">×</button>
+        <button type="button" class="modal-close" id="btn-export-csv-close" aria-label="Close dialog">×</button>
       </div>
       <div class="modal-body">
         <p class="modal-body-note">

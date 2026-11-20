@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fleet Overview – Streamer Maintenance Tracker</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/libs/notyf.min.css">
+</head>
+<body>
+
+  <!-- Login Page -->
+  <div id="login-page" class="login-page hidden">
+    <div class="login-container">
+      <div class="login-header">
+        <div class="login-logo">🌊</div>
+        <h1>Streamers Scraping Tracker</h1>
+        <p class="login-subtitle">Sign in to access the fleet overview</p>
+      </div>
+      
+      <form id="login-form" class="login-form" method="post" action="#">
+        <div class="form-group">
+          <label for="login-username">Username</label>
+          <div class="input-wrapper">
+            <span class="input-icon">👤</span>
+            <input 
+              type="text" 
+              id="login-username" 
+              name="username" 
+              placeholder="Enter your username"
+              autocomplete="username"
+              required
+            >
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="login-password">Password</label>
+          <div class="input-wrapper">
+            <span class="input-icon">🔒</span>
+            <input 
+              type="password" 
+              id="login-password" 
+              name="password" 
+              placeholder="Enter your password"
+              autocomplete="current-password"
+              required
+            >
+            <button type="button" class="password-toggle" id="password-toggle" aria-label="Show password" aria-pressed="false">👁️</button>
+          </div>
+        </div>
+        
+        <div id="login-error" class="login-error" role="alert"></div>
+        
+        <button type="submit" class="login-btn" id="login-submit">
+          <span class="btn-text">Sign In</span>
+          <span class="btn-loader hidden">⏳</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main App Container (hidden until logged in) -->
+  <div id="app-container" class="app-container hidden">
+
+    <!-- User Header Bar -->
+    <div class="user-header">
+      <div class="user-info">
+        <span class="user-avatar">👤</span>
+        <span class="user-name" id="user-display-name">User</span>
+        <span class="user-role-badge" id="user-role-badge">Viewer</span>
+      </div>
+      <div class="user-header-actions">
+        <button class="logout-btn" id="logout-btn">
+          <span>🚪</span> Logout
+        </button>
+      </div>
+    </div>
+
+    <div class="main-wrapper">
+      <header class="overview-header">
+        <div>
+          <h1>Fleet Overview</h1>
+          <p id="overview-context" class="subheader"></p>
+        </div>
+        <div class="overview-controls">
+          <label>Vessel
+            <select id="overview-vessel"></select>
+          </label>
+          <label>Period
+            <select id="overview-days">
+              <option value="7">Last 7 days</option>
+              <option value="30" selected>Last 30 days</option>
+              <option value="90">Last 90 days</option>
+            </select>
+          </label>
+        </div>
+      </header>
+
+      <main>
+        <div id="overview-error" class="overview-error hidden" role="alert"></div>
+        <div id="overview-kpis" class="kpis"></div>
+
+        <section id="overview-cleaning" class="card">
+          <h2 class="card-title">Cleaning</h2>
+          <p id="overview-cleaning-msg" class="overview-msg hidden"></p>
+          <div class="overview-chart"><canvas id="overview-daily-distance-chart"></canvas></div>
+          <div id="overview-overdue"></div>
+        </section>
+
+        <section id="overview-noise" class="card">
+          <h2 class="card-title">Noise</h2>
+          <p id="overview-noise-msg" class="overview-msg hidden"></p>
+          <div class="overview-chart"><canvas id="overview-rms-chart"></canvas></div>
+          <div id="overview-worst-streamers"></div>
+        </section>
+
+        <section id="overview-efficiency" class="card">
+          <h2 class="card-title">Cleaning efficiency</h2>
+          <p id="overview-efficiency-msg" class="overview-msg hidden"></p>
+          <div class="overview-chart"><canvas id="overview-efficiency-chart"></canvas></div>
+          <div id="overview-efficiency-stats"></div>
+        </section>
+      </main>
+    </div>
+
+  </div>
+
+  <script src="/libs/chart.umd.min.js"></script>
+  <script src="/libs/notyf.min.js"></script>
+  <script type="module" src="/overview-page.js"></script>
+</body>
+</html>

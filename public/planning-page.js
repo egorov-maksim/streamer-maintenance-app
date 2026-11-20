@@ -11,6 +11,7 @@ import {
   setupPasswordToggle,
   isGrandSuperUser,
   isAdminOrAbove,
+  isSuperUser,
 } from "./js/auth.js";
 import * as Projects from "./js/projects.js";
 import * as API from "./js/api.js";
@@ -37,6 +38,11 @@ import {
   getEffectiveSectionsPerCable,
 } from "./js/streamer-utils.js";
 import { validateNoiseCsv } from "./js/noise-validation.js";
+import { buildSectionTooltipHtml } from "./js/section-tooltip.js";
+import { loadTooltipRecentCount, initTooltipRecentCountInput } from "./js/tooltip-history-prefs.js";
+import { latestEbCleaningMap, applyEbCleaningStatus, buildEbTooltipHtml } from "./js/eb-status.js";
+import { aggregateNoiseDatasets } from "./js/noise-aggregate.js";
+import { toDateTimeLocalInputValue, dateTimeLocalInputToIso } from "./js/date-utils.js";
 import {
   shouldInsertModuleAfterSection,
   countHeatmapColumnRows,
@@ -49,6 +55,7 @@ import {
   rmsToColor,
   rmsTextColor,
   paintScrapingAgeCells,
+  paintEbAgeCells,
   scrapingAgeLegendGradient,
   noiseLegendGradient,
   renderAgeTicks,
@@ -138,7 +145,8 @@ function removeNoiseOverlay(container) {
 
 /**
  * Populate the upload-history selector with past uploads.
- * @param {Array<{ id: number, label: string|null, uploadedAt: string }>} uploads
+ * Dates shown are the sequence time when entered, otherwise the upload time.
+ * @param {Array<{ id: number, label: string|null, uploadedAt: string, measuredAt?: string }>} uploads
  */
 function populateUploadSelector(uploads) {
   const selector = safeGet("noise-upload-selector");
@@ -148,7 +156,7 @@ function populateUploadSelector(uploads) {
   uploads.forEach(u => {
     const opt = document.createElement("option");
     opt.value = u.id;
-    const date = new Date(u.uploadedAt).toLocaleDateString();
+    const date = new Date(u.measuredAt || u.uploadedAt).toLocaleDateString();
     opt.textContent = u.label ? `${date} — ${u.label}` : date;
     selector.appendChild(opt);
   });
@@ -157,6 +165,114 @@ function populateUploadSelector(uploads) {
 function setNoiseSelectorValue(uploadId) {
   const selector = safeGet("noise-upload-selector");
   if (selector && uploadId != null) selector.value = String(uploadId);
+}
+
+/**
+ * Render the sequence checkboxes for averaging. Drops ticks for uploads that no longer exist.
+ * @param {Array<{ id: number, label: string|null, uploadedAt: string, measuredAt?: string }>} uploads
+ * @returns {number[]} ids still ticked after pruning
+ */
+function populateComparePicker(uploads) {
+  const panel = safeGet("noise-compare-panel");
+  const list = safeGet("noise-compare-list");
+  const available = new Set(uploads.map((u) => u.id));
+  [selectedNoiseUploadIds, pendingNoiseUploadIds].forEach((ids) => {
+    [...ids].forEach((id) => {
+      if (!available.has(id)) ids.delete(id);
+    });
+  });
+
+  if (list) {
+    list.replaceChildren();
+    uploads.forEach((u) => {
+      const label = document.createElement("label");
+      label.className = "noise-compare-option";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = String(u.id);
+      checkbox.checked = pendingNoiseUploadIds.has(u.id);
+      // Label first (what crews call the sequence), date second and muted.
+      const date = new Date(u.measuredAt || u.uploadedAt).toLocaleDateString();
+      const name = document.createElement("span");
+      name.className = "noise-compare-option-name";
+      name.textContent = u.label || date;
+      label.append(checkbox, name);
+      if (u.label) {
+        const dateEl = document.createElement("span");
+        dateEl.className = "noise-compare-option-date";
+        dateEl.textContent = date;
+        label.append(dateEl);
+      }
+      list.appendChild(label);
+    });
+  }
+
+  if (uploads.length === 0 && panel) panel.open = false;
+  panel?.classList.toggle("hidden", uploads.length === 0);
+  updateComparePickerSummary();
+  return [...selectedNoiseUploadIds];
+}
+
+/**
+ * Sync everything the picker shows. The count badge on the button and the upload selector
+ * describe what the heatmap shows; the rows, status line and footer buttons describe the
+ * ticks, which only reach the heatmap on "Show on heatmap".
+ */
+function updateComparePickerSummary() {
+  const panel = safeGet("noise-compare-panel");
+  if (!panel) return;
+  const count = selectedNoiseUploadIds.size;
+  const averaging = count >= 2;
+  const overlayOn = isNoiseToggleOn();
+  const tickedCount = pendingNoiseUploadIds.size;
+  const pendingChanges = hasPendingNoiseChanges();
+
+  panel.classList.toggle("is-active", averaging);
+  const selector = document.getElementById("noise-upload-selector");
+  if (selector) {
+    selector.classList.toggle("is-overridden", averaging);
+    selector.title = averaging
+      ? "An average of several sequences is shown. Choose an upload here to go back to a single one."
+      : "Select a historical noise upload to display";
+  }
+
+  const countEl = document.getElementById("noise-compare-count");
+  if (countEl) {
+    countEl.textContent = String(count);
+    countEl.classList.toggle("hidden", !averaging);
+  }
+  panel.querySelector("summary")?.setAttribute(
+    "aria-label",
+    averaging ? `Average of ${count} sequences` : "Average sequences"
+  );
+
+  panel.querySelectorAll(".noise-compare-option").forEach((row) => {
+    row.classList.toggle("is-checked", row.querySelector("input")?.checked === true);
+  });
+
+  const statusEl = document.getElementById("noise-compare-status");
+  if (statusEl) {
+    if (tickedCount === 0) statusEl.textContent = pendingChanges ? "None ticked. Show on heatmap to stop averaging." : "None ticked";
+    else if (tickedCount === 1) statusEl.textContent = "1 ticked. Tick one more to average.";
+    else if (pendingChanges) statusEl.textContent = `${tickedCount} ticked. Show on heatmap to apply.`;
+    else statusEl.textContent = overlayOn ? `Averaging ${tickedCount} sequences` : `${tickedCount} ticked. Noise overlay is off.`;
+  }
+
+  const clearBtn = document.getElementById("noise-compare-clear");
+  if (clearBtn) clearBtn.disabled = tickedCount === 0;
+  // Changed ticks, or an average ready with the overlay off: the main button shows them.
+  const doneBtn = document.getElementById("noise-compare-done");
+  if (doneBtn) {
+    doneBtn.textContent = pendingChanges || (tickedCount >= 2 && !overlayOn) ? "Show on heatmap" : "Done";
+  }
+}
+
+/** Close the sequence picker and return focus to its button. */
+function closeComparePicker({ restoreFocus = true } = {}) {
+  const panel = safeGet("noise-compare-panel");
+  if (!panel?.open) return;
+  panel.open = false;
+  if (restoreFocus) panel.querySelector("summary")?.focus();
 }
 
 function getSelectedNoiseUploadId() {
@@ -196,6 +312,13 @@ function updateNoiseToolbarStatus(message = null) {
     return;
   }
 
+  if (selectedNoiseUploadIds.size >= 2) {
+    statusEl.textContent = `Average of ${selectedNoiseUploadIds.size} sequences. Range is shown in the section tooltip.`;
+    statusEl.classList.toggle("hidden", !overlayOn);
+    if (waterSpeedEl) waterSpeedEl.classList.add("hidden");
+    return;
+  }
+
   if (!noiseUploads.length) {
     statusEl.textContent = "";
     statusEl.classList.add("hidden");
@@ -212,9 +335,11 @@ function updateNoiseToolbarStatus(message = null) {
     return;
   }
 
-  const date = new Date(selectedUpload.uploadedAt).toLocaleDateString();
+  const date = new Date(selectedUpload.measuredAt || selectedUpload.uploadedAt).toLocaleDateString();
   const label = selectedUpload.label ? ` - ${selectedUpload.label}` : "";
-  statusEl.textContent = `Showing RMS upload from ${date}${label}.`;
+  // Without a sequence time the date is only when the file was uploaded.
+  const dateNote = selectedUpload.recordedAt ? "" : " (upload date; no sequence time entered)";
+  statusEl.textContent = `Showing RMS upload from ${date}${dateNote}${label}.`;
   statusEl.classList.toggle("hidden", !overlayOn);
 
   // Show water speed summary near the toggle when the overlay is active
@@ -253,6 +378,8 @@ function closeNoiseWaterSpeedModal() {
   const endInput = safeGet("noise-upload-speed-end");
   if (startInput) startInput.value = "";
   if (endInput) endInput.value = "";
+  const recordedAtInput = safeGet("noise-upload-recorded-at");
+  if (recordedAtInput) recordedAtInput.value = "";
   closeModal("noise-water-speed-modal");
 }
 
@@ -302,6 +429,10 @@ function updatePlanningHeatmapCardTitle() {
 /* ------------ Tooltip ------------ */
 
 let tooltipEl = null;
+/** Cleaning events for the selected project, loaded with the heatmap. */
+let planningEvents = [];
+/** eBird cleaning entries for the EB tooltips, newest first. */
+let planningEbCleanings = [];
 
 function getTooltip() {
   if (!tooltipEl) {
@@ -322,16 +453,17 @@ function positionTooltip(el, event) {
   const rect = el.getBoundingClientRect();
   const x = baseX + rect.width > window.innerWidth ? baseX - rect.width - 30 : baseX;
   const y = baseY + rect.height > window.innerHeight ? baseY - rect.height - 30 : baseY;
+  // Keep a tall tooltip on screen instead of letting it run off the top or left edge.
 
-  el.style.left = `${x}px`;
-  el.style.top = `${y}px`;
+  el.style.left = `${Math.max(8, x)}px`;
+  el.style.top = `${Math.max(8, y)}px`;
 }
 
 function hideTooltip() {
   if (tooltipEl) tooltipEl.classList.remove("show");
 }
 
-function attachSectionTooltips(container, lastCleaned) {
+function attachSectionTooltips(container) {
   const cells = container.querySelectorAll(".hm-vcell.hm-planning-cell");
 
   cells.forEach(cell => {
@@ -344,30 +476,33 @@ function attachSectionTooltips(container, lastCleaned) {
       const relIndex = isTail ? sectionIndex - effectiveSectionsForStreamer : sectionIndex;
       const sectionLabel = formatSectionLabel(relIndex, isTail ? "tail" : "active");
 
-      const sections = lastCleaned[streamerId] || [];
-      const lastDate = sections[sectionIndex] || null;
-
-      let daysSince = null;
-      if (lastDate) {
-        daysSince = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
-      }
-
-      const tip = getTooltip();
-      let html = `<div class="tooltip-header">Streamer ${streamerId}, Section ${sectionLabel}</div>`;
-      if (lastDate) {
-        html += `<div class="tooltip-row">Last cleaned: ${new Date(lastDate).toLocaleDateString()}</div>`;
-        html += `<div class="tooltip-row">Days since: ${daysSince}</div>`;
-      } else {
-        html += `<div class="tooltip-row">Never cleaned</div>`;
-      }
-
-      // Append RMS noise value if data is available for this active section
+      // RMS noise for active sections, shown alongside the cleaning history
+      let rmsHtml = "";
       if (!isTail && noiseData) {
         const rms = noiseData[streamerId]?.[sectionIndex] ?? 0;
         if (rms > 0) {
-          html += `<div class="tooltip-row">RMS noise: <strong>${rms.toFixed(2)}</strong></div>`;
+          const label = noiseRange ? "Average RMS" : "RMS noise";
+          rmsHtml += `<div class="tooltip-row"><span class="tooltip-label">${label}</span><span class="tooltip-value">${rms.toFixed(2)}</span></div>`;
+          const range = noiseRange?.[streamerId]?.[sectionIndex];
+          if (range && range.count >= 2) {
+            rmsHtml += `<div class="tooltip-row"><span class="tooltip-label">Range</span><span class="tooltip-value">${range.min.toFixed(2)}–${range.max.toFixed(2)} (${range.count} sequences)</span></div>`;
+          }
         }
       }
+
+      const tip = getTooltip();
+      // Planning cells are coloured from api/last-cleaned, which counts every method,
+      // so the tooltip counts every method too.
+      const html = buildSectionTooltipHtml({
+        streamerId,
+        sectionIndex,
+        isTail,
+        relIndex,
+        sectionLabel,
+        events: planningEvents,
+        extraHtml: rmsHtml,
+        recentCount: loadTooltipRecentCount(),
+      });
 
       tip.innerHTML = html;
       // Show first so getBoundingClientRect() returns real dimensions for clamping
@@ -381,6 +516,35 @@ function attachSectionTooltips(container, lastCleaned) {
       }
     });
 
+    cell.addEventListener("mouseleave", hideTooltip);
+  });
+}
+
+/**
+ * Hover tooltip on every EB cell, matching the main page. EB cells are read-only here;
+ * cleaning dates are entered from the main page.
+ */
+function attachEbTooltips(container) {
+  container.querySelectorAll(".hm-vcell.hm-module[data-eb-num]").forEach(cell => {
+    const streamerId = parseInt(cell.dataset.ebStreamer, 10);
+    const ebNumber = parseInt(cell.dataset.ebNum, 10);
+    if (!streamerId || !ebNumber) return;
+
+    cell.addEventListener("mouseenter", (e) => {
+      const tip = getTooltip();
+      tip.innerHTML = buildEbTooltipHtml({
+        streamerId,
+        ebNumber,
+        entries: planningEbCleanings.filter(entry => entry.streamerId === streamerId && entry.ebNumber === ebNumber),
+        hint: "Cleaning dates are entered on the main page",
+        recentCount: loadTooltipRecentCount(),
+      });
+      tip.classList.add("show");
+      positionTooltip(tip, e);
+    });
+    cell.addEventListener("mousemove", (e) => {
+      if (tooltipEl && tooltipEl.classList.contains("show")) positionTooltip(tooltipEl, e);
+    });
     cell.addEventListener("mouseleave", hideTooltip);
   });
 }
@@ -615,7 +779,11 @@ function initSuggestionsThresholdControl() {
 
   const currentThreshold = config?.suggestedCleaningThresholdDays ?? DEFAULT_DAYS_THRESHOLD;
 
-  if (displayEl) displayEl.textContent = `${currentThreshold}d`;
+  if (displayEl) {
+    displayEl.textContent = `${currentThreshold} days`;
+    // Editors see the same number in the input next to it.
+    displayEl.classList.toggle("hidden", isSuperUser());
+  }
   if (inputEl) inputEl.value = currentThreshold;
 
   if (!saveBtn) return;
@@ -652,7 +820,7 @@ function initSuggestionsThresholdControl() {
 
       // Update shared config state so computeCleaningSuggestions picks it up immediately.
       if (config) config.suggestedCleaningThresholdDays = raw;
-      if (displayEl) displayEl.textContent = `${raw}d`;
+      if (displayEl) displayEl.textContent = `${raw} days`;
 
       // Recompute suggestions from cached data without re-fetching the heatmap.
       if (currentLastCleaned) {
@@ -763,11 +931,23 @@ async function renderPlanningHeatmap() {
   container.innerHTML = "";
 
   try {
-    let url = "api/last-cleaned";
-    if (selectedProjectFilter) {
-      url += `?project=${encodeURIComponent(selectedProjectFilter)}`;
-    }
-    const data = await API.apiCall(url);
+    const projectQuery = selectedProjectFilter ? `?project=${encodeURIComponent(selectedProjectFilter)}` : "";
+    const [data, loadedEvents, loadedEbCleanings] = await Promise.all([
+      API.apiCall(`api/last-cleaned${projectQuery}`),
+      // Cleaning history for the section tooltips; the heatmap still renders without it.
+      API.apiCall(`api/events${projectQuery}`).catch(err => {
+        console.debug("Cleaning events fetch failed:", err?.message ?? err);
+        return [];
+      }),
+      // eBird cleaning dates, same scope as the main page; EB cells stay plain without them.
+      API.fetchEbCleanings(selectedProjectFilter ? { project: selectedProjectFilter } : {}).catch(err => {
+        console.debug("eBird cleaning dates fetch failed:", err?.message ?? err);
+        return [];
+      }),
+    ]);
+    planningEvents = Array.isArray(loadedEvents) ? loadedEvents : [];
+    planningEbCleanings = Array.isArray(loadedEbCleanings) ? loadedEbCleanings : [];
+    const latestEbCleaning = latestEbCleaningMap(planningEbCleanings);
     const lastCleaned = data.lastCleaned;
     currentLastCleaned = lastCleaned;
 
@@ -901,10 +1081,9 @@ async function renderPlanningHeatmap() {
             cell.dataset.daysText = daysText;
             cell.textContent = daysText;
           } else if (type === 'module') {
-            const ebLabel = String(modNum).padStart(2, '0');
             cell.className = 'hm-vcell hm-module';
-            cell.textContent = `EB${ebLabel}`;
-            cell.title = `Equipment Box ${ebLabel}`;
+            cell.textContent = formatEB(modNum);
+            applyEbCleaningStatus(cell, streamerId, modNum, latestEbCleaning);
           } else {
             const tailSectionIdx = effectiveSections + tailIdx;
             const lastDate = sections[tailSectionIdx] || null;
@@ -933,7 +1112,7 @@ async function renderPlanningHeatmap() {
       wrapper.className = "hm-grid-vertical";
       wrapper.style.width = "100%";
       wrapper.style.display = "grid";
-      wrapper.style.gridTemplateColumns = `repeat(${cableCount + 1}, 1fr)`;
+      wrapper.style.gridTemplateColumns = `repeat(${cableCount + 1}, minmax(var(--hm-col-min, auto), 1fr))`;
       wrapper.style.gap = "4px";
       wrapper.style.columnGap = "8px";
       wrapper.style.setProperty("--hm-cell-w", "100%");
@@ -1020,7 +1199,7 @@ async function renderPlanningHeatmap() {
             const moduleCell = document.createElement("div");
             moduleCell.className = "hm-vcell hm-module";
             moduleCell.textContent = formatEB(moduleNum);
-            moduleCell.title = `Equipment Box ${String(moduleNum).padStart(2, "0")}`;
+            applyEbCleaningStatus(moduleCell, streamerId, moduleNum, latestEbCleaning);
             col.appendChild(moduleCell);
             moduleNum++;
           }
@@ -1053,7 +1232,8 @@ async function renderPlanningHeatmap() {
     }
 
     container.appendChild(wrapper);
-    attachSectionTooltips(container, lastCleaned);
+    attachSectionTooltips(container);
+    attachEbTooltips(container);
 
     if (isNoiseToggleOn() && noiseData) {
       applyNoiseOverlay(container, noiseData);
@@ -1061,6 +1241,8 @@ async function renderPlanningHeatmap() {
       // Apply continuous age gradient whenever noise overlay is not active
       paintScrapingAgeCells(container, loadHeatmapLegendPrefs());
     }
+    // eBirds have no noise reading, so they always show cleaning age, as on the main page.
+    paintEbAgeCells(container, loadHeatmapLegendPrefs());
 
     updatePlanningHeatmapCardTitle();
   } catch (err) {
@@ -1070,6 +1252,42 @@ async function renderPlanningHeatmap() {
 }
 
 /* ------------ Noise data loading ------------ */
+
+// Uploads the heatmap is averaging. Two or more are averaged per section.
+const selectedNoiseUploadIds = new Set();
+// Uploads ticked in the sequence picker. They reach the heatmap only on "Show on heatmap".
+const pendingNoiseUploadIds = new Set();
+// Per-section min/max/count across the averaged sequences; null in single-upload view.
+let noiseRange = null;
+
+/** True when the picker's ticks differ from what the heatmap shows. */
+function hasPendingNoiseChanges() {
+  if (pendingNoiseUploadIds.size !== selectedNoiseUploadIds.size) return true;
+  return [...pendingNoiseUploadIds].some((id) => !selectedNoiseUploadIds.has(id));
+}
+
+/** Tick the picker checkboxes to match the pending ticks. */
+function syncComparePickerChecks() {
+  document.querySelectorAll("#noise-compare-list input[type='checkbox']").forEach((cb) => {
+    cb.checked = pendingNoiseUploadIds.has(Number(cb.value));
+  });
+  updateComparePickerSummary();
+}
+
+/** Drop ticks that were never shown, so the picker matches the heatmap again. */
+function discardPendingNoiseChanges() {
+  if (!hasPendingNoiseChanges()) return;
+  pendingNoiseUploadIds.clear();
+  selectedNoiseUploadIds.forEach((id) => pendingNoiseUploadIds.add(id));
+  syncComparePickerChecks();
+}
+
+function clearNoiseSelection() {
+  selectedNoiseUploadIds.clear();
+  pendingNoiseUploadIds.clear();
+  noiseRange = null;
+  syncComparePickerChecks();
+}
 
 async function loadNoiseData(uploadId, projectNumber) {
   try {
@@ -1096,6 +1314,50 @@ async function loadNoiseUploads(projectNumber) {
 }
 
 /**
+ * Load every ticked sequence and show their per-section average and range.
+ * With fewer than two ticked sequences this does nothing; callers load the single upload.
+ */
+async function applyNoiseSelection() {
+  const ids = [...selectedNoiseUploadIds];
+  if (ids.length < 2) {
+    noiseRange = null;
+    return;
+  }
+  try {
+    const results = await Promise.all(ids.map((id) => API.getNoiseData(id, selectedProjectFilter)));
+    const { mean, range } = aggregateNoiseDatasets(results.map((r) => r.noiseData || {}));
+    setNoiseData(mean);
+    noiseRange = range;
+  } catch (err) {
+    console.error("Averaging RMS sequences failed:", err);
+    showErrorToast("Could not average sequences", "Showing the selected upload instead.");
+    clearNoiseSelection();
+    await loadNoiseData(getSelectedNoiseUploadId(), selectedProjectFilter);
+  }
+}
+
+/**
+ * Show the picker's ticks on the heatmap: load and average them, then redraw.
+ */
+async function applyComparePickerTicks() {
+  selectedNoiseUploadIds.clear();
+  pendingNoiseUploadIds.forEach((id) => selectedNoiseUploadIds.add(id));
+  const ids = [...selectedNoiseUploadIds];
+  if (ids.length >= 2) {
+    await applyNoiseSelection();
+  } else {
+    noiseRange = null;
+    const singleId = ids.length === 1 ? ids[0] : getSelectedNoiseUploadId();
+    if (ids.length === 1) setNoiseSelectorValue(ids[0]);
+    await loadNoiseData(singleId, selectedProjectFilter);
+  }
+  updateComparePickerSummary();
+  updateNoiseToolbarStatus();
+  updatePlanningHeatmapCardTitle();
+  await renderPlanningHeatmap();
+}
+
+/**
  * Reload all noise controls for the given project.
  * Called on init and whenever the project filter changes.
  * @param {string|null} projectNumber
@@ -1107,6 +1369,8 @@ async function refreshNoiseForProject(projectNumber, preferredUploadId = null) {
   if (!projectNumber) {
     // No project selected — clear noise state and disable controls
     setNoiseData(null);
+    clearNoiseSelection();
+    populateComparePicker([]);
     setNoiseUploads([]);
     selector?.classList.add("hidden");
     syncNoiseActionButtons();
@@ -1132,15 +1396,25 @@ async function refreshNoiseForProject(projectNumber, preferredUploadId = null) {
   if (uploads.length > 0) {
     populateUploadSelector(uploads);
     selector?.classList.remove("hidden");
+    const tickedIds = populateComparePicker(uploads);
     const hasPreferredUpload = preferredUploadId != null
       && uploads.some((upload) => upload.id === preferredUploadId);
-    const nextUploadId = hasPreferredUpload ? preferredUploadId : null;
-    const activeUpload = await loadNoiseData(nextUploadId, projectNumber);
-    if (activeUpload?.uploadId) setNoiseSelectorValue(activeUpload.uploadId);
+    const nextUploadId = tickedIds.length === 1
+      ? tickedIds[0]
+      : (hasPreferredUpload ? preferredUploadId : null);
+    if (tickedIds.length >= 2) {
+      await applyNoiseSelection();
+    } else {
+      noiseRange = null;
+      const activeUpload = await loadNoiseData(nextUploadId, projectNumber);
+      if (activeUpload?.uploadId) setNoiseSelectorValue(activeUpload.uploadId);
+    }
 
     enableNoiseToggle(true);
   } else {
     setNoiseData(null);
+    clearNoiseSelection();
+    populateComparePicker([]);
     selector?.classList.add("hidden");
     enableNoiseToggle(false);
     // Turn off toggle if it was on
@@ -1200,6 +1474,7 @@ function initNoiseControls() {
 
   // Toggle handler
   toggle?.addEventListener("change", () => {
+    updateComparePickerSummary();
     const container = safeGet("planning-heatmap-container");
     if (!container) return;
     const ageLegend = safeGet("age-legend");
@@ -1223,11 +1498,61 @@ function initNoiseControls() {
     updatePlanningHeatmapCardTitle();
   });
 
+  // Sequence picker handler — tick/untick sequences to average them
+  safeGet("noise-compare-list")?.addEventListener("change", (e) => {
+    const checkbox = e.target;
+    if (!(checkbox instanceof HTMLInputElement) || checkbox.type !== "checkbox") return;
+    const id = Number(checkbox.value);
+    // Ticks wait in the picker; the heatmap only changes on "Show on heatmap".
+    if (checkbox.checked) pendingNoiseUploadIds.add(id);
+    else pendingNoiseUploadIds.delete(id);
+    updateComparePickerSummary();
+  });
+
+  // Clear: untick everything; "Show on heatmap" then goes back to the single selected upload
+  safeGet("noise-compare-clear")?.addEventListener("click", () => {
+    if (!pendingNoiseUploadIds.size) return;
+    pendingNoiseUploadIds.clear();
+    syncComparePickerChecks();
+  });
+
+  // Closing the picker any other way drops ticks that were never shown
+  safeGet("noise-compare-panel")?.addEventListener("toggle", (e) => {
+    if (!e.currentTarget.open) discardPendingNoiseChanges();
+  });
+
+  // Done / Show on heatmap: close, apply changed ticks, and switch the overlay on for an average
+  safeGet("noise-compare-done")?.addEventListener("click", async () => {
+    const toggleEl = safeGet("noise-toggle");
+    const pendingChanges = hasPendingNoiseChanges();
+    const turnOverlayOn =
+      pendingNoiseUploadIds.size >= 2 && toggleEl && !toggleEl.checked && !toggleEl.disabled;
+    // Commit the ticks before closing, so closing does not discard them.
+    const apply = pendingChanges ? applyComparePickerTicks() : null;
+    // Close first so focus returns to the picker button before the overlay switches on.
+    closeComparePicker();
+    if (apply) await apply;
+    if (turnOverlayOn && selectedNoiseUploadIds.size >= 2) toggleEl.click();
+  });
+
+  // The picker is a dropdown: Escape and a click outside close it
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && safeGet("noise-compare-panel")?.open) closeComparePicker();
+  });
+  document.addEventListener("click", (e) => {
+    const panel = document.getElementById("noise-compare-panel");
+    if (panel?.open && e.target instanceof Node && !panel.contains(e.target)) {
+      closeComparePicker({ restoreFocus: false });
+    }
+  });
+
   // Upload selector handler — load chosen batch and re-render
   selector?.addEventListener("change", async (e) => {
     const uploadId = e.target.value;
     syncNoiseActionButtons();
     if (!uploadId) return;
+    // Choosing a single upload leaves the averaging view
+    if (selectedNoiseUploadIds.size) clearNoiseSelection();
     await loadNoiseData(uploadId, selectedProjectFilter);
     updateNoiseToolbarStatus();
     await renderPlanningHeatmap();
@@ -1247,6 +1572,12 @@ function initNoiseControls() {
     const speedEndInput = safeGet("noise-rename-speed-end");
     if (speedStartInput) speedStartInput.value = selectedUpload?.waterSpeedStart ?? "";
     if (speedEndInput) speedEndInput.value = selectedUpload?.waterSpeedEnd ?? "";
+    const recordedAtInput = safeGet("noise-rename-recorded-at");
+    if (recordedAtInput) {
+      recordedAtInput.value = selectedUpload?.recordedAt
+        ? toDateTimeLocalInputValue(new Date(selectedUpload.recordedAt))
+        : "";
+    }
 
     openModal("noise-rename-modal");
     requestAnimationFrame(() => {
@@ -1273,7 +1604,9 @@ function initNoiseControls() {
 
     renameModalSaveBtn.disabled = true;
     try {
-      await API.updateNoiseUpload(uploadId, { label: trimmedLabel, waterSpeedStart, waterSpeedEnd });
+      // An empty sequence time clears it, so the upload time is used again.
+      const recordedAt = dateTimeLocalInputToIso(safeGet("noise-rename-recorded-at")?.value);
+      await API.updateNoiseUpload(uploadId, { label: trimmedLabel, waterSpeedStart, waterSpeedEnd, recordedAt });
       closeNoiseRenameModal();
       await refreshNoiseForProject(selectedProjectFilter, uploadId);
       showSuccessToast("Noise upload updated", `Saved as "${trimmedLabel}"`);
@@ -1389,6 +1722,7 @@ function initNoiseControls() {
         noiseData: parsedNoise,
         waterSpeedStart,
         waterSpeedEnd,
+        recordedAt: dateTimeLocalInputToIso(safeGet("noise-upload-recorded-at")?.value),
       });
       closeNoiseWaterSpeedModal();
       showSuccessToast("Noise data uploaded", `Saved ${Object.keys(parsedNoise).length} cables from "${label}"`);
@@ -1439,6 +1773,8 @@ function initLegendControls() {
   function repaintPlanningHeatmap(prefs) {
     const container = safeGet("planning-heatmap-container");
     if (!container) return;
+
+    paintEbAgeCells(container, prefs);
 
     if (isNoiseToggleOn() && noiseData) {
       applyNoiseOverlay(container, noiseData);
@@ -1665,6 +2001,7 @@ async function initPlanningApp() {
   showActiveProject();
   initModals();
   initLegendControls(); // populates gradient bars and attaches threshold input listeners
+  initTooltipRecentCountInput(safeGet("tooltip-recent-count"));
   initSuggestionsThresholdControl(); // populates threshold input and wires save button
   initNoiseControls();  // registers noise toggle/upload event listeners
   initSuggestionsSortHandlers();
@@ -1686,8 +2023,6 @@ async function init() {
   const loginForm = safeGet("login-form");
   if (loginForm) loginForm.addEventListener("submit", handleLogin);
 
-  const loginBtn = safeGet("login-submit");
-  if (loginBtn) loginBtn.addEventListener("click", handleLogin);
 
   const logoutBtn = safeGet("logout-btn");
   if (logoutBtn) logoutBtn.addEventListener("click", handleLogout);
