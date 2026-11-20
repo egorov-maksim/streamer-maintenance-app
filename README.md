@@ -611,7 +611,7 @@ streamer_id,section_index_start,section_index_end,cleaning_method,cleaned_at,pro
 
 **Nobody can log in on a new install**: accounts are copied from `AUTH_USERS` in `.env` only while the database has no users. Check the server log for `[auth]` lines and the format:
 - `USERNAME:PASSWORD_HASH:ROLE:VESSEL_TAG`, comma-separated, no spaces around colons
-- Every role except `grandsuperuser` needs a vessel tag; entries without one are skipped
+- Every role except `grandsuperuser` and `supervisor` (use `ALL`) needs a vessel tag; entries without one are skipped
 - The password must be a bcrypt hash, not plain text (see [Adding a user](#adding-a-user))
 - Restart the server after editing `.env`
 
