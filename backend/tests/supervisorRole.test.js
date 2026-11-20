@@ -12,6 +12,11 @@ describe("supervisor role", () => {
       process.env.AUTH_USERS = "s:h:supervisor:ALL";
       expect(loadUsersFromEnv().s).toMatchObject({ role: "supervisor", vesselTag: null, isGlobal: false });
     });
+
+    it("never keeps a vessel tag on a supervisor", () => {
+      process.env.AUTH_USERS = "s:h:supervisor:TTN";
+      expect(loadUsersFromEnv().s).toMatchObject({ role: "supervisor", vesselTag: null, isGlobal: false });
+    });
   });
 
   describe("helpers", () => {

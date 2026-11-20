@@ -6,9 +6,9 @@ const { getActiveProjectForVessel } = require("../activeProject");
 const { requireRole, ROLES } = require("../middleware/auth");
 const { resolveEffectiveConfig } = require("../utils/effectiveConfig");
 const { summarizeSectionCoverage } = require("../utils/cleanedSections");
-const { parseDays, buildPeriods, kpi, deltaPoints } = require("../utils/overviewPeriods");
+const { parseDays, buildPeriods, kpi, deltaPoints, fillDailyKm } = require("../utils/overviewPeriods");
 const { buildNoiseOverview, buildEfficiencyPairs } = require("../utils/overviewNoise");
-const { MEASURED_AT_SQL, withMeasuredAt, assessCleaningPeriod } = require("../utils/noiseUploadTime");
+const { MEASURED_AT_SQL, withMeasuredAt, assessCleaningPeriod, toIsoUtc } = require("../utils/noiseUploadTime");
 const { sendError, httpError, handleRouteError } = require("../utils/errors");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -165,8 +165,8 @@ function createOverviewRouter(authMiddleware) {
 
       let lastCleaningAt = null;
       let daysSinceLastCleaning = null;
-      if (last && !Number.isNaN(Date.parse(last.cleanedAt))) {
-        const lastMs = Date.parse(last.cleanedAt);
+      const lastMs = last ? Date.parse(toIsoUtc(last.cleanedAt)) : NaN;
+      if (!Number.isNaN(lastMs)) {
         lastCleaningAt = new Date(lastMs).toISOString();
         daysSinceLastCleaning = wholeUtcDaysSince(lastMs, now.getTime());
       }
@@ -237,7 +237,7 @@ function createOverviewRouter(authMiddleware) {
           distanceKm: kpi(cur.km, prev.km),
           events: kpi(cur.events, prev.events),
           overdueSections,
-          dailyDistanceKm: daily.map((d) => ({ date: d.date, km: d.meters / 1000 })),
+          dailyDistanceKm: fillDailyKm(daily, start, end),
         },
         noise,
         efficiency,

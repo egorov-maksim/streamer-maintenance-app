@@ -63,13 +63,36 @@ describe("GET /api/overview (cleaning)", () => {
     expect(res.body.project).toEqual({ projectNumber: "A", projectName: null });
     expect(res.body.cleaning.distanceKm.value).toBe((4 * 75 + 4 * 50) / 1000);
     expect(res.body.cleaning.events.value).toBe(2);
-    expect(res.body.cleaning.dailyDistanceKm).toEqual([
+    const daily = res.body.cleaning.dailyDistanceKm;
+    expect(daily).toHaveLength(30);
+    expect(daily.filter((d) => d.km > 0)).toEqual([
       { date: "2024-03-10", km: 0.3 },
       { date: "2024-03-11", km: 0.2 },
     ]);
     expect(res.body.freshness.lastCleaningAt).toBe("2024-03-11T10:00:00.000Z");
     expect(res.body.freshness.daysSinceLastCleaning).toBe(4);
     expect(res.body.freshness.lastNoiseUploadAt).toBeNull();
+  });
+
+  it("lists every day of the window with zeros between cleaning days", async () => {
+    const a = await createProject({ projectNumber: "A", vesselTag: "TTN" });
+    await activateProject(a);
+    await setLength(a, 100);
+    await addEvent(a, { at: "2024-03-10T10:00:00.000Z" });
+    await addEvent(a, { at: "2024-03-13T10:00:00.000Z", end: 1 });
+    const res = await get("/api/overview?vessel=TTN&days=7", sup);
+    // days=7: 2024-03-09 .. 2024-03-15 (ends before 2024-03-16)
+    expect(res.body.cleaning.dailyDistanceKm).toEqual([
+      { date: "2024-03-09", km: 0 },
+      { date: "2024-03-10", km: 0.4 },
+      { date: "2024-03-11", km: 0 },
+      { date: "2024-03-12", km: 0 },
+      { date: "2024-03-13", km: 0.2 },
+      { date: "2024-03-14", km: 0 },
+      { date: "2024-03-15", km: 0 },
+    ]);
+    // Averaged over the 2 days that had cleaning, not over 7.
+    expect(res.body.efficiency.distancePerCleaningDayKm).toBe(0.3);
   });
 
   it("applies window boundaries, date-only values and the previous window", async () => {
@@ -111,7 +134,8 @@ describe("GET /api/overview (cleaning)", () => {
     expect(res.body.project).toBeNull();
     expect(res.body.cleaning.coverage).toBeNull();
     expect(res.body.cleaning.overdueSections).toBeNull();
-    expect(res.body.cleaning.dailyDistanceKm).toEqual([]);
+    expect(res.body.cleaning.dailyDistanceKm).toHaveLength(30);
+    expect(res.body.cleaning.dailyDistanceKm.every((d) => d.km === 0)).toBe(true);
     expect(res.body.cleaning.distanceKm.value).toBe(0);
     expect(res.body.freshness.lastCleaningAt).toBeNull();
     expect(res.body.freshness.daysSinceLastCleaning).toBeNull();

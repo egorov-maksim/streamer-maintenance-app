@@ -54,11 +54,12 @@ function loadUsersFromEnv() {
     const isGlobal = role === ROLES.GRAND_SUPER_USER;
 
     const rawVesselTag = (parts[3] || "").trim();
-    const vesselTag = rawVesselTag === "" || rawVesselTag.toUpperCase() === "ALL"
+    const vesselOptional = isGlobal || role === ROLES.SUPERVISOR;
+    // A supervisor sees all vessels read-only and never keeps a vessel tag.
+    const vesselTag = role === ROLES.SUPERVISOR || rawVesselTag === "" || rawVesselTag.toUpperCase() === "ALL"
       ? null
       : rawVesselTag;
 
-    const vesselOptional = isGlobal || role === ROLES.SUPERVISOR;
     if (!vesselOptional && !vesselTag) {
       // Without a vessel tag the user would have no vessel restriction at all.
       console.warn(

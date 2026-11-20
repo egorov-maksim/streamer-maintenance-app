@@ -1,4 +1,4 @@
-const { parseDays, buildPeriods, kpi, deltaPoints } = require("../utils/overviewPeriods");
+const { parseDays, buildPeriods, kpi, deltaPoints, fillDailyKm } = require("../utils/overviewPeriods");
 
 describe("overviewPeriods", () => {
   it("parseDays defaults to 30 and accepts only 7/30/90", () => {
@@ -30,5 +30,20 @@ describe("overviewPeriods", () => {
     expect(deltaPoints(68, 63)).toBe(5);
     expect(deltaPoints(null, 63)).toBeNull();
     expect(deltaPoints(10.3, 10.1)).toBe(0.2);
+  });
+
+  it("fillDailyKm lists every UTC day of the window and fills gaps with 0 km", () => {
+    const rows = [
+      { date: "2024-03-10", meters: 300 },
+      { date: "2024-03-12", meters: 200 },
+    ];
+    expect(fillDailyKm(rows, "2024-03-09T00:00:00.000Z", "2024-03-14T00:00:00.000Z")).toEqual([
+      { date: "2024-03-09", km: 0 },
+      { date: "2024-03-10", km: 0.3 },
+      { date: "2024-03-11", km: 0 },
+      { date: "2024-03-12", km: 0.2 },
+      { date: "2024-03-13", km: 0 },
+    ]);
+    expect(fillDailyKm([], "2024-03-09T00:00:00.000Z", "2024-03-10T00:00:00.000Z")).toEqual([{ date: "2024-03-09", km: 0 }]);
   });
 });

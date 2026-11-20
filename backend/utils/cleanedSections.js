@@ -1,4 +1,5 @@
 // utils/cleanedSections.js
+const { toIsoUtc } = require("./noiseUploadTime");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -59,7 +60,7 @@ function summarizeSectionCoverage(events, config, { windowStart, now, thresholdD
     if (!(evt.streamerId >= 1 && evt.streamerId <= config.numCables)) continue;
     const isTail = evt.sectionType === "tail";
     const limit = isTail ? tailSections : activeCount(evt.streamerId);
-    const at = Date.parse(evt.cleanedAt);
+    const at = Date.parse(toIsoUtc(evt.cleanedAt));
     if (Number.isNaN(at)) continue;
     const from = Math.max(0, evt.sectionIndexStart);
     const to = Math.min(limit - 1, evt.sectionIndexEnd);

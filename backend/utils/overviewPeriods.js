@@ -57,4 +57,21 @@ function deltaPoints(now, before) {
   return round1(now - before);
 }
 
-module.exports = { parseDays, buildPeriods, kpi, deltaPoints };
+/**
+ * One entry per UTC day of [start, end), filling days without cleaning with 0 km.
+ * @param {Array<{ date: string, meters: number }>} rows - distance per UTC day (YYYY-MM-DD) that had cleaning
+ * @param {string} start - ISO start of the window (UTC midnight)
+ * @param {string} end - ISO end of the window (exclusive, UTC midnight)
+ * @returns {Array<{ date: string, km: number }>}
+ */
+function fillDailyKm(rows, start, end) {
+  const metersByDate = new Map(rows.map((r) => [r.date, r.meters]));
+  const out = [];
+  for (let ms = Date.parse(start); ms < Date.parse(end); ms += DAY_MS) {
+    const date = new Date(ms).toISOString().slice(0, 10);
+    out.push({ date, km: (metersByDate.get(date) ?? 0) / 1000 });
+  }
+  return out;
+}
+
+module.exports = { parseDays, buildPeriods, kpi, deltaPoints, fillDailyKm };

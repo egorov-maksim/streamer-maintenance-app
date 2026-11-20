@@ -59,4 +59,13 @@ describe("summarizeSectionCoverage", () => {
     expect(s.coveragePct).toBe(16.7);
     expect(s.totalActiveSections).toBe(20);
   });
+
+  it("treats SQLite-style timestamps as UTC, like the ISO equivalent", () => {
+    const iso = [ev(1, 0, 4, "2024-03-09T20:00:00.000Z"), ev(1, 5, 9, "2024-03-10T05:00:00.000Z")];
+    const sqlite = [ev(1, 0, 4, "2024-03-09 20:00:00"), ev(1, 5, 9, "2024-03-10 05:00:00")];
+    const expected = summarizeSectionCoverage(iso, config, window);
+    expect(summarizeSectionCoverage(sqlite, config, window)).toEqual(expected);
+    expect(expected.cleanedSections).toBe(10);
+    expect(expected.coverageAtStartPct).toBe(25);
+  });
 });
