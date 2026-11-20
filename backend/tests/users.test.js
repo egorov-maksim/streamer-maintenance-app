@@ -26,7 +26,7 @@ describe("user accounts in the database", () => {
   describe("import from AUTH_USERS", () => {
     it("copies the .env users with their existing password hashes", async () => {
       const rows = (await list(grand)).body.users;
-      expect(rows.map((u) => u.username).sort()).toEqual(["grand", "ramadmin", "ttnadmin", "ttnsuper", "ttnviewer"]);
+      expect(rows.map((u) => u.username).sort()).toEqual(["grand", "ramadmin", "sup", "ttnadmin", "ttnsuper", "ttnviewer"]);
       expect((await tryLogin("ttnadmin", process.env.TEST_PASSWORD)).status).toBe(200);
     });
 
@@ -226,7 +226,7 @@ describe("user accounts in the database", () => {
       // The table is recreated and filled from AUTH_USERS again.
       expect((await tryLogin("grand", process.env.TEST_PASSWORD)).status).toBe(200);
       expect((await tryLogin("later", PASSWORD)).status).toBe(401);
-      expect((await list(grand)).body.users).toHaveLength(5);
+      expect((await list(grand)).body.users).toHaveLength(6);
     });
   });
 

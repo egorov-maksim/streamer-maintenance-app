@@ -21,6 +21,7 @@ process.env.AUTH_USERS = [
   `ttnadmin:${hash}:admin:TTN`,
   `ttnviewer:${hash}:viewer:TTN`,
   `ramadmin:${hash}:admin:RAM`,
+  `sup:${hash}:supervisor:ALL`,
 ].join(",");
 
 // Start every test file from an empty database so suites are order-independent.

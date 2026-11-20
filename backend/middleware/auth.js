@@ -4,6 +4,7 @@ const crypto = require("crypto");
 /** Role constants */
 const ROLES = {
   GRAND_SUPER_USER: "grandsuperuser",
+  SUPERVISOR: "supervisor",
   SUPER_USER: "superuser",
   ADMIN: "admin",
   VIEWER: "viewer",
@@ -17,11 +18,11 @@ const ROLES = {
  *
  * PASSWORD_HASH is a bcrypt hash (see INSTALL.md for generation).
  *
- * - ROLE: grandsuperuser | superuser | admin | viewer
+ * - ROLE: grandsuperuser | supervisor | superuser | admin | viewer
  * - VESSEL_TAG: short vessel code (e.g. TTN, RAM). Required for every role except
- *   grandsuperuser, which is always global (use "ALL" as a placeholder).
+ *   grandsuperuser and supervisor, which are not tied to a vessel (use "ALL" as a placeholder).
  *
- * Only grandsuperuser is global. A fifth GLOBAL field from older .env files is ignored,
+ * Only grandsuperuser is global (isGlobal); supervisor sees all vessels read-only but is not global. A fifth GLOBAL field from older .env files is ignored,
  * and an entry for any other role without a vessel tag is skipped.
  *
  * @returns {Object.<string, { password: string, role: string, vesselTag: string|null, isGlobal: boolean }>}
@@ -57,11 +58,12 @@ function loadUsersFromEnv() {
       ? null
       : rawVesselTag;
 
-    if (!isGlobal && !vesselTag) {
+    const vesselOptional = isGlobal || role === ROLES.SUPERVISOR;
+    if (!vesselOptional && !vesselTag) {
       // Without a vessel tag the user would have no vessel restriction at all.
       console.warn(
         `[auth] Skipping AUTH_USERS entry for "${username}" – role "${role}" needs a vessel tag; ` +
-          "only grandsuperuser has access to all vessels."
+          "only grandsuperuser and supervisor have access to all vessels."
       );
       return;
     }
@@ -101,6 +103,16 @@ function generateSessionToken() {
  */
 function isGlobalUser(user) {
   return user?.role === ROLES.GRAND_SUPER_USER;
+}
+
+/**
+ * May this user read data of every vessel? True for grandsuperuser and supervisor.
+ * Unlike isGlobalUser this grants no write access.
+ * @param {{ role?: string }} user
+ * @returns {boolean}
+ */
+function canSeeAllVessels(user) {
+  return user?.role === ROLES.GRAND_SUPER_USER || user?.role === ROLES.SUPERVISOR;
 }
 
 /**
@@ -189,6 +201,7 @@ module.exports = {
   generateSessionToken,
   createAuthMiddleware,
   isGlobalUser,
+  canSeeAllVessels,
   getVesselScope,
   withVesselScope,
   requireRole,

@@ -14,7 +14,7 @@ const VESSEL_TAG_PATTERN = /^[A-Za-z0-9_-]{1,16}$/;
 
 /** Roles a SuperUser may hold in their hands: everyone on their vessel except GrandSuperUser. */
 const VESSEL_ROLES = [ROLES.SUPER_USER, ROLES.ADMIN, ROLES.VIEWER];
-const ALL_ROLES = [ROLES.GRAND_SUPER_USER, ...VESSEL_ROLES];
+const ALL_ROLES = [ROLES.GRAND_SUPER_USER, ROLES.SUPERVISOR, ...VESSEL_ROLES];
 
 /**
  * May `actor` manage an account with this role and vessel?
@@ -48,11 +48,11 @@ function passwordError(password) {
 
 /**
  * Work out the vessel tag an account gets.
- * GrandSuperUser accounts have none; a SuperUser can only place accounts on their own vessel.
+ * GrandSuperUser and Supervisor accounts have none; a SuperUser can only place accounts on their own vessel.
  * @returns {{ vesselTag: string|null } | { error: string }}
  */
 function resolveVesselTag(actor, role, requested) {
-  if (role === ROLES.GRAND_SUPER_USER) return { vesselTag: null };
+  if (role === ROLES.GRAND_SUPER_USER || role === ROLES.SUPERVISOR) return { vesselTag: null };
   if (!isGlobalUser(actor)) return { vesselTag: actor.vesselTag };
   const tag = typeof requested === "string" ? requested.trim() : "";
   if (!tag || tag.toUpperCase() === "ALL") return { error: "A vessel tag is required for this role" };

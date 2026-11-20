@@ -10,6 +10,7 @@ import { openModal, closeModal } from "./modals.js";
 
 const ROLE_LABELS = {
   grandsuperuser: "GrandSuperUser",
+  supervisor: "Supervisor",
   superuser: "SuperUser",
   admin: "Admin",
   viewer: "Viewer",
@@ -91,10 +92,15 @@ function syncVesselField() {
   if (!roleSel || !vesselInput) return;
 
   const isGrandRole = roleSel.value === "grandsuperuser";
-  if (isGrandRole) {
+  const isSupervisorRole = roleSel.value === "supervisor";
+  if (isGrandRole || isSupervisorRole) {
     vesselInput.value = "";
     vesselInput.disabled = true;
-    if (hint) hint.textContent = "GrandSuperUser always has access to all vessels.";
+    if (hint) {
+      hint.textContent = isSupervisorRole
+        ? "Supervisor has read-only access to all vessels."
+        : "GrandSuperUser always has access to all vessels.";
+    }
   } else if (!directory.canChooseVessel) {
     vesselInput.value = directory.ownVesselTag || "";
     vesselInput.disabled = true;
@@ -185,9 +191,9 @@ async function saveUser() {
       if (password) changes.password = password;
       if (activeUser.canChangeRole) {
         if (role !== activeUser.role) changes.role = role;
-        if (role !== "grandsuperuser" && vesselTag !== (activeUser.vesselTag || "")) changes.vesselTag = vesselTag;
-        // Leaving GrandSuperUser needs a vessel even if the field text did not change.
-        if (changes.role && role !== "grandsuperuser") changes.vesselTag = vesselTag;
+        if (role !== "grandsuperuser" && role !== "supervisor" && vesselTag !== (activeUser.vesselTag || "")) changes.vesselTag = vesselTag;
+        // Leaving GrandSuperUser or Supervisor needs a vessel even if the field text did not change.
+        if (changes.role && role !== "grandsuperuser" && role !== "supervisor") changes.vesselTag = vesselTag;
       }
       if (Object.keys(changes).length === 0) {
         errorEl.textContent = "Nothing was changed.";

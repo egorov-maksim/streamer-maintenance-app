@@ -215,6 +215,9 @@ export function showApp() {
     if (currentUser.role === "grandsuperuser") {
       userRoleBadge.textContent = "Grand Super User";
       userRoleBadge.className = "user-role-badge superuser";
+    } else if (currentUser.role === "supervisor") {
+      userRoleBadge.textContent = "Supervisor";
+      userRoleBadge.className = "user-role-badge supervisor";
     } else if (currentUser.role === "superuser") {
       userRoleBadge.textContent = "Super User";
       userRoleBadge.className = "user-role-badge superuser";

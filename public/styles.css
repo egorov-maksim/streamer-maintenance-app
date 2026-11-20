@@ -4017,6 +4017,11 @@ table.has-noise-data .noise-col {
   color: #991b1b;
 }
 
+.user-role-badge.supervisor {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  color: #1e40af;
+}
+
 .user-form .input-full {
   width: 100%;
 }
