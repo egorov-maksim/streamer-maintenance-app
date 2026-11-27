@@ -62,6 +62,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
           rows.map((p) => ({
             ...p,
             useRopeForTail: p.useRopeForTail === 1,
+            ebFront: p.ebFront === 1,
             isActive: p.isActive === 1,
           }))
         );
@@ -75,6 +76,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
           rows.map((p) => ({
             ...p,
             useRopeForTail: p.useRopeForTail === 1,
+            ebFront: p.ebFront === 1,
             isActive: p.isActive === 1,
           }))
         );
@@ -94,6 +96,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
       res.json({
         ...project,
         useRopeForTail: project.useRopeForTail === 1,
+        ebFront: project.ebFront === 1,
         isActive: true,
       });
     } catch (err) {
@@ -115,6 +118,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
         module_frequency,
         channels_per_section,
         use_rope_for_tail,
+        eb_front,
         suggested_cleaning_threshold_days,
       } = bodyData;
 
@@ -135,9 +139,9 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
       const result = await runAsync(
         `INSERT INTO projects (
         project_number, project_name, vessel_tag, created_at,
-        num_cables, sections_per_cable, section_length, module_frequency, channels_per_section, use_rope_for_tail,
+        num_cables, sections_per_cable, section_length, module_frequency, channels_per_section, use_rope_for_tail, eb_front,
         suggested_cleaning_threshold_days
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           project_number,
           project_name || null,
@@ -149,6 +153,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
           toInt(module_frequency, defaultConfig.moduleFrequency),
           toInt(channels_per_section, defaultConfig.channelsPerSection),
           use_rope_for_tail === false ? 0 : 1,
+          eb_front === true ? 1 : 0,
           toInt(suggested_cleaning_threshold_days, 10),
         ]
       );
@@ -159,6 +164,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
         res.json({
           ...created,
           useRopeForTail: created.useRopeForTail === 1,
+          ebFront: created.ebFront === 1,
           isActive: !!isActive,
         });
       } else {
@@ -200,6 +206,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
         res.json({
           ...project,
           useRopeForTail: project.useRopeForTail === 1,
+          ebFront: project.ebFront === 1,
           isActive: true,
         });
       } else {
@@ -234,6 +241,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
         module_frequency,
         channels_per_section,
         use_rope_for_tail,
+        eb_front,
         suggested_cleaning_threshold_days,
         comments,
       } = bodyData;
@@ -254,6 +262,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
         module_frequency = ?,
         channels_per_section = ?,
         use_rope_for_tail = ?,
+        eb_front = ?,
         suggested_cleaning_threshold_days = ?,
         comments = ?
       WHERE id = ?`,
@@ -266,6 +275,8 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
           toInt(module_frequency, defaultConfig.moduleFrequency),
           toInt(channels_per_section, defaultConfig.channelsPerSection),
           use_rope_for_tail === false ? 0 : 1,
+          // Omitted keeps the stored flag: the planning page saves projects without it.
+          eb_front === undefined ? existing.ebFront : eb_front ? 1 : 0,
           toInt(suggested_cleaning_threshold_days, existing.suggestedCleaningThresholdDays ?? 10),
           comments !== undefined ? comments : null,
           id,
@@ -282,6 +293,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
         res.json({
           ...updated,
           useRopeForTail: updated.useRopeForTail === 1,
+          ebFront: updated.ebFront === 1,
           isActive,
         });
       } else {

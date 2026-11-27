@@ -57,6 +57,7 @@ function initDb(onReady) {
  * is safe to run on every startup.
  */
 const COLUMN_MIGRATIONS = [
+  { table: "projects", column: "eb_front", definition: "INTEGER DEFAULT 0" },
   { table: "projects", column: "suggested_cleaning_threshold_days", definition: "INTEGER DEFAULT 10" },
   // Per-streamer section count override (longer cables in a project)
   { table: "streamer_deployments", column: "sections_per_cable", definition: "INTEGER" },

@@ -8,6 +8,7 @@ const defaultConfig = {
   sectionLength: 75,
   moduleFrequency: 4,
   useRopeForTail: true,
+  ebFront: false,
   channelsPerSection: 6,
   activeProjectNumber: null,
   vesselTag: "TTN",
@@ -18,7 +19,7 @@ const NUMERIC_KEYS = new Set([
   "numCables", "sectionsPerCable", "sectionLength", "moduleFrequency",
   "channelsPerSection", "suggestedCleaningThresholdDays",
 ]);
-const BOOLEAN_KEYS = new Set(["useRopeForTail"]);
+const BOOLEAN_KEYS = new Set(["useRopeForTail", "ebFront"]);
 // Identifiers stay strings even when they look numeric ("007" is a vessel tag, not 7).
 const STRING_KEYS = new Set(["vesselTag", "activeProjectNumber"]);
 

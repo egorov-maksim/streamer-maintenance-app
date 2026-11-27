@@ -50,10 +50,12 @@ function createConfigRouter(authMiddleware, superUserOnly) {
         base.moduleFrequency = activeProject.moduleFrequency ?? base.moduleFrequency;
         base.channelsPerSection = activeProject.channelsPerSection ?? base.channelsPerSection;
         base.useRopeForTail = activeProject.useRopeForTail === 1;
+        base.ebFront = activeProject.ebFront === 1;
         // Per-project threshold — not stored in global app_config
         base.suggestedCleaningThresholdDays = activeProject.suggestedCleaningThresholdDays ?? 10;
         base.sectionsPerCableOverrides = await buildSectionsPerCableOverrides(activeProject.id);
       } else {
+        base.ebFront = false;
         base.sectionsPerCableOverrides = {};
       }
       res.json(base);
@@ -83,6 +85,8 @@ function createConfigRouter(authMiddleware, superUserOnly) {
         partial.vesselTag = req.vesselScope;
         const activeProject = await getActiveProjectForVessel(req.vesselScope);
         if (activeProject) {
+          // Omitted ebFront keeps the stored flag; the global config never stores it.
+          const ebFront = bodyData?.eb_front === undefined ? activeProject.ebFront : bodyData.eb_front ? 1 : 0;
           await runAsync(
             `UPDATE projects SET
             num_cables = ?,
@@ -91,6 +95,7 @@ function createConfigRouter(authMiddleware, superUserOnly) {
             module_frequency = ?,
             channels_per_section = ?,
             use_rope_for_tail = ?,
+            eb_front = ?,
             vessel_tag = ?
           WHERE id = ?`,
             [
@@ -100,6 +105,7 @@ function createConfigRouter(authMiddleware, superUserOnly) {
               partial.moduleFrequency,
               partial.channelsPerSection,
               partial.useRopeForTail ? 1 : 0,
+              ebFront,
               partial.vesselTag,
               activeProject.id,
             ]
@@ -125,12 +131,15 @@ function createConfigRouter(authMiddleware, superUserOnly) {
           base.moduleFrequency = activeProject.moduleFrequency ?? base.moduleFrequency;
           base.channelsPerSection = activeProject.channelsPerSection ?? base.channelsPerSection;
           base.useRopeForTail = activeProject.useRopeForTail === 1;
+          base.ebFront = activeProject.ebFront === 1;
           base.suggestedCleaningThresholdDays = activeProject.suggestedCleaningThresholdDays ?? 10;
           base.sectionsPerCableOverrides = await buildSectionsPerCableOverrides(activeProject.id);
         } else {
+          base.ebFront = false;
           base.sectionsPerCableOverrides = {};
         }
       } else {
+        base.ebFront = false;
         base.sectionsPerCableOverrides = {};
       }
       res.json(base);

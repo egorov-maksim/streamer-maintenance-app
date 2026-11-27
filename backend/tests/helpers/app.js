@@ -39,11 +39,11 @@ async function login(username) {
 }
 
 /** Inserts a project row directly and returns it (camelCase keys like the API). */
-async function createProject({ projectNumber, vesselTag = "TTN", numCables = 12, sectionsPerCable = 107, useRopeForTail = 1 }) {
+async function createProject({ projectNumber, vesselTag = "TTN", numCables = 12, sectionsPerCable = 107, useRopeForTail = 1, ebFront = 0 }) {
   const result = await runAsync(
-    `INSERT INTO projects (project_number, vessel_tag, num_cables, sections_per_cable, use_rope_for_tail)
-     VALUES (?, ?, ?, ?, ?)`,
-    [projectNumber, vesselTag, numCables, sectionsPerCable, useRopeForTail]
+    `INSERT INTO projects (project_number, vessel_tag, num_cables, sections_per_cable, use_rope_for_tail, eb_front)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [projectNumber, vesselTag, numCables, sectionsPerCable, useRopeForTail, ebFront ? 1 : 0]
   );
   return { id: result.lastID, projectNumber, vesselTag, numCables, sectionsPerCable };
 }
