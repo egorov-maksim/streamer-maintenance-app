@@ -75,3 +75,42 @@ export function getModuleLayout(sectionCount, moduleFreq, ebFront = false) {
   }
   return placed.map((module, index) => ({ num: index + 1, ...module }));
 }
+
+/**
+ * EB numbers and separator rows for the PDF heatmaps (right-hand EB labels and bold lines).
+ * Flag off reproduces the legacy PDF computation exactly, including its closing label
+ * floor((maxSections - 1) / moduleFreq) + 1, which can be one lower than getModuleLayout's.
+ * Flag on takes numbers and positions from getModuleLayout.
+ *
+ * @param {Object} opts
+ * @param {number} opts.moduleFreq - sections between regular EB placements
+ * @param {number} opts.maxSections - largest active section count over all streamers
+ * @param {number} opts.totalSections - rows on the page (max sections plus tails)
+ * @param {boolean} [opts.ebFront=false] - project has an EB in front of AS01
+ * @returns {{modulesBySection: Array<number|null>, separatorRows: number[]}}
+ */
+export function buildPdfModulePositions({ moduleFreq, maxSections, totalSections, ebFront = false }) {
+  const modulesBySection = Array.from({ length: totalSections }, () => null);
+  const separatorRows = [];
+
+  if (ebFront) {
+    for (const module of getModuleLayout(maxSections, moduleFreq, true)) {
+      if (module.afterSection < 0) continue;
+      if (module.afterSection < totalSections) modulesBySection[module.afterSection] = module.num;
+      if (module.num % 2 === 0 && module.kind !== "closing") separatorRows.push(module.afterSection);
+    }
+    return { modulesBySection, separatorRows };
+  }
+
+  modulesBySection[0] = 1;
+  for (let sectionIndex = moduleFreq; sectionIndex < maxSections; sectionIndex += moduleFreq) {
+    const moduleNum = Math.floor(sectionIndex / moduleFreq) + 1;
+    if (sectionIndex < totalSections) modulesBySection[sectionIndex] = moduleNum;
+    if (moduleNum % 2 === 0) separatorRows.push(sectionIndex);
+  }
+  const lastModuleSection = maxSections - 1;
+  if (lastModuleSection < totalSections && !modulesBySection[lastModuleSection]) {
+    modulesBySection[lastModuleSection] = Math.floor((maxSections - 1) / moduleFreq) + 1;
+  }
+  return { modulesBySection, separatorRows };
+}

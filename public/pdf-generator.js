@@ -8,6 +8,7 @@ import { config, getActiveProject } from "./js/state.js";
 import { formatAS, formatSectionLabel, eventDistance, fmtKm, formatEB, getEBRangeForSectionRange, getEffectiveSectionsPerCable } from "./js/streamer-utils.js";
 import { getAuthHeaders } from "./js/api.js";
 import { openModal, closeModal } from "./js/modals.js";
+import { buildPdfModulePositions } from "./js/heatmap-layout.js";
 import { loadHeatmapLegendPrefs, scrapingAgeStyle, rmsToColor } from "./js/heatmap-legend.js";
 
 function parseRgbOrHex(cssColor) {
@@ -438,23 +439,12 @@ async function addHeatmapPage(doc, lastCleaned, title) {
   // Pre-compute EB module positions per section (based on max sections across all streamers)
   const moduleFreq = config.moduleFrequency || 4;
   const legendPrefs = loadHeatmapLegendPrefs();
-  const modulesBySection = Array.from({ length: totalSections }, () => null);
-
-  // Always have EB01 at section 0
-  modulesBySection[0] = 1;
-
-  for (let sectionIndex = moduleFreq; sectionIndex < maxSectionsPerCable; sectionIndex += moduleFreq) {
-    const moduleNum = Math.floor(sectionIndex / moduleFreq) + 1;
-    if (sectionIndex < totalSections) {
-      modulesBySection[sectionIndex] = moduleNum;
-    }
-  }
-
-  const lastModuleNum = Math.floor((maxSectionsPerCable - 1) / moduleFreq) + 1;
-  const lastModuleSection = maxSectionsPerCable - 1;
-  if (lastModuleSection < totalSections && !modulesBySection[lastModuleSection]) {
-    modulesBySection[lastModuleSection] = lastModuleNum;
-  }
+  const { modulesBySection, separatorRows } = buildPdfModulePositions({
+    moduleFreq,
+    maxSections: maxSectionsPerCable,
+    totalSections,
+    ebFront: Boolean(config.ebFront),
+  });
 
   // Inactive cell fill — light grey, used for sections beyond a streamer's effective length
   const inactiveFill = { r: 240, g: 240, b: 240 };
@@ -537,9 +527,7 @@ async function addHeatmapPage(doc, lastCleaned, title) {
   const ebSepEndX = startX + heatmapWidth + 18;
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.4);
-  for (let boundaryS = moduleFreq; boundaryS < maxSectionsPerCable; boundaryS += moduleFreq) {
-    const moduleNum = Math.floor(boundaryS / moduleFreq) + 1;
-    if (moduleNum % 2 !== 0) continue;
+  for (const boundaryS of separatorRows) {
     const lineY = startY + (boundaryS + 1) * cellHeight;
     doc.line(startX, lineY, ebSepEndX, lineY);
   }
@@ -654,19 +642,12 @@ async function addNoiseHeatmapPage(doc, noiseData, title) {
 
   // Pre-compute EB module positions per section (based on max sections across all streamers)
   const moduleFreq = config.moduleFrequency || 4;
-  const modulesBySection = Array.from({ length: totalSections }, () => null);
-  modulesBySection[0] = 1; // EB01 at section 0
-
-  for (let sectionIndex = moduleFreq; sectionIndex < maxSectionsPerCable; sectionIndex += moduleFreq) {
-    const moduleNum = Math.floor(sectionIndex / moduleFreq) + 1;
-    if (sectionIndex < totalSections) modulesBySection[sectionIndex] = moduleNum;
-  }
-
-  const lastModuleNum = Math.floor((maxSectionsPerCable - 1) / moduleFreq) + 1;
-  const lastModuleSection = maxSectionsPerCable - 1;
-  if (lastModuleSection < totalSections && !modulesBySection[lastModuleSection]) {
-    modulesBySection[lastModuleSection] = lastModuleNum;
-  }
+  const { modulesBySection, separatorRows } = buildPdfModulePositions({
+    moduleFreq,
+    maxSections: maxSectionsPerCable,
+    totalSections,
+    ebFront: Boolean(config.ebFront),
+  });
 
   // Inactive cell fill — light grey, used for sections beyond a streamer's effective length
   const inactiveFill = { r: 240, g: 240, b: 240 };
@@ -740,9 +721,7 @@ async function addNoiseHeatmapPage(doc, noiseData, title) {
   const ebSepEndX = startX + heatmapWidth + 18;
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.4);
-  for (let boundaryS = moduleFreq; boundaryS < maxSectionsPerCable; boundaryS += moduleFreq) {
-    const moduleNum = Math.floor(boundaryS / moduleFreq) + 1;
-    if (moduleNum % 2 !== 0) continue;
+  for (const boundaryS of separatorRows) {
     const lineY = startY + (boundaryS + 1) * cellHeight;
     doc.line(startX, lineY, ebSepEndX, lineY);
   }
