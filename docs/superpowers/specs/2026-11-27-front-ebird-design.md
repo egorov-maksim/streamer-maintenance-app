@@ -53,7 +53,7 @@ Chosen by the requester: A.
 
 ## Design
 
-**Setting.** New project column `ebird_at_front INTEGER DEFAULT 0` (added via
+**Setting.** New project column `eb_front INTEGER DEFAULT 0` (added via
 the existing `ALTER TABLE … ADD COLUMN` helper in `backend/db.js` and
 `schema.sql`), exposed as `ebFront` (boolean) in config, alongside
 `moduleFrequency` in `backend/config.js`, `routes/config.js`,
