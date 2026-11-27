@@ -439,7 +439,7 @@ async function addHeatmapPage(doc, lastCleaned, title) {
   // Pre-compute EB module positions per section (based on max sections across all streamers)
   const moduleFreq = config.moduleFrequency || 4;
   const legendPrefs = loadHeatmapLegendPrefs();
-  const { modulesBySection, separatorRows } = buildPdfModulePositions({
+  const { modulesBySection, separatorRows, frontModuleNum } = buildPdfModulePositions({
     moduleFreq,
     maxSections: maxSectionsPerCable,
     totalSections,
@@ -521,6 +521,13 @@ async function addHeatmapPage(doc, lastCleaned, title) {
       doc.setTextColor(0, 0, 0);
       doc.text(ebLabel, startX + heatmapWidth + 3, rowY + cellHeight / 2 + 1, { align: 'left' });
     }
+  }
+
+  // Front eBird (EB01) has no row of its own: label it just above the first row, on the right.
+  if (frontModuleNum) {
+    doc.setFontSize(6);
+    doc.setTextColor(0, 0, 0);
+    doc.text(formatEB(frontModuleNum), startX + heatmapWidth + 3, startY - 0.8, { align: 'left' });
   }
 
   // Bold horizontal lines below even EB starts only (EB02, EB04, …); odd EBs have no separator.
@@ -642,7 +649,7 @@ async function addNoiseHeatmapPage(doc, noiseData, title) {
 
   // Pre-compute EB module positions per section (based on max sections across all streamers)
   const moduleFreq = config.moduleFrequency || 4;
-  const { modulesBySection, separatorRows } = buildPdfModulePositions({
+  const { modulesBySection, separatorRows, frontModuleNum } = buildPdfModulePositions({
     moduleFreq,
     maxSections: maxSectionsPerCable,
     totalSections,
@@ -715,6 +722,13 @@ async function addNoiseHeatmapPage(doc, noiseData, title) {
       doc.setTextColor(0, 0, 0);
       doc.text(ebLabel, startX + heatmapWidth + 3, rowY + cellHeight / 2 + 1, { align: "left" });
     }
+  }
+
+  // Front eBird (EB01) has no row of its own: label it just above the first row, on the right.
+  if (frontModuleNum) {
+    doc.setFontSize(6);
+    doc.setTextColor(0, 0, 0);
+    doc.text(formatEB(frontModuleNum), startX + heatmapWidth + 3, startY - 0.8, { align: 'left' });
   }
 
   // Bold horizontal lines at even EB boundaries (match age heatmap separators).

@@ -86,9 +86,11 @@ export function getEBRangeForSectionRange(startSection, endSection, cfg) {
   const allModules = getModuleLayout(sectionsPerCable, moduleFreq, Boolean(cfg?.ebFront));
 
   // A module sits at or before section 0 and a closing module sits at the last active section,
-  // so a module always exists on both sides of a range within the active sections.
+  // so a module always exists on both sides of a range within the active sections. With a front
+  // eBird the module in front must lie strictly in front of the start (AS01 alone is "EB02 – EB01").
+  const frontLimit = cfg?.ebFront ? startSection - 1 : startSection;
   const before = allModules
-    .filter((m) => m.afterSection <= startSection)
+    .filter((m) => m.afterSection <= frontLimit)
     .sort((a, b) => b.afterSection - a.afterSection)[0];
   const after = allModules
     .filter((m) => m.afterSection >= endSection)

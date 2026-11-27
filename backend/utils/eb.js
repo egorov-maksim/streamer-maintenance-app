@@ -35,6 +35,8 @@ function getModuleLayout(sectionCount, moduleFreq, ebFront = false) {
  * Crew reason about physical modules along the cable; this keeps server-side EB strings aligned with heatmap logic.
  *
  * Finds the closest module at or before the span start and at or after the span end (order-independent).
+ * With a front eBird the module must lie strictly in front of the start (a span is read as the range
+ * between the EB in front of it and the EB behind it, so AS01 alone is "EB02 - EB01").
  *
  * @param {number} startSection - Start section index (0-based)
  * @param {number} endSection - End section index (0-based)
@@ -48,10 +50,12 @@ function calculateEBRange(startSection, endSection, config) {
   const formatEB = (num) => `EB${String(num).padStart(2, "0")}`;
   if (allModules.length === 0) return formatEB(1);
 
-  // The first module sits at or before section 0, so one always exists at or before the start.
+  // The first module sits at or before section 0, so one always exists at or before the start
+  // (with a front eBird the front EB sits at -1, so one always exists strictly in front of it).
   // A span that runs past the last active section ends at the closing module.
+  const frontLimit = config.ebFront ? start - 1 : start;
   const before = allModules
-    .filter((module) => module.afterSection <= start)
+    .filter((module) => module.afterSection <= frontLimit)
     .sort((a, b) => b.afterSection - a.afterSection)[0];
 
   const after =

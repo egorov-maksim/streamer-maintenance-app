@@ -4,6 +4,11 @@
 
 ### New features
 - Optional per-project setting "Extra eBird in front of first section" (default off). When on, eBirds are renumbered by +1 so a streamer reads EB01, AS01, EB02, AS02..AS05, EB03 and so on; channels are unchanged. It applies to the heatmap, the planning page, EB ranges, the PDF export and eBird cleaning entry validation. Existing projects are unchanged.
+- With the front eBird on, an EB range reads as the eBirds in front of and behind the span, so AS01 alone is "EB02 - EB01". Projects without it keep today's labels.
+- With the front eBird on, the PDF heatmap labels EB01 above the first row.
+
+### Changes and fixes
+- PDF heatmap: the closing eBird on the last section now carries the same number as the heatmap (for 107 sections and a frequency of 4 it is EB28, not EB27). Previously it was one lower whenever the last section was not a regular eBird position, and an even closing eBird was left unlabelled. This changes the PDF of existing projects.
 
 ## v2.0 - 2026-11-20
 

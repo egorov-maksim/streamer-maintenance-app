@@ -124,9 +124,11 @@ describe("front eBird layout", () => {
     expect(getModuleLayout(9, 2.5)).toEqual(getModuleLayout(9, 4));
   });
 
-  it("calculateEBRange with ebFront", () => {
+  it("calculateEBRange with ebFront reads a span as the range between the EB in front of it and the EB behind it", () => {
     const config = { moduleFrequency: 4, sectionsPerCable: 20, ebFront: true };
-    expect(calculateEBRange(4, 4, config)).toBe("EB03");
-    expect(calculateEBRange(0, 12, config)).toBe("EB05 - EB02");
+    expect(calculateEBRange(0, 0, config)).toBe("EB02 - EB01"); // AS01 sits between the front EB and EB02
+    expect(calculateEBRange(4, 4, config)).toBe("EB03 - EB02");
+    expect(calculateEBRange(0, 12, config)).toBe("EB05 - EB01");
+    expect(calculateEBRange(19, 19, config)).toBe("EB07 - EB06"); // last section, closing EB behind it
   });
 });

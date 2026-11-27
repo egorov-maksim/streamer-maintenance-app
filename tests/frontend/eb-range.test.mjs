@@ -49,6 +49,17 @@ describe("getEBRangeForSectionRange", () => {
     }
   });
 
+  it("with a front eBird reads every span as a range between the EB in front of it and the one behind it", () => {
+    const frontCfg = { ...cfg, ebFront: true };
+    expect(getEBRangeForSectionRange(0, 0, frontCfg)).toBe("EB02 – EB01");
+    expect(getEBRangeForSectionRange(4, 4, frontCfg)).toBe("EB03 – EB02");
+    for (let start = 0; start < cfg.sectionsPerCable; start++) {
+      for (let end = start; end < cfg.sectionsPerCable; end++) {
+        expect(getEBRangeForSectionRange(start, end, frontCfg)).toContain(" – ");
+      }
+    }
+  });
+
   it("equals the frozen implementation with the flag off", () => {
     for (const sectionsPerCable of [1, 2, 5, 12, 20, 33]) {
       for (const moduleFrequency of [1, 2, 3, 4, 6]) {
