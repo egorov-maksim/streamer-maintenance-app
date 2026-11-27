@@ -91,6 +91,23 @@ describe("ebFront project setting", () => {
     expect(set.body.ebFront).toBe(true);
   });
 
+  it("an explicit ebFront null keeps the stored flag on both PUT paths", async () => {
+    const auth = await login("grand");
+    const post = await request(app).post("/api/projects").set("Authorization", auth).send(projectBody("EF-6", { ebFront: true }));
+    const put = await request(app).put(`/api/projects/${post.body.id}`).set("Authorization", auth).send(projectBody("EF-6", { ebFront: null }));
+    expect(put.status).toBe(200);
+    expect(put.body.ebFront).toBe(true);
+    expect((await listProject(auth, post.body.id)).ebFront).toBe(true);
+
+    const project = await createProject({ projectNumber: "EF-7", ebFront: 1 });
+    await activateProject(project);
+    const vessel = await login("ttnsuper");
+    const body = { numCables: 12, sectionsPerCable: 107, sectionLength: 75, moduleFrequency: 4, channelsPerSection: 6, useRopeForTail: true };
+    const kept = await request(app).put("/api/config").set("Authorization", vessel).send({ ...body, ebFront: null });
+    expect(kept.status).toBe(200);
+    expect(kept.body.ebFront).toBe(true);
+  });
+
   it("GET /api/config returns ebFront from the active project, false without one", async () => {
     const auth = await login("grand");
     const none = await request(app).get("/api/config").set("Authorization", auth);

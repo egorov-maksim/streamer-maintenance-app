@@ -86,7 +86,7 @@ function createConfigRouter(authMiddleware, superUserOnly) {
         const activeProject = await getActiveProjectForVessel(req.vesselScope);
         if (activeProject) {
           // Omitted ebFront keeps the stored flag; the global config never stores it.
-          const ebFront = bodyData?.eb_front === undefined ? activeProject.ebFront : bodyData.eb_front ? 1 : 0;
+          const ebFront = bodyData?.eb_front == null ? activeProject.ebFront : bodyData.eb_front ? 1 : 0;
           await runAsync(
             `UPDATE projects SET
             num_cables = ?,

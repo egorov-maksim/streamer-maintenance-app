@@ -276,7 +276,7 @@ function createProjectsRouter(authMiddleware, superUserOnly) {
           toInt(channels_per_section, defaultConfig.channelsPerSection),
           use_rope_for_tail === false ? 0 : 1,
           // Omitted keeps the stored flag: the planning page saves projects without it.
-          eb_front === undefined ? existing.ebFront : eb_front ? 1 : 0,
+          eb_front == null ? existing.ebFront : eb_front ? 1 : 0,
           toInt(suggested_cleaning_threshold_days, existing.suggestedCleaningThresholdDays ?? 10),
           comments !== undefined ? comments : null,
           id,
