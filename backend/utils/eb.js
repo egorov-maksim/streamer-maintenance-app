@@ -1,6 +1,36 @@
 // utils/eb.js
 
 /**
+ * The one EB placement rule. Returns the EB modules of a streamer in cable order, numbered from 1.
+ * Flag off: one at AS01 (afterSection 0), one every moduleFreq sections, and a closing one on the
+ * last section when it has none. Flag on (front eBird): an extra EB01 directly in front of AS01
+ * (afterSection -1) and everything else counted one higher, the first EB sitting right behind AS01.
+ *
+ * @param {number} sectionCount - active sections on this streamer
+ * @param {number} moduleFreq - sections between regular EB placements (4 when not a positive integer)
+ * @param {boolean} [ebFront=false] - project has an EB in front of AS01
+ * @returns {Array<{num: number, afterSection: number, kind: "front"|"first"|"regular"|"closing"}>}
+ *   afterSection is the 0-based section the EB sits behind, -1 for the front EB
+ */
+function getModuleLayout(sectionCount, moduleFreq, ebFront = false) {
+  const sections = Number(sectionCount);
+  if (!Number.isFinite(sections) || sections < 1) return [];
+  const freq = Number.isInteger(moduleFreq) && moduleFreq > 0 ? moduleFreq : 4;
+
+  const placed = [];
+  if (ebFront) placed.push({ afterSection: -1, kind: "front" });
+  placed.push({ afterSection: 0, kind: "first" });
+  for (let section = freq; section < sections; section += freq) {
+    placed.push({ afterSection: section, kind: "regular" });
+  }
+  // Closing EB on the last active section, matching the heatmap's isLastModule rule in app.js.
+  if (placed[placed.length - 1].afterSection !== sections - 1) {
+    placed.push({ afterSection: sections - 1, kind: "closing" });
+  }
+  return placed.map((module, index) => ({ num: index + 1, ...module }));
+}
+
+/**
  * Maps a streamer section span to human-readable Equipment Box (EB) labels for maintenance reports and API responses.
  * Crew reason about physical modules along the cable; this keeps server-side EB strings aligned with heatmap logic.
  *
@@ -8,42 +38,26 @@
  *
  * @param {number} startSection - Start section index (0-based)
  * @param {number} endSection - End section index (0-based)
- * @param {Object} config - Config with moduleFrequency, sectionsPerCable
+ * @param {Object} config - Config with moduleFrequency, sectionsPerCable, ebFront
  * @returns {string} Formatted EB range (e.g. "EB05 - EB02"), or a single EB when both ends map to the same module
  */
 function calculateEBRange(startSection, endSection, config) {
   const start = Math.max(0, Math.min(startSection, endSection));
   const end = Math.max(startSection, endSection);
-  const moduleFreq = config.moduleFrequency || 4;
-  const sectionsPerCable = config.sectionsPerCable;
+  const allModules = getModuleLayout(config.sectionsPerCable, config.moduleFrequency, Boolean(config.ebFront));
+  const formatEB = (num) => `EB${String(num).padStart(2, "0")}`;
+  if (allModules.length === 0) return formatEB(1);
 
-  const allModules = [];
-  allModules.push({ num: 1, section: 0 });
-
-  for (let sectionIndex = moduleFreq; sectionIndex < sectionsPerCable; sectionIndex += moduleFreq) {
-    const moduleNum = Math.floor(sectionIndex / moduleFreq) + 1;
-    allModules.push({ num: moduleNum, section: sectionIndex });
-  }
-
-  // Always add a fixed EB at the last active section if not already there,
-  // matching the heatmap's isLastModule rule in app.js.
-  const lastBuilt = allModules[allModules.length - 1];
-  if (lastBuilt.section !== sectionsPerCable - 1) {
-    allModules.push({ num: lastBuilt.num + 1, section: sectionsPerCable - 1 });
-  }
-
-  // EB01 sits at section 0, so a module always exists at or before the start.
+  // The first module sits at or before section 0, so one always exists at or before the start.
   // A span that runs past the last active section ends at the closing module.
   const before = allModules
-    .filter((module) => module.section <= start)
-    .sort((a, b) => b.section - a.section)[0];
+    .filter((module) => module.afterSection <= start)
+    .sort((a, b) => b.afterSection - a.afterSection)[0];
 
   const after =
     allModules
-      .filter((module) => module.section >= end)
-      .sort((a, b) => a.section - b.section)[0] || allModules[allModules.length - 1];
-
-  const formatEB = (num) => `EB${String(num).padStart(2, "0")}`;
+      .filter((module) => module.afterSection >= end)
+      .sort((a, b) => a.afterSection - b.afterSection)[0] || allModules[allModules.length - 1];
 
   if (before.num === after.num) return formatEB(before.num);
   return `${formatEB(Math.max(before.num, after.num))} - ${formatEB(Math.min(before.num, after.num))}`;
@@ -51,19 +65,15 @@ function calculateEBRange(startSection, endSection, config) {
 
 /**
  * Counts the EB modules on one streamer, using the same placement rule as the heatmap and
- * calculateEBRange: one at the first section, one every moduleFrequency sections, and a
- * closing one at the last active section when that section does not already carry one.
+ * calculateEBRange (see getModuleLayout).
  *
  * @param {number} sectionsPerCable - active sections on this streamer
  * @param {number} moduleFrequency - sections between regular EB placements
+ * @param {boolean} [ebFront=false] - project has an EB in front of AS01
  * @returns {number} highest valid EB number (0 when the streamer has no sections)
  */
-function countEBModules(sectionsPerCable, moduleFrequency) {
-  const sections = Number(sectionsPerCable);
-  if (!Number.isFinite(sections) || sections < 1) return 0;
-  const freq = moduleFrequency > 0 ? moduleFrequency : 4;
-  const regular = 1 + Math.floor((sections - 1) / freq);
-  return (sections - 1) % freq === 0 ? regular : regular + 1;
+function countEBModules(sectionsPerCable, moduleFrequency, ebFront = false) {
+  return getModuleLayout(sectionsPerCable, moduleFrequency, ebFront).length;
 }
 
-module.exports = { calculateEBRange, countEBModules };
+module.exports = { getModuleLayout, calculateEBRange, countEBModules };

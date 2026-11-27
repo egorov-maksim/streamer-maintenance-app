@@ -92,7 +92,7 @@ function createEbCleaningsRouter(authMiddleware, adminOrAbove) {
         [project.id, streamer_id]
       );
       const sections = override?.sectionsPerCable ?? project.sectionsPerCable ?? config.sectionsPerCable;
-      const maxEb = countEBModules(sections, project.moduleFrequency ?? config.moduleFrequency);
+      const maxEb = countEBModules(sections, project.moduleFrequency ?? config.moduleFrequency, project.ebFront === 1);
       if (eb_number < 1 || eb_number > maxEb) {
         return sendError(res, 400, `EB number must be between 1 and ${maxEb}`);
       }

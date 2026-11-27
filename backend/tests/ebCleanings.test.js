@@ -80,6 +80,15 @@ describe("eBird cleaning entries", () => {
     expect((await create(ttnAdmin, { ...baseEntry, ebNumber: 28 })).status).toBe(200);
   });
 
+  it("accepts one more eBird number on a project with front eBird", async () => {
+    await resetDb();
+    const front = await createProject({ projectNumber: "FR-1", vesselTag: "TTN", numCables: 12, ebFront: true });
+    await activateProject(front);
+    const auth = await login("ttnadmin");
+    expect((await create(auth, { ...baseEntry, ebNumber: 29 })).status).toBe(200);
+    expect((await create(auth, { ...baseEntry, ebNumber: 30 })).status).toBe(400);
+  });
+
   it("rejects a streamer outside the cable count", async () => {
     expect((await create(ttnAdmin, { ...baseEntry, streamerId: 13 })).status).toBe(400);
   });
