@@ -137,7 +137,6 @@
                 <label>Active Sections per Streamer <input type="number" id="cfg-sectionsPerCable" min="1" value="107"></label>
                 <label>Section Length (m) <input type="number" id="cfg-sectionLength" min="1" value="75"></label>
                 <label>eBird Frequency (every N sections) <input type="number" id="cfg-moduleFrequency" min="1" value="4"></label>
-                <label><input type="checkbox" id="cfg-ebFront"> Extra eBird in front of first section</label>
                 <label>Channels per Section <input type="number" id="cfg-channelsPerSection" min="1" value="6"></label>
                 <label>Tail Configuration
                   <select id="cfg-useRopeForTail">
@@ -145,7 +144,9 @@
                     <option value="false">Add 5 Tail Sections</option>
                   </select>
                 </label>
+                <label class="checkbox-field"><input type="checkbox" id="cfg-ebFront"> Extra eBird in front of first section</label>
               </div>
+              <p class="info-text-sm">Extra eBird in front: turning it on or off renumbers every eBird of this project. Existing eBird cleaning dates keep their number, so they will show on a different eBird.</p>
               <div class="actions mt-12">
                 <button class="btn btn-primary superuser-only" id="btn-save-config">💾 Save Configuration</button>
                 <button type="button" class="btn btn-outline btn-outline-danger grandsuperuser-only" id="btn-cleanup-streamers" title="Remove events and deployments for streamers above current count">🧹 Cleanup orphaned streamers</button>
@@ -157,10 +158,9 @@
                 </p>
               </div>
               <p class="info-text-sm">
-                <strong>Note:</strong> Configuration is saved per project. eBird appear after 1st section, then every N sections.
+                <strong>Note:</strong> Configuration is saved per project. eBird appear after 1st section, then every N sections (or before it, when Extra eBird is ticked).
                 If streamers differ in length, set this to the usual count and use <strong>Sections override</strong> in Per-Streamer Deployment Configuration below.
               </p>
-              <p class="info-text-sm">Turning this on or off renumbers all eBirds of this project; existing eBird cleaning records keep their stored numbers.</p>
             </div>
             
             <!-- Per-Streamer Deployment Configuration -->

@@ -4055,6 +4055,19 @@ table.has-noise-data .noise-col {
   margin: 0;
 }
 
+label.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  align-self: end;
+  min-height: 38px;
+}
+
+label.checkbox-field input {
+  width: auto;
+  margin: 0;
+}
+
 .most-cleaned-hint {
   font-size: 13px;
   color: var(--muted);

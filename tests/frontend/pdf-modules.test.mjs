@@ -56,3 +56,24 @@ describe("buildPdfModulePositions flag on", () => {
     expect(result.separatorRows).not.toContain(106);
   });
 });
+
+describe("buildPdfModulePositions flag on, last section on a regular position", () => {
+  // 105 sections, N=4: the last section (104) is itself a regular EB position, so no extra closing EB is added.
+  const result = buildPdfModulePositions({ moduleFreq: 4, maxSections: 105, totalSections: 105, ebFront: true });
+
+  it("numbers the last three EB rows 26, 27 and 28", () => {
+    expect(result.modulesBySection[96]).toBe(26);
+    expect(result.modulesBySection[100]).toBe(27);
+    expect(result.modulesBySection[104]).toBe(28);
+  });
+
+  it("has no duplicate EB numbers", () => {
+    const nums = result.modulesBySection.filter(Boolean);
+    expect(new Set(nums).size).toBe(nums.length);
+  });
+
+  it("separates under row 104 because EB28 is even and not a closing EB", () => {
+    expect(result.separatorRows).toContain(104);
+    expect(result.separatorRows).not.toContain(100);
+  });
+});
