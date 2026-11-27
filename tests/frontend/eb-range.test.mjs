@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { getEBRangeForSectionRange, getConfigForProject } from "../../public/js/streamer-utils.js";
+import { getEBRangeForSectionRange, getEBRangeForEvent, getConfigForProject } from "../../public/js/streamer-utils.js";
 import { setConfig, setProjects } from "../../public/js/state.js";
 
 const require = createRequire(import.meta.url);
@@ -92,5 +92,45 @@ describe("getConfigForProject ebFront", () => {
     setConfig(global);
     setProjects([{ projectNumber: "A" }]);
     expect(getConfigForProject("Z")).toBe(global);
+  });
+});
+
+describe("getEBRangeForEvent", () => {
+  const base = { activeProjectNumber: "A", numCables: 1, sectionsPerCable: 20, sectionLength: 75, moduleFrequency: 4, channelsPerSection: 6 };
+  const evt = (projectNumber) => ({ sectionIndexStart: 3, sectionIndexEnd: 6, projectNumber });
+
+  afterEach(() => {
+    setConfig(null);
+    setProjects([]);
+  });
+
+  it("uses the flag of the event's own project, not the active config's", () => {
+    const active = { ...base, ebFront: true };
+    setConfig(active);
+    setProjects([
+      { projectNumber: "A", ebFront: true },
+      { projectNumber: "OLD", ebFront: false },
+    ]);
+    const off = getEBRangeForSectionRange(3, 6, { ...active, ebFront: false });
+    const on = getEBRangeForSectionRange(3, 6, { ...active, ebFront: true });
+    expect(off).not.toBe(on);
+    expect(getEBRangeForEvent(evt("OLD"), active)).toBe(off);
+    expect(getEBRangeForEvent(evt("A"), active)).toBe(on);
+  });
+
+  it("is unchanged from the legacy label when the flag is off everywhere", () => {
+    const active = { ...base, ebFront: false };
+    setConfig(active);
+    setProjects([{ projectNumber: "A", ebFront: false }, { projectNumber: "B", ebFront: false }]);
+    for (const p of ["A", "B", undefined, "unknown"]) {
+      expect(getEBRangeForEvent(evt(p), active)).toBe(legacyEBRange(3, 6, active));
+    }
+  });
+
+  it("keeps the active config's layout for an event of another project", () => {
+    const active = { ...base, ebFront: false, moduleFrequency: 4 };
+    setConfig(active);
+    setProjects([{ projectNumber: "A" }, { projectNumber: "B", ebFront: false, moduleFrequency: 6 }]);
+    expect(getEBRangeForEvent(evt("B"), active)).toBe(legacyEBRange(3, 6, active));
   });
 });

@@ -99,6 +99,18 @@ export function getEBRangeForSectionRange(startSection, endSection, cfg) {
 }
 
 /**
+ * EB range label for a logged event. Only the front-eBird flag is taken from the event's own
+ * project (the layout is otherwise the active config's), so flag-off output is unchanged.
+ * @param {Object} evt - event with sectionIndexStart, sectionIndexEnd and projectNumber
+ * @param {Object} cfg - active config
+ * @returns {string}
+ */
+export function getEBRangeForEvent(evt, cfg) {
+  const ebFront = Boolean(getConfigForProject(evt.projectNumber)?.ebFront);
+  return getEBRangeForSectionRange(evt.sectionIndexStart, evt.sectionIndexEnd, { ...cfg, ebFront });
+}
+
+/**
  * Calculate channel range label for a contiguous section range (active sections only).
  * Returns "—" for tail sections (startSection >= sectionsPerCable).
  * @param {number} startSection - 0-based start section index

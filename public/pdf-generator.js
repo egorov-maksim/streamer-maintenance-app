@@ -5,7 +5,7 @@
 
 import { safeGet, setStatus } from "./js/ui.js";
 import { config, getActiveProject } from "./js/state.js";
-import { formatAS, formatSectionLabel, eventDistance, fmtKm, formatEB, getEBRangeForSectionRange, getEffectiveSectionsPerCable } from "./js/streamer-utils.js";
+import { formatAS, formatSectionLabel, eventDistance, fmtKm, formatEB, getEBRangeForEvent, getEffectiveSectionsPerCable } from "./js/streamer-utils.js";
 import { getAuthHeaders } from "./js/api.js";
 import { openModal, closeModal } from "./js/modals.js";
 import { buildPdfModulePositions } from "./js/heatmap-layout.js";
@@ -830,7 +830,7 @@ async function addAllEventsSection(doc, startDate, endDate) {
   const ebRanges = eventsToShow.map((evt) =>
     evt.sectionType === "tail"
       ? "—"
-      : getEBRangeForSectionRange(evt.sectionIndexStart, evt.sectionIndexEnd, config)
+      : getEBRangeForEvent(evt, config)
   );
 
   const tableBody = eventsToShow.map((evt, i) => {

@@ -106,7 +106,7 @@ const getConfigForProject = StreamerUtils.getConfigForProject;
 const getSectionsPerCableWithTail = StreamerUtils.getSectionsPerCableWithTail;
 const getMaxSectionIndex = StreamerUtils.getMaxSectionIndex;
 const validateStreamerAndSections = StreamerUtils.validateStreamerAndSections;
-const getEBRangeForSectionRange = StreamerUtils.getEBRangeForSectionRange;
+const getEBRangeForEvent = StreamerUtils.getEBRangeForEvent;
 const getEffectiveSectionsPerCable = StreamerUtils.getEffectiveSectionsPerCable;
 
 /* ------------ Heatmap ------------ */
@@ -688,7 +688,7 @@ async function deleteEvent(id) {
 
   const ebRangeRaw = sectionType === 'tail'
     ? '—'
-    : getEBRangeForSectionRange(evt.sectionIndexStart, evt.sectionIndexEnd, config);
+    : getEBRangeForEvent(evt, config);
 
   safeGet('delete-eb-display').textContent = ebRangeRaw;
   safeGet('delete-method-display').textContent = methodLabel(evt.cleaningMethod);
@@ -1098,7 +1098,7 @@ async function renderLog() {
     const rangeLabel = formatRangeLabel(evt);
     const ebRange = sectionType === 'tail'
       ? '—'
-      : getEBRangeForSectionRange(evt.sectionIndexStart, evt.sectionIndexEnd, config);
+      : getEBRangeForEvent(evt, config);
     const distance = eventDistance(evt);
     // API text goes through escapeHtml: this row is built with innerHTML.
     const projectDisplay = evt.projectNumber ? escapeHtml(evt.projectNumber) : '<span style="color:#9ca3af">—</span>';
