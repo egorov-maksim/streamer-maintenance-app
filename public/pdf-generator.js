@@ -5,9 +5,10 @@
 
 import { safeGet, setStatus } from "./js/ui.js";
 import { config, getActiveProject } from "./js/state.js";
-import { formatAS, formatSectionLabel, eventDistance, fmtKm, formatEB, getEBRangeForSectionRange, getEffectiveSectionsPerCable } from "./js/streamer-utils.js";
+import { formatAS, formatSectionLabel, eventDistance, fmtKm, formatEB, getEBRangeForEvent, getEffectiveSectionsPerCable } from "./js/streamer-utils.js";
 import { getAuthHeaders } from "./js/api.js";
 import { openModal, closeModal } from "./js/modals.js";
+import { buildPdfModulePositions } from "./js/heatmap-layout.js";
 import { loadHeatmapLegendPrefs, scrapingAgeStyle, rmsToColor } from "./js/heatmap-legend.js";
 
 function parseRgbOrHex(cssColor) {
@@ -438,23 +439,12 @@ async function addHeatmapPage(doc, lastCleaned, title) {
   // Pre-compute EB module positions per section (based on max sections across all streamers)
   const moduleFreq = config.moduleFrequency || 4;
   const legendPrefs = loadHeatmapLegendPrefs();
-  const modulesBySection = Array.from({ length: totalSections }, () => null);
-
-  // Always have EB01 at section 0
-  modulesBySection[0] = 1;
-
-  for (let sectionIndex = moduleFreq; sectionIndex < maxSectionsPerCable; sectionIndex += moduleFreq) {
-    const moduleNum = Math.floor(sectionIndex / moduleFreq) + 1;
-    if (sectionIndex < totalSections) {
-      modulesBySection[sectionIndex] = moduleNum;
-    }
-  }
-
-  const lastModuleNum = Math.floor((maxSectionsPerCable - 1) / moduleFreq) + 1;
-  const lastModuleSection = maxSectionsPerCable - 1;
-  if (lastModuleSection < totalSections && !modulesBySection[lastModuleSection]) {
-    modulesBySection[lastModuleSection] = lastModuleNum;
-  }
+  const { modulesBySection, separatorRows, frontModuleNum } = buildPdfModulePositions({
+    moduleFreq,
+    maxSections: maxSectionsPerCable,
+    totalSections,
+    ebFront: Boolean(config.ebFront),
+  });
 
   // Inactive cell fill — light grey, used for sections beyond a streamer's effective length
   const inactiveFill = { r: 240, g: 240, b: 240 };
@@ -533,13 +523,18 @@ async function addHeatmapPage(doc, lastCleaned, title) {
     }
   }
 
+  // Front eBird (EB01) has no row of its own: label it just above the first row, on the right.
+  if (frontModuleNum) {
+    doc.setFontSize(6);
+    doc.setTextColor(0, 0, 0);
+    doc.text(formatEB(frontModuleNum), startX + heatmapWidth + 3, startY - 0.8, { align: 'left' });
+  }
+
   // Bold horizontal lines below even EB starts only (EB02, EB04, …); odd EBs have no separator.
   const ebSepEndX = startX + heatmapWidth + 18;
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.4);
-  for (let boundaryS = moduleFreq; boundaryS < maxSectionsPerCable; boundaryS += moduleFreq) {
-    const moduleNum = Math.floor(boundaryS / moduleFreq) + 1;
-    if (moduleNum % 2 !== 0) continue;
+  for (const boundaryS of separatorRows) {
     const lineY = startY + (boundaryS + 1) * cellHeight;
     doc.line(startX, lineY, ebSepEndX, lineY);
   }
@@ -654,19 +649,12 @@ async function addNoiseHeatmapPage(doc, noiseData, title) {
 
   // Pre-compute EB module positions per section (based on max sections across all streamers)
   const moduleFreq = config.moduleFrequency || 4;
-  const modulesBySection = Array.from({ length: totalSections }, () => null);
-  modulesBySection[0] = 1; // EB01 at section 0
-
-  for (let sectionIndex = moduleFreq; sectionIndex < maxSectionsPerCable; sectionIndex += moduleFreq) {
-    const moduleNum = Math.floor(sectionIndex / moduleFreq) + 1;
-    if (sectionIndex < totalSections) modulesBySection[sectionIndex] = moduleNum;
-  }
-
-  const lastModuleNum = Math.floor((maxSectionsPerCable - 1) / moduleFreq) + 1;
-  const lastModuleSection = maxSectionsPerCable - 1;
-  if (lastModuleSection < totalSections && !modulesBySection[lastModuleSection]) {
-    modulesBySection[lastModuleSection] = lastModuleNum;
-  }
+  const { modulesBySection, separatorRows, frontModuleNum } = buildPdfModulePositions({
+    moduleFreq,
+    maxSections: maxSectionsPerCable,
+    totalSections,
+    ebFront: Boolean(config.ebFront),
+  });
 
   // Inactive cell fill — light grey, used for sections beyond a streamer's effective length
   const inactiveFill = { r: 240, g: 240, b: 240 };
@@ -736,13 +724,18 @@ async function addNoiseHeatmapPage(doc, noiseData, title) {
     }
   }
 
+  // Front eBird (EB01) has no row of its own: label it just above the first row, on the right.
+  if (frontModuleNum) {
+    doc.setFontSize(6);
+    doc.setTextColor(0, 0, 0);
+    doc.text(formatEB(frontModuleNum), startX + heatmapWidth + 3, startY - 0.8, { align: 'left' });
+  }
+
   // Bold horizontal lines at even EB boundaries (match age heatmap separators).
   const ebSepEndX = startX + heatmapWidth + 18;
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.4);
-  for (let boundaryS = moduleFreq; boundaryS < maxSectionsPerCable; boundaryS += moduleFreq) {
-    const moduleNum = Math.floor(boundaryS / moduleFreq) + 1;
-    if (moduleNum % 2 !== 0) continue;
+  for (const boundaryS of separatorRows) {
     const lineY = startY + (boundaryS + 1) * cellHeight;
     doc.line(startX, lineY, ebSepEndX, lineY);
   }
@@ -851,7 +844,7 @@ async function addAllEventsSection(doc, startDate, endDate) {
   const ebRanges = eventsToShow.map((evt) =>
     evt.sectionType === "tail"
       ? "—"
-      : getEBRangeForSectionRange(evt.sectionIndexStart, evt.sectionIndexEnd, config)
+      : getEBRangeForEvent(evt, config)
   );
 
   const tableBody = eventsToShow.map((evt, i) => {

@@ -813,6 +813,7 @@ function initSuggestionsThresholdControl() {
         moduleFrequency: activeProject.moduleFrequency ?? config.moduleFrequency,
         channelsPerSection: activeProject.channelsPerSection ?? config.channelsPerSection,
         useRopeForTail: activeProject.useRopeForTail,
+        ebFront: activeProject.ebFront,
         comments: activeProject.comments || null,
         suggestedCleaningThresholdDays: raw,
       };
@@ -829,6 +830,7 @@ function initSuggestionsThresholdControl() {
           channelsPerSection: config.channelsPerSection,
           moduleFrequency: config.moduleFrequency,
           useRopeForTail: config.useRopeForTail,
+          ebFront: config.ebFront,
           numCables: config.numCables,
           sectionsPerCableOverrides: config.sectionsPerCableOverrides || {},
         };
@@ -956,6 +958,7 @@ async function renderPlanningHeatmap() {
       channelsPerSection: config.channelsPerSection,
       moduleFrequency: config.moduleFrequency,
       useRopeForTail: config.useRopeForTail,
+      ebFront: config.ebFront,
       numCables: config.numCables,
       sectionsPerCableOverrides: config.sectionsPerCableOverrides || {},
     };
@@ -967,6 +970,7 @@ async function renderPlanningHeatmap() {
     const sectionsPerCable = config.sectionsPerCable;
     const cableCount = config.numCables;
     const moduleFreq = config.moduleFrequency;
+    const ebFront = !!config.ebFront;
     const channelsPerSection = config.channelsPerSection;
     const useTailSections = !config.useRopeForTail;
     const tailSections = useTailSections ? 5 : 0;
@@ -977,7 +981,7 @@ async function renderPlanningHeatmap() {
 
     // Calculate total rows = sections + modules + tail sections (based on max sections across all streamers)
     const lastSectionIsRegular = (maxSectionsPerCable - 1) % moduleFreq === 0;
-    const modulesCount = 1 + Math.floor((maxSectionsPerCable - 1) / moduleFreq) + (lastSectionIsRegular ? 0 : 1);
+    const modulesCount = 1 + Math.floor((maxSectionsPerCable - 1) / moduleFreq) + (lastSectionIsRegular ? 0 : 1) + (ebFront ? 1 : 0);
     const totalRows = maxSectionsPerCable + modulesCount + tailSections;
 
     const orientation = getPlanningHeatmapOrientation();
@@ -1008,7 +1012,8 @@ async function renderPlanningHeatmap() {
 
       // Build interleaved section/EB/tail cells for a single row.
       function buildRowCells(row, cellFactory, sectionCount) {
-        let moduleNum = 1;
+        if (ebFront) row.appendChild(cellFactory('module', -1, 1, null));
+        let moduleNum = ebFront ? 2 : 1;
         for (let s = 0; s < sectionCount; s++) {
           row.appendChild(cellFactory('section', s, null, null));
           if (shouldInsertModuleAfterSection(s + 1, sectionCount, moduleFreq)) {
@@ -1019,7 +1024,7 @@ async function renderPlanningHeatmap() {
         for (let t = 0; t < tailSections; t++) {
           row.appendChild(cellFactory('tail', null, null, t));
         }
-        return countHeatmapColumnRows(sectionCount, moduleFreq, tailSections);
+        return countHeatmapColumnRows(sectionCount, moduleFreq, tailSections, ebFront);
       }
 
       // CH row — channel range labels per section column
@@ -1128,6 +1133,13 @@ async function renderPlanningHeatmap() {
       channelLabel.textContent = "CH";
       channelCol.appendChild(channelLabel);
 
+      if (ebFront) {
+        const frontChannelCell = document.createElement("div");
+        frontChannelCell.className = "hm-vcell hm-module-row";
+        frontChannelCell.textContent = "—";
+        channelCol.appendChild(frontChannelCell);
+      }
+
       for (let s = 0; s < maxSectionsPerCable; s++) {
         const channelCell = document.createElement("div");
         channelCell.className = "hm-vcell hm-channel-ref";
@@ -1165,7 +1177,7 @@ async function renderPlanningHeatmap() {
         const sections = lastCleaned[streamerId] || [];
         const effectiveSections = getEffectiveSectionsPerCable(streamerId);
 
-        const colRows = countHeatmapColumnRows(effectiveSections, moduleFreq, tailSections);
+        const colRows = countHeatmapColumnRows(effectiveSections, moduleFreq, tailSections, ebFront);
         const col = document.createElement("div");
         col.className = "hm-col";
         col.style.gridTemplateRows = `36px repeat(${colRows}, 32px)`;
@@ -1175,7 +1187,14 @@ async function renderPlanningHeatmap() {
         label.textContent = `S${streamerId}`;
         col.appendChild(label);
 
-        let moduleNum = 1;
+        if (ebFront) {
+          const frontCell = document.createElement("div");
+          frontCell.className = "hm-vcell hm-module";
+          frontCell.textContent = formatEB(1);
+          applyEbCleaningStatus(frontCell, streamerId, 1, latestEbCleaning);
+          col.appendChild(frontCell);
+        }
+        let moduleNum = ebFront ? 2 : 1;
 
         for (let s = 0; s < effectiveSections; s++) {
           const lastDate = sections[s];

@@ -35,7 +35,7 @@ async function buildSectionsPerCableMap(projectId, numCables, defaultSections) {
  * active project of vesselTag, falling back to the app config. The vessel is passed
  * explicitly so a global user (no vesselScope) never silently gets another vessel's geometry.
  * @param {{ projectNumber?: string, vesselTag: string, vesselScope?: string|null }} opts
- * @returns {Promise<Object>} app config plus numCables, sectionsPerCable, useRopeForTail, sectionLength, sectionsPerCableMap
+ * @returns {Promise<Object>} app config plus numCables, sectionsPerCable, useRopeForTail, ebFront, sectionLength, sectionsPerCableMap
  */
 async function resolveEffectiveConfig({ projectNumber, vesselTag, vesselScope }) {
   const config = await loadConfig();
@@ -57,6 +57,7 @@ async function resolveEffectiveConfig({ projectNumber, vesselTag, vesselScope })
     numCables,
     sectionsPerCable,
     useRopeForTail: projectRow != null ? projectRow.useRopeForTail === 1 : config.useRopeForTail,
+    ebFront: projectRow != null ? projectRow.ebFront === 1 : false,
     sectionLength: projectRow?.sectionLength ?? config.sectionLength,
     sectionsPerCableMap,
   };

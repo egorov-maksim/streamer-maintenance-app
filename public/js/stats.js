@@ -17,7 +17,7 @@ import { config, events, projects, selectedProjectFilter, getFilteredEvents } fr
 import * as API from "./api.js";
 import { safeGet, showErrorToast, formatDateTime, escapeHtml, methodLabel } from "./ui.js";
 import {
-  fmtKm, formatRangeLabel, formatSectionLabel, eventDistance, getEBRangeForSectionRange, getEffectiveSectionsPerCable,
+  fmtKm, formatRangeLabel, formatSectionLabel, eventDistance, getEBRangeForEvent, getEffectiveSectionsPerCable,
   countUniqueSectionsInPeriod,
 } from "./streamer-utils.js";
 import { openModal, closeModal } from "./modals.js";
@@ -453,7 +453,7 @@ function renderRecentCleaningEventsModal() {
   function appendEventRow(evt) {
     const sectionType = evt.sectionType || "active";
     const rangeLabel = formatRangeLabel(evt);
-    const ebRange = sectionType === "tail" ? "—" : getEBRangeForSectionRange(evt.sectionIndexStart, evt.sectionIndexEnd, config);
+    const ebRange = sectionType === "tail" ? "—" : getEBRangeForEvent(evt, config);
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${formatDateTime(evt.cleanedAt)}</td>

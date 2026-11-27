@@ -1,1 +1,3 @@
 See [README.md](README.md) for overview and its [Running the Tests](README.md#running-the-tests) section for test setup.
+
+Project and config JSON include the boolean `ebFront` (default `false`, stored as `eb_front`): when `true` the streamer has an extra eBird in front of the first section and all eBirds are numbered one higher. It is set with the other project fields (`moduleFrequency`, `useRopeForTail`) on `POST /api/projects` and `PUT /api/projects/:id`. `PUT /api/config` sets it on the active project for vessel-scoped users only; a global user's `PUT /api/config` ignores it. Omitting `ebFront` (or sending `null`) on a PUT keeps the stored value. The request key is written `ebFront`; the routes convert camelCase and snake_case request bodies.

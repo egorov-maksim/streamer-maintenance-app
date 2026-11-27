@@ -283,7 +283,7 @@ export function updateUIForRole() {
   if (btnAddEvent) btnAddEvent.classList.toggle("hidden", !isAdminRole);
 
   const configInputs = document.querySelectorAll(
-    "#cfg-numCables, #cfg-sectionsPerCable, #cfg-sectionLength, #cfg-moduleFrequency, #cfg-channelsPerSection, #cfg-useRopeForTail"
+    "#cfg-numCables, #cfg-sectionsPerCable, #cfg-sectionLength, #cfg-moduleFrequency, #cfg-channelsPerSection, #cfg-useRopeForTail, #cfg-ebFront"
   );
   configInputs.forEach((input) => {
     input.disabled = !isSuperUserRole;

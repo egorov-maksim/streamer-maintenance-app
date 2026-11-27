@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS projects (
   module_frequency INTEGER DEFAULT 4,
   channels_per_section INTEGER DEFAULT 6,
   use_rope_for_tail INTEGER DEFAULT 1,
+  eb_front INTEGER DEFAULT 0,
   suggested_cleaning_threshold_days INTEGER DEFAULT 10,
   comments TEXT
 );
