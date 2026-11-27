@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### New features
+- Optional per-project setting "Extra eBird in front of first section" (default off). When on, eBirds are renumbered by +1 so a streamer reads EB01, AS01, EB02, AS02..AS05, EB03 and so on; channels are unchanged. It applies to the heatmap, the planning page, EB ranges, the PDF export and eBird cleaning entry validation. Existing projects are unchanged.
+
 ## v2.0 - 2026-11-20
 
 Changes since the previous main (ec6ebba, v1.2.0 line): 59 commits, 107 files.
