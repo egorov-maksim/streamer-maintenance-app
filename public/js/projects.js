@@ -42,6 +42,7 @@ export function populateConfigForm(cfg) {
   if (safeGet("cfg-moduleFrequency")) safeGet("cfg-moduleFrequency").value = cfg.moduleFrequency;
   if (safeGet("cfg-channelsPerSection")) safeGet("cfg-channelsPerSection").value = cfg.channelsPerSection;
   if (safeGet("cfg-useRopeForTail")) safeGet("cfg-useRopeForTail").value = cfg.useRopeForTail;
+  if (safeGet("cfg-ebFront")) safeGet("cfg-ebFront").checked = Boolean(cfg.ebFront);
 }
 
 export function updateConfigProjectLabel() {
@@ -59,6 +60,7 @@ export function getConfigFromForm() {
     moduleFrequency: parseInt(safeGet("cfg-moduleFrequency")?.value, 10) || 4,
     channelsPerSection: parseInt(safeGet("cfg-channelsPerSection")?.value, 10) || 6,
     useRopeForTail: safeGet("cfg-useRopeForTail")?.value === "true",
+    ebFront: Boolean(safeGet("cfg-ebFront")?.checked),
   };
 }
 
@@ -273,6 +275,7 @@ export async function activateProject(projectId) {
         moduleFrequency: project.moduleFrequency,
         channelsPerSection: project.channelsPerSection,
         useRopeForTail: project.useRopeForTail,
+        ebFront: project.ebFront,
         vesselTag: project.vesselTag,
         activeProjectNumber: project.projectNumber,
       });

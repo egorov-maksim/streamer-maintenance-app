@@ -3,6 +3,7 @@
  */
 
 import { config, projects } from "./state.js";
+import { getModuleLayout } from "./heatmap-layout.js";
 
 export function sectionCount(evt) {
   return evt.sectionIndexEnd - evt.sectionIndexStart + 1;
@@ -71,7 +72,7 @@ export function formatEB(num) {
  * Returns "—" for tail sections (startSection >= sectionsPerCable).
  * @param {number} startSection - 0-based start section index
  * @param {number} endSection - 0-based end section index
- * @param {Object} cfg - config with moduleFrequency and sectionsPerCable
+ * @param {Object} cfg - config with moduleFrequency, sectionsPerCable and ebFront
  * @returns {string}
  */
 export function getEBRangeForSectionRange(startSection, endSection, cfg) {
@@ -82,23 +83,16 @@ export function getEBRangeForSectionRange(startSection, endSection, cfg) {
     return "—";
   }
 
-  const allModules = [{ num: 1, section: 0 }];
-  for (let si = moduleFreq; si < sectionsPerCable; si += moduleFreq) {
-    allModules.push({ num: Math.floor(si / moduleFreq) + 1, section: si });
-  }
-  const lastBuilt = allModules[allModules.length - 1];
-  if (lastBuilt.section !== sectionsPerCable - 1) {
-    allModules.push({ num: lastBuilt.num + 1, section: sectionsPerCable - 1 });
-  }
+  const allModules = getModuleLayout(sectionsPerCable, moduleFreq, Boolean(cfg?.ebFront));
 
-  // EB01 sits at section 0 and a closing module sits at the last active section,
+  // A module sits at or before section 0 and a closing module sits at the last active section,
   // so a module always exists on both sides of a range within the active sections.
   const before = allModules
-    .filter((m) => m.section <= startSection)
-    .sort((a, b) => b.section - a.section)[0];
+    .filter((m) => m.afterSection <= startSection)
+    .sort((a, b) => b.afterSection - a.afterSection)[0];
   const after = allModules
-    .filter((m) => m.section >= endSection)
-    .sort((a, b) => a.section - b.section)[0];
+    .filter((m) => m.afterSection >= endSection)
+    .sort((a, b) => a.afterSection - b.afterSection)[0];
 
   if (before.num === after.num) return formatEB(before.num);
   return `${formatEB(Math.max(before.num, after.num))} – ${formatEB(Math.min(before.num, after.num))}`;
@@ -142,6 +136,7 @@ export function getConfigForProject(projectNumber) {
           project.useRopeForTail !== null && project.useRopeForTail !== undefined
             ? project.useRopeForTail === true || project.useRopeForTail === 1
             : config.useRopeForTail,
+        ebFront: project.ebFront === true || project.ebFront === 1,
         suggestedCleaningThresholdDays: project.suggestedCleaningThresholdDays ?? 10,
         sectionsPerCableOverrides: isActiveProject ? (config?.sectionsPerCableOverrides || {}) : {},
       };

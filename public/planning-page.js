@@ -813,6 +813,7 @@ function initSuggestionsThresholdControl() {
         moduleFrequency: activeProject.moduleFrequency ?? config.moduleFrequency,
         channelsPerSection: activeProject.channelsPerSection ?? config.channelsPerSection,
         useRopeForTail: activeProject.useRopeForTail,
+        ebFront: activeProject.ebFront,
         comments: activeProject.comments || null,
         suggestedCleaningThresholdDays: raw,
       };
@@ -829,6 +830,7 @@ function initSuggestionsThresholdControl() {
           channelsPerSection: config.channelsPerSection,
           moduleFrequency: config.moduleFrequency,
           useRopeForTail: config.useRopeForTail,
+          ebFront: config.ebFront,
           numCables: config.numCables,
           sectionsPerCableOverrides: config.sectionsPerCableOverrides || {},
         };
@@ -956,6 +958,7 @@ async function renderPlanningHeatmap() {
       channelsPerSection: config.channelsPerSection,
       moduleFrequency: config.moduleFrequency,
       useRopeForTail: config.useRopeForTail,
+      ebFront: config.ebFront,
       numCables: config.numCables,
       sectionsPerCableOverrides: config.sectionsPerCableOverrides || {},
     };
